@@ -1,0 +1,88 @@
+import { Guild, Quest } from '@/types'
+
+export const GUILDS: Guild[] = [
+  {
+    id: 'fire',
+    name: 'Inferno Paws',
+    theme: 'fire',
+    emblem: '🔥',
+    color: 'text-orange-500',
+    gradient: 'from-orange-500 to-red-600',
+    description: 'Fierce warriors born from flames. Masters of attack and relentless offense.'
+  },
+  {
+    id: 'water',
+    name: 'Aqua Claws',
+    theme: 'water',
+    emblem: '💧',
+    color: 'text-blue-500',
+    gradient: 'from-blue-500 to-cyan-600',
+    description: 'Fluid and adaptable. Specialists in defense and counter-attacks.'
+  },
+  {
+    id: 'earth',
+    name: 'Terra Tails',
+    theme: 'earth',
+    emblem: '🌿',
+    color: 'text-green-500',
+    gradient: 'from-green-500 to-emerald-600',
+    description: 'Grounded and resilient. Unmatched durability and stamina.'
+  },
+  {
+    id: 'air',
+    name: 'Zephyr Whiskers',
+    theme: 'air',
+    emblem: '💨',
+    color: 'text-purple-500',
+    gradient: 'from-purple-500 to-violet-600',
+    description: 'Swift and elusive. Masters of speed and agility.'
+  }
+]
+
+export const DAILY_QUESTS: Quest[] = [
+  {
+    id: 'vote-5',
+    title: 'Battle Veteran',
+    description: 'Vote in 5 battles',
+    xpReward: 50,
+    requirement: 5,
+    type: 'vote'
+  },
+  {
+    id: 'share-1',
+    title: 'Social Butterfly',
+    description: 'Share a cat to Story',
+    xpReward: 25,
+    requirement: 1,
+    type: 'share'
+  },
+  {
+    id: 'view-10',
+    title: 'Cat Enthusiast',
+    description: 'View 10 cat profiles',
+    xpReward: 15,
+    requirement: 10,
+    type: 'view'
+  }
+]
+
+export const RARITY_COLORS: Record<string, string> = {
+  Common: 'bg-gray-500 border-gray-400',
+  Rare: 'bg-blue-500 border-blue-400',
+  Epic: 'bg-purple-500 border-purple-400',
+  Legendary: 'bg-yellow-500 border-yellow-400'
+}
+
+export const RARITY_TEXT_COLORS: Record<string, string> = {
+  Common: 'text-gray-400',
+  Rare: 'text-blue-400',
+  Epic: 'text-purple-400',
+  Legendary: 'text-yellow-400'
+}
+
+export const RARITY_GLOW: Record<string, string> = {
+  Common: '',
+  Rare: 'shadow-lg shadow-blue-500/20',
+  Epic: 'shadow-lg shadow-purple-500/30',
+  Legendary: 'shadow-xl shadow-yellow-500/40'
+}
