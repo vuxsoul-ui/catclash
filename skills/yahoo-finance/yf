@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yfinance",
+#     "rich",
+# ]
+# ///
+
+import sys
+import yfinance as yf
+from rich.console import Console
+from rich.table import Table
+from datetime import datetime, timedelta
+
+console = Console()
+
+def get_price(symbol):
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
+    price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
+    change = info.get('regularMarketChange', 'N/A')
+    change_pct = info.get('regularMarketChangePercent', 'N/A')
+    console.print(f"[bold]{symbol}[/bold]: ${price} ({change:+.2f}, {change_pct:+.2f}%)")
+
+def get_quote(symbol):
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
+    table = Table(title=f"{symbol} Quote")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Price", f"${info.get('currentPrice', 'N/A')}")
+    table.add_row("Change", f"{info.get('regularMarketChange', 'N/A'):+.2f}")
+    table.add_row("Change %", f"{info.get('regularMarketChangePercent', 'N/A'):+.2f}%")
+    table.add_row("Market Cap", f"${info.get('marketCap', 'N/A'):,}" if info.get('marketCap') else "N/A")
+    table.add_row("Volume", f"{info.get('volume', 'N/A'):,}" if info.get('volume') else "N/A")
+    table.add_row("52W High", f"${info.get('fiftyTwoWeekHigh', 'N/A')}")
+    table.add_row("52W Low", f"${info.get('fiftyTwoWeekLow', 'N/A')}")
+    console.print(table)
+
+def get_fundamentals(symbol):
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
+    table = Table(title=f"{symbol} Fundamentals")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("P/E Ratio", str(info.get('trailingPE', 'N/A')))
+    table.add_row("Forward P/E", str(info.get('forwardPE', 'N/A')))
+    table.add_row("PEG Ratio", str(info.get('pegRatio', 'N/A')))
+    table.add_row("Price/Book", str(info.get('priceToBook', 'N/A')))
+    table.add_row("EPS (TTM)", str(info.get('trailingEps', 'N/A')))
+    table.add_row("Revenue", f"${info.get('totalRevenue', 'N/A'):,}" if info.get('totalRevenue') else "N/A")
+    table.add_row("Profit Margin", f"{info.get('profitMargins', 'N/A'):.2%}" if info.get('profitMargins') else "N/A")
+    table.add_row("ROE", f"{info.get('returnOnEquity', 'N/A'):.2%}" if info.get('returnOnEquity') else "N/A")
+    table.add_row("Target Price", f"${info.get('targetMeanPrice', 'N/A')}")
+    console.print(table)
+
+def get_earnings(symbol):
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
+    console.print(f"[bold]{symbol} Earnings[/bold]")
+    console.print(f"Next Earnings: {info.get('earningsDate', 'N/A')}")
+    console.print(f"EPS Estimate: {info.get('epsForward', 'N/A')}")
+    console.print(f"EPS Current: {info.get('trailingEps', 'N/A')}")
+
+def main():
+    if len(sys.argv) < 2:
+        console.print("Usage: yf <command> [symbol]")
+        console.print("Commands: price, quote, fundamentals, earnings")
+        return
+    
+    cmd = sys.argv[1].lower()
+    symbol = sys.argv[2].upper() if len(sys.argv) > 2 else None
+    
+    if not symbol:
+        symbol = cmd.upper()
+        cmd = "price"
+    
+    if cmd == "price":
+        get_price(symbol)
+    elif cmd == "quote":
+        get_quote(symbol)
+    elif cmd == "fundamentals":
+        get_fundamentals(symbol)
+    elif cmd == "earnings":
+        get_earnings(symbol)
+    else:
+        get_price(cmd.upper())
+
+if __name__ == "__main__":
+    main()

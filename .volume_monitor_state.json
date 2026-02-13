@@ -1,0 +1,23 @@
+{
+  "ONDS": {
+    "last_volume": 993507,
+    "last_check": "2026-02-13T12:55:02.303859",
+    "avg_volume": 0,
+    "last_alert_volume": 2959918
+  },
+  "NVDA": {
+    "last_volume": 3988072,
+    "last_check": "2026-02-13T12:55:04.282523",
+    "avg_volume": 0
+  },
+  "SLS": {
+    "last_volume": 71317,
+    "last_check": "2026-02-13T12:55:06.329180",
+    "avg_volume": 0
+  },
+  "VOO": {
+    "last_volume": 52385,
+    "last_check": "2026-02-13T12:55:08.371480",
+    "avg_volume": 0
+  }
+}

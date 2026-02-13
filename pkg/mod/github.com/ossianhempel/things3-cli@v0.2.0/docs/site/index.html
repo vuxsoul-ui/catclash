@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>things3-cli</title>
+    <meta name="description" content="A Things 3 CLI for macOS, written in Go." />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap");
+
+      :root {
+        --bg: #f3f1ea;
+        --bg2: #e8eef1;
+        --ink: #151515;
+        --muted: #4a4a4a;
+        --accent: #0d5c4d;
+        --accent-2: #b56b2f;
+        --card: rgba(255, 255, 255, 0.78);
+        --shadow: 0 30px 80px rgba(10, 10, 10, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "IBM Plex Sans", sans-serif;
+        background:
+          radial-gradient(900px 500px at 80% -10%, rgba(13, 92, 77, 0.12), transparent 60%),
+          radial-gradient(600px 400px at 10% 15%, rgba(181, 107, 47, 0.12), transparent 55%),
+          linear-gradient(180deg, var(--bg), var(--bg2));
+      }
+
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 64px 24px 96px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .badge {
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      h1 {
+        font-family: "Fraunces", serif;
+        font-size: clamp(40px, 6vw, 72px);
+        margin: 32px 0 12px;
+        letter-spacing: -0.02em;
+      }
+
+      .lede {
+        max-width: 640px;
+        font-size: clamp(16px, 2.2vw, 20px);
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 24px;
+        margin-top: 40px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(6px);
+      }
+
+      .card h2 {
+        font-size: 18px;
+        margin: 0 0 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      pre {
+        margin: 0;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.06);
+        border-radius: 12px;
+        font-size: 14px;
+        overflow-x: auto;
+      }
+
+      code {
+        font-family: "SFMono-Regular", "Menlo", monospace;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        text-decoration: none;
+        color: white;
+        background: var(--accent);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        box-shadow: 0 12px 30px rgba(13, 92, 77, 0.28);
+      }
+
+      .button.secondary {
+        background: transparent;
+        color: var(--accent);
+        border-color: rgba(13, 92, 77, 0.3);
+        box-shadow: none;
+      }
+
+      .footer {
+        margin-top: 48px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .fade-up {
+        opacity: 0;
+        transform: translateY(16px);
+        animation: fadeUp 0.8s ease forwards;
+      }
+
+      .fade-up.delay-1 { animation-delay: 0.1s; }
+      .fade-up.delay-2 { animation-delay: 0.2s; }
+      .fade-up.delay-3 { animation-delay: 0.35s; }
+
+      @keyframes fadeUp {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 720px) {
+        header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .fade-up {
+          animation: none;
+          opacity: 1;
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="fade-up">
+        <div class="badge">macOS only</div>
+        <div class="badge">Things 3</div>
+      </header>
+
+      <main>
+        <h1 class="fade-up delay-1">things3-cli</h1>
+        <p class="lede fade-up delay-1">
+          A native Things 3 command-line interface for macOS. This Go port aims to
+          mirror the original open source CLI while shipping a single fast binary.
+        </p>
+
+        <div class="links fade-up delay-2">
+          <a class="button" href="https://github.com/ossianhempel/things3-cli">GitHub</a>
+        </div>
+
+        <section class="grid fade-up delay-3">
+          <article class="card">
+            <h2>Install (from source)</h2>
+            <pre><code>git clone https://github.com/ossianhempel/things3-cli
+cd things3-cli
+make install</code></pre>
+          </article>
+          <article class="card">
+            <h2>What it does</h2>
+            <p>
+              Create and update tasks via the Things URL scheme, delete todos,
+              projects, and areas via AppleScript, plus read tasks from the local
+              Things database.
+              Includes commands to list projects, areas, tags, and tasks.
+            </p>
+            <pre><code>things add "Plan the sprint"
+things add-area "Work"
+things today
+things search "inbox"</code></pre>
+          </article>
+        </section>
+      </main>
+
+      <div class="footer fade-up delay-3">
+        Built for Things 3 by Cultured Code. Not affiliated with Cultured Code.
+      </div>
+    </div>
+  </body>
+</html>

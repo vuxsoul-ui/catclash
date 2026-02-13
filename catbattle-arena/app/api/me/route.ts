@@ -7,32 +7,30 @@ export const dynamic = 'force-dynamic';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function GET(_request: Request) {
+export async function GET() {
   try {
     const guestId = getGuestId();
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Bootstrap user if not exists
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    
+    // Bootstrap user first
     await supabase.rpc('bootstrap_user', { p_user_id: guestId });
     
-    const [profile, progress, streak, daily] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', guestId).single(),
-      supabase.from('user_progress').select('*').eq('user_id', guestId).single(),
-      supabase.from('streaks').select('*').eq('user_id', guestId).single(),
-      supabase.from('daily_rewards').select('*').eq('user_id', guestId).single()
-    ]);
+    // Get user state
+    const { data, error } = await supabase.rpc('get_user_state', { p_user_id: guestId });
+    
+    if (error) {
+      return NextResponse.json({ error: 'Failed to get state: ' + error.message }, { status: 500 });
+    }
     
     return NextResponse.json({
       success: true,
-      data: {
-        profile: profile.data,
-        progress: progress.data || { xp: 0, level: 1 },
-        streak: streak.data || { current_streak: 0, last_claim_date: null },
-        daily: daily.data || { last_claim_date: null, claimed_today: false }
-      }
+      guest_id: guestId,
+      data: data
     });
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: 'Server error', details: String(e) }, { status: 500 });
   }
 }

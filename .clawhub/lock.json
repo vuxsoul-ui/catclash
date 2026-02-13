@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "skills": {
+    "moltopia": {
+      "version": "1.5.0",
+      "installedAt": 1770539813121
+    },
+    "spacemolt-ai-mmo": {
+      "version": "1.0.0",
+      "installedAt": 1770539848927
+    },
+    "analytics-tracking": {
+      "version": "1.0.0",
+      "installedAt": 1770539866922
+    },
+    "api-credentials-hygiene": {
+      "version": "1.0.0",
+      "installedAt": 1770539892874
+    },
+    "clawdbot-release-check": {
+      "version": "1.0.1",
+      "installedAt": 1770539915120
+    },
+    "publisher": {
+      "version": "1.0.6",
+      "installedAt": 1770539954543
+    },
+    "tax-professional": {
+      "version": "1.0.1",
+      "installedAt": 1770539974148
+    },
+    "cron-retry": {
+      "version": "1.0.0",
+      "installedAt": 1770540029339
+    },
+    "ops-framework": {
+      "version": "0.1.0",
+      "installedAt": 1770540073464
+    },
+    "agent-registry": {
+      "version": "0.1.0",
+      "installedAt": 1770540089749
+    },
+    "agent-orchestration": {
+      "version": "1.0.0",
+      "installedAt": 1770540101934
+    },
+    "agent-docs": {
+      "version": "1.0.0",
+      "installedAt": 1770540112783
+    },
+    "agent-orchestrator": {
+      "version": "0.1.0",
+      "installedAt": 1770540120191
+    },
+    "agentic-ai-gold-test": {
+      "version": "4.0.0",
+      "installedAt": 1770540138616
+    },
+    "moltspeak": {
+      "version": "0.1.0",
+      "installedAt": 1770540167585
+    },
+    "mbc-20": {
+      "version": "1.0.0",
+      "installedAt": 1770540177765
+    },
+    "toon-utils": {
+      "version": "3.0.0",
+      "installedAt": 1770540184810
+    },
+    "quodd": {
+      "version": "1.1.1",
+      "installedAt": 1770540237661
+    },
+    "yahoo-data-fetcher": {
+      "version": "1.0.2",
+      "installedAt": 1770540252714
+    },
+    "find-people": {
+      "version": "1.0.0",
+      "installedAt": 1770582795035
+    },
+    "osint-graph-analyzer": {
+      "version": "0.1.0",
+      "installedAt": 1770582815331
+    },
+    "heimdall": {
+      "version": "1.0.1",
+      "installedAt": 1770613219564
+    },
+    "heimdall-security": {
+      "version": "4.0.0",
+      "installedAt": 1770613225265
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "volume-spike-detector",
+  "version": "1.0.0",
+  "description": "Stock volume spike detector using Alpaca API",
+  "main": "volume-spike-detector.js",
+  "scripts": {
+    "start": "node volume-spike-detector.js",
+    "test": "node volume-spike-detector.js"
+  },
+  "dependencies": {
+    "@inferencesh/sdk": "^0.5.1",
+    "@steipete/summarize": "^0.10.0",
+    "axios": "^1.13.5"
+  },
+  "keywords": [
+    "stocks",
+    "volume",
+    "alerts",
+    "alpacajs"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT"
+}

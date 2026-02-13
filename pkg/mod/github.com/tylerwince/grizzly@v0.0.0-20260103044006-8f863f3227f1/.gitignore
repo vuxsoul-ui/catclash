@@ -1,0 +1,22 @@
+# Go binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+
+# Output directories
+/bin/
+/dist/
+
+# Go workspaces
+go.work
+go.work.sum
+
+# OS / editor files
+.DS_Store
+.idea/
+.vscode/
