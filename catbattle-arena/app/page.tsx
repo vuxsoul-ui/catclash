@@ -14,6 +14,8 @@ type Rarity = 'Common' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'God-Tier';
 type EvolutionStage = 'Kitten' | 'Elite Floof' | 'Battle Beast' | 'Supreme Overlord';
 type SpecialPower = 'Laser Eyes' | 'Ultimate Fluff' | 'Chaos Mode' | 'Nine Lives' | 'Royal Aura' | 'Underdog Boost';
 
+
+
 interface Cat {
   id: string;
   name: string;
@@ -39,6 +41,7 @@ interface UserProgress {
   newLevel: number;
   canClaim?: boolean;
 }
+
 
 type TournamentCat = { id: string; name: string; image_url?: string; image_path?: string };
 type TournamentMatch = {
@@ -208,12 +211,28 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCat, setSelectedCat] = useState<Cat | null>(null);
   const [liveMatch, setLiveMatch] = useState<TournamentMatch | null>(null);
-
+  const [voteToast, setVoteToast] = useState<string | null>(null);
   // Load data on mount
   useEffect(() => {
     loadUserState();
+    loadLiveMatch();
   }, []);
 
+  async function loadLiveMatch() {
+    try {
+      const res = await fetch("/api/tournament/today", { cache: "no-store" });
+      const j = await res.json().catch(() => null);
+      const matches = j?.tournament?.matches;
+      if (Array.isArray(matches) && matches.length > 0) {
+        setLiveMatch(matches[0]);
+      } else {
+        setLiveMatch(null);
+      }
+    } catch {
+      setLiveMatch(null);
+    }
+  }
+  
   async function loadUserState() {
     setLoading(true);
     setError(null);
@@ -281,6 +300,12 @@ export default function Page() {
 
   return (
     <main className="min-h-screen bg-black text-white">
+      {voteToast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur text-white">
+          {voteToast}
+        </div>
+      )}
+
       {/* User Stats Bar */}
       <div className="fixed top-16 left-0 right-0 z-30 glass border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-center gap-4 text-sm">
@@ -393,8 +418,13 @@ export default function Page() {
             body: JSON.stringify({ match_id: liveMatch.match_id, voted_for: liveMatch.cat_a.id }),
           });
           const jj = await r.json().catch(() => null);
-          if (!r.ok || !jj?.ok) setError(jj?.error || jj?.details || "Vote failed");
-          else {
+          if (!r.ok || !jj?.ok) {
+            setError(jj?.error || jj?.details || "Vote failed");
+            setVoteToast(jj?.error || jj?.details || "Vote failed");
+            setTimeout(() => setVoteToast(null), 2500);
+          } else {
+            setVoteToast("✅ Vote recorded! +5 XP");
+            setTimeout(() => setVoteToast(null), 2000);
             // refresh live match counts
             const m2 = await fetchLiveArenaMatch();
             setLiveMatch(m2);
@@ -417,8 +447,13 @@ export default function Page() {
             body: JSON.stringify({ match_id: liveMatch.match_id, voted_for: liveMatch.cat_b.id }),
           });
           const jj = await r.json().catch(() => null);
-          if (!r.ok || !jj?.ok) setError(jj?.error || jj?.details || "Vote failed");
-          else {
+          if (!r.ok || !jj?.ok) {
+            setError(jj?.error || jj?.details || "Vote failed");
+            setVoteToast(jj?.error || jj?.details || "Vote failed");
+            setTimeout(() => setVoteToast(null), 2500);
+          } else {
+            setVoteToast("✅ Vote recorded! +5 XP");
+            setTimeout(() => setVoteToast(null), 2000);
             const m2 = await fetchLiveArenaMatch();
             setLiveMatch(m2);
           }

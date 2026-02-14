@@ -1,3 +1,4 @@
+// REPLACE: app/api/admin/cats/approve/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -13,27 +14,60 @@ export async function POST(request: NextRequest) {
     if (authHeader !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
     }
-    
-    const { catId } = await request.json();
+
+    const body = await request.json();
+    const catId = body.catId;
+
     if (!catId) {
       return NextResponse.json({ ok: false, error: 'Missing catId' }, { status: 400 });
     }
-    
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
+      auth: { autoRefreshToken: false, persistSession: false },
     });
-    
-    const { error } = await supabase
+
+    // Verify cat exists and is pending
+    const { data: existing, error: fetchError } = await supabase
+      .from('cats')
+      .select('id, name, status')
+      .eq('id', catId)
+      .single();
+
+    if (fetchError) {
+      return NextResponse.json({ ok: false, error: 'Cat not found: ' + fetchError.message }, { status: 404 });
+    }
+
+    if (!existing) {
+      return NextResponse.json({ ok: false, error: 'Cat not found' }, { status: 404 });
+    }
+
+    if (existing.status === 'approved') {
+      return NextResponse.json({ ok: true, message: 'Already approved', catId });
+    }
+
+    if (existing.status !== 'pending') {
+      return NextResponse.json({ ok: false, error: 'Status is "' + existing.status + '", expected "pending"' }, { status: 400 });
+    }
+
+    // Update
+    const { data: updated, error: updateError } = await supabase
       .from('cats')
       .update({ status: 'approved' })
-      .eq('id', catId);
-    
-    if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      .eq('id', catId)
+      .select('id, name, status')
+      .single();
+
+    if (updateError) {
+      return NextResponse.json({ ok: false, error: 'Update failed: ' + updateError.message }, { status: 500 });
     }
-    
-    return NextResponse.json({ ok: true, message: 'Cat approved' });
+
+    if (!updated || updated.status !== 'approved') {
+      return NextResponse.json({ ok: false, error: 'Update did not persist' }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, message: 'Cat approved', catId: updated.id, verified: true });
   } catch (e) {
+    console.error('[APPROVE] Exception:', e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
