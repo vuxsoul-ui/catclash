@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { ArrowLeft, Loader2, Check, X, Shield } from 'lucide-react';
 import Link from 'next/link';
 
@@ -22,6 +21,7 @@ export default function AdminPage() {
   const [adminSecret, setAdminSecret] = useState('');
   const [processing, setProcessing] = useState<string | null>(null);
   const [showSecretInput, setShowSecretInput] = useState(true);
+
 
   async function loadPending() {
     try {
@@ -112,6 +112,7 @@ export default function AdminPage() {
           >
             Access Admin Panel
           </button>
+
           <Link href="/" className="block text-center mt-4 text-white/60 hover:text-white">
             ← Back to Arena
           </Link>
@@ -136,12 +137,13 @@ export default function AdminPage() {
         </Link>
 
         <div className="flex items-center gap-3 mb-8">
-          <Shield className="w-8 h-8 text-yellow-400" />
-          <h1 className="text-3xl font-bold">Admin Panel</h1>
-          <span className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-400 text-sm">
-            {cats.length} Pending
-          </span>
-        </div>
+  <Shield className="w-8 h-8 text-yellow-400" />
+  <h1 className="text-3xl font-bold">Admin Panel</h1>
+  <span className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-400 text-sm">
+    {cats.length} Pending
+  </span>
+</div>
+
 
         {error && <div className="mb-6 p-4 rounded-xl bg-red-500/20 text-red-200">{error}</div>}
 
@@ -149,8 +151,15 @@ export default function AdminPage() {
           {cats.map((cat) => (
             <div key={cat.id} className="glass rounded-2xl overflow-hidden">
               <div className="relative h-48 bg-white/5">
-                <Image src={cat.image_url} alt={cat.name} fill className="object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placekitten.com/300/300'; }} />
+              <img
+  src={cat.image_url || "https://placekitten.com/300/300"}
+  alt={cat.name || ""}
+  className="w-full h-full object-cover"
+  onError={(e) => {
+    (e.currentTarget as HTMLImageElement).src = "https://placekitten.com/300/300";
+  }}
+/>
+
               </div>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-2">

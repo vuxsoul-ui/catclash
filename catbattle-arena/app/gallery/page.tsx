@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -80,8 +79,15 @@ export default function GalleryPage() {
           {cats.map((cat) => (
             <div key={cat.id} className={`glass rounded-2xl overflow-hidden border-2 ${getRarityColor(cat.rarity)}`}>
               <div className="relative h-48 bg-white/5">
-                <Image src={cat.image_url} alt={cat.name} fill className="object-cover" 
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placekitten.com/300/300'; }} />
+              <img
+  src={cat.image_url || "https://placekitten.com/300/300"}
+  alt={cat.name || ""}
+  className="w-full h-full object-cover"
+  onError={(e) => {
+    (e.currentTarget as HTMLImageElement).src = "https://placekitten.com/300/300";
+  }}
+/>
+
               </div>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-2">

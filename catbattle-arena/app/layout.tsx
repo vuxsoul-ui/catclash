@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import Nav from "./components/Nav";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -33,7 +34,8 @@ export default function RootLayout({
         className={`${inter.variable} ${spaceGrotesk.variable} antialiased gradient-mesh min-h-screen`}
       >
         <div className="noise-overlay" />
-        {children}
+        <Nav />
+        <div className="pt-16">{children}</div>
       </body>
     </html>
   );

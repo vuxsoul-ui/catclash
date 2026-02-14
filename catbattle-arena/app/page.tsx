@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import {
-  Swords, Sparkles, Github, Twitter, Flame, Heart,
+  Sparkles, Flame, Heart,
   Target, TrendingUp, Zap, X, Gift, Crown, Loader2,
-  Zap as ZapIcon, Shield, Dices, Plus
+  Zap as ZapIcon, Shield, Dices
 } from "lucide-react";
 import Link from "next/link";
 
@@ -39,6 +39,18 @@ interface UserProgress {
   newLevel: number;
   canClaim?: boolean;
 }
+
+type TournamentCat = { id: string; name: string; image_url?: string; image_path?: string };
+type TournamentMatch = {
+  match_id: string;
+  cat_a: TournamentCat;
+  cat_b: TournamentCat;
+  votes_a: number;
+  votes_b: number;
+  status: string;
+};
+
+
 
 // Helpers
 const POWER_ICONS: Record<SpecialPower, React.ReactNode> = {
@@ -86,6 +98,21 @@ async function fetchUserState() {
   }
 }
 
+type TournamentTodayResponse = {
+  success?: boolean;
+  tournament?: { matches?: TournamentMatch[] };
+};
+
+async function fetchLiveArenaMatch(): Promise<TournamentMatch | null> {
+  const res = await fetch("/api/tournament/today", { cache: "no-store" });
+  const j = (await res.json().catch(() => ({}))) as TournamentTodayResponse;
+  return j.success ? (j.tournament?.matches?.[0] ?? null) : null;
+}
+
+
+
+
+
 async function checkin() {
   try {
     const res = await fetch('/api/checkin', {
@@ -114,20 +141,7 @@ async function claimCrate() {
   }
 }
 
-async function castVote(battleId: string, userId: string | null, votedFor: string) {
-  try {
-    const res = await fetch('/api/vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ battleId, userId, votedFor })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Vote failed');
-    return data;
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Server error" };
-  }
-}
+
 
 // Components
 function StatBar({ label, value, color = 'bg-white' }: { label: string; value: number; color?: string }) {
@@ -186,16 +200,14 @@ function CatCard({ cat, onClick, showStats = false }: { cat: Cat; onClick?: () =
 
 // Main Page
 export default function Page() {
-  const [cats, setCats] = useState<Cat[]>([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<UserProgress | null>(null);
-  const [hasVoted, setHasVoted] = useState(false);
   const [voting, setVoting] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [claimingCrate, setClaimingCrate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCat, setSelectedCat] = useState<Cat | null>(null);
-  const [userId] = useState('test-user-id'); // TODO: Replace with actual auth
+  const [liveMatch, setLiveMatch] = useState<TournamentMatch | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -220,7 +232,9 @@ export default function Page() {
         canClaim: (data.data?.streak?.last_claim_date || '').split('T')[0] !== new Date().toISOString().split('T')[0]
       });
     }
-    setCats([]);
+    const m = await fetchLiveArenaMatch();
+    setLiveMatch(m);
+
     setLoading(false);
   }
 
@@ -257,26 +271,6 @@ export default function Page() {
     setClaimingCrate(false);
   }
 
-  async function handleVote(side: 'left' | 'right') {
-    if (hasVoted || voting || cats.length < 2) return;
-    setVoting(true);
-    setError(null);
-    const catId = side === 'left' ? cats[0].id : cats[1].id;
-    const result = await castVote('mock-battle-id', userId, catId);
-    if (result.error) {
-      setError(result.error);
-    } else if (result.success) {
-      setHasVoted(true);
-      await loadUserState(); // Refresh XP
-      setTimeout(() => setHasVoted(false), 2000);
-    }
-    setVoting(false);
-  }
-
-  const totalVotes = cats.reduce((s, c) => s + c.votes, 0);
-  const leftOdds = cats.length >= 2 ? Math.round((cats[0].votes / (totalVotes || 1)) * 100) : 50;
-  const rightOdds = 100 - leftOdds;
-
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -287,39 +281,21 @@ export default function Page() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 glass border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center border border-white/10">
-              <Swords className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div className="font-bold tracking-tight text-lg">CatBattle <span className="text-neutral-400 text-sm uppercase tracking-wider">Arena</span></div>
-            </div>
-          </Link>
-
-          <div className="hidden md:flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-              <Flame className="w-4 h-4 text-orange-400" />
-              <span className="text-sm font-bold">{progress?.currentStreak || 0}</span>
-              <span className="text-xs text-white/50">day streak</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-              <Zap className="w-4 h-4 text-yellow-400" />
-              <span className="text-sm font-bold">{progress?.xp || 0}</span>
-              <span className="text-xs text-white/50">XP (Lvl {progress?.level || 1})</span>
-            </div>
+      {/* User Stats Bar */}
+      <div className="fixed top-16 left-0 right-0 z-30 glass border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-center gap-4 text-sm">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5">
+            <Flame className="w-4 h-4 text-orange-400" />
+            <span className="font-bold">{progress?.currentStreak || 0}</span>
+            <span className="text-white/50">streak</span>
           </div>
-
-          <nav className="hidden md:flex items-center gap-6 text-sm">
-            <a href="#arena" className="text-white/70 hover:text-white transition-colors">Battle</a>
-            <Link href="/submit" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
-              <Plus className="w-4 h-4" />Submit Cat
-            </Link>
-          </nav>
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5">
+            <Zap className="w-4 h-4 text-yellow-400" />
+            <span className="font-bold">{progress?.xp || 0}</span>
+            <span className="text-white/50">XP (Lvl {progress?.level || 1})</span>
+          </div>
         </div>
-      </header>
+      </div>
 
       {/* Hero */}
       <section className="pt-24 pb-8">
@@ -389,41 +365,74 @@ export default function Page() {
             <div className="flex items-center gap-2 text-sm text-white/50"><Target className="w-4 h-4" /><span>Live Match</span></div>
           </div>
           
-          {cats.length < 2 ? (
-            <div className="text-center py-12 glass rounded-2xl">
-              <p className="text-white/60 mb-4">No cats in the arena yet!</p>
-              <Link href="/submit" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-black font-bold hover:scale-105 transition-transform">
-                <Plus className="w-5 h-5" />Be the first to submit a cat
-              </Link>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {cats.slice(0, 2).map((cat) => <CatCard key={cat.id} cat={cat} onClick={() => setSelectedCat(cat)} showStats={true} />)}
-              </div>
-              <div className="glass rounded-2xl p-6 text-center">
-                <div className="flex items-center justify-center gap-4 mb-4">
-                  <div className="text-2xl font-bold text-white">{cats[0].name}</div>
-                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"><span className="text-lg font-bold text-white/70">VS</span></div>
-                  <div className="text-2xl font-bold text-white">{cats[1].name}</div>
-                </div>
-                <div className="flex items-center justify-center gap-8 mb-4 text-sm">
-                  <div className="text-center"><div className="text-2xl font-bold text-blue-400">{leftOdds}%</div><div className="text-white/50">Odds</div></div>
-                  <div className="text-center"><div className="text-2xl font-bold text-white">{totalVotes.toLocaleString()}</div><div className="text-white/50">Votes</div></div>
-                  <div className="text-center"><div className="text-2xl font-bold text-red-400">{rightOdds}%</div><div className="text-white/50">Odds</div></div>
-                </div>
-                <div className="flex items-center justify-center gap-4">
-                  <button onClick={() => handleVote('left')} disabled={hasVoted || voting} className="px-8 py-4 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                    {voting && <Loader2 className="w-4 h-4 animate-spin" />}Vote {cats[0].name}
-                  </button>
-                  <button onClick={() => handleVote('right')} disabled={hasVoted || voting} className="px-8 py-4 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                    {voting && <Loader2 className="w-4 h-4 animate-spin" />}Vote {cats[1].name}
-                  </button>
-                </div>
-                {hasVoted && <p className="mt-4 text-green-400 animate-pulse">Vote recorded! +5 XP</p>}
-              </div>
-            </>
-          )}
+          {!liveMatch ? (
+  <div className="text-center py-12 glass rounded-2xl">
+    <p className="text-white/60 mb-4">No live match right now.</p>
+    <Link href="/tournament" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-black font-bold hover:scale-105 transition-transform">
+      <Target className="w-5 h-5" /> Go to Tournament
+    </Link>
+  </div>
+) : (
+  <div className="glass rounded-2xl p-6 text-center">
+    <div className="flex items-center justify-center gap-4 mb-4">
+      <div className="text-2xl font-bold text-white">{liveMatch.cat_a.name}</div>
+      <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
+        <span className="text-lg font-bold text-white/70">VS</span>
+      </div>
+      <div className="text-2xl font-bold text-white">{liveMatch.cat_b.name}</div>
+    </div>
+
+    <div className="flex items-center justify-center gap-4">
+      <button
+        onClick={async () => {
+          setVoting(true);
+          setError(null);
+          const r = await fetch("/api/vote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ match_id: liveMatch.match_id, voted_for: liveMatch.cat_a.id }),
+          });
+          const jj = await r.json().catch(() => null);
+          if (!r.ok || !jj?.ok) setError(jj?.error || jj?.details || "Vote failed");
+          else {
+            // refresh live match counts
+            const m2 = await fetchLiveArenaMatch();
+            setLiveMatch(m2);
+          }
+          setVoting(false);
+        }}
+        disabled={voting}
+        className="px-8 py-4 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold transition-all hover:scale-105 disabled:opacity-50"
+      >
+        Vote {liveMatch.cat_a.name}
+      </button>
+
+      <button
+        onClick={async () => {
+          setVoting(true);
+          setError(null);
+          const r = await fetch("/api/vote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ match_id: liveMatch.match_id, voted_for: liveMatch.cat_b.id }),
+          });
+          const jj = await r.json().catch(() => null);
+          if (!r.ok || !jj?.ok) setError(jj?.error || jj?.details || "Vote failed");
+          else {
+            const m2 = await fetchLiveArenaMatch();
+            setLiveMatch(m2);
+          }
+          setVoting(false);
+        }}
+        disabled={voting}
+        className="px-8 py-4 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold transition-all hover:scale-105 disabled:opacity-50"
+      >
+        Vote {liveMatch.cat_b.name}
+      </button>
+    </div>
+  </div>
+)}
+
         </div>
       </section>
 
@@ -431,10 +440,15 @@ export default function Page() {
       <footer className="py-10 px-4 border-t border-white/10">
         <div className="max-w-7xl mx-auto text-center text-neutral-400">
           <div className="mb-4">Built with ❤️ — CatBattle Arena 2026</div>
-          <div className="flex items-center justify-center gap-4">
-            <a className="hover:text-white transition-colors" href="#"><Github className="w-5 h-5" /></a>
-            <a className="hover:text-white transition-colors" href="#"><Twitter className="w-5 h-5" /></a>
-          </div>
+          <a 
+            className="inline-flex items-center gap-2 hover:text-white transition-colors" 
+            href="https://instagram.com/vuxsal" 
+            target="_blank" 
+            rel="noopener noreferrer"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+            <span>@vuxsal</span>
+          </a>
         </div>
       </footer>
 

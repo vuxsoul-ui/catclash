@@ -198,3 +198,84 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Slide-in animations for VS battle */
+@keyframes slide-in-left {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  0% {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.6s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.6s ease-out forwards;
+}
+
+/* Float-up animation for vote explosion */
+@keyframes float-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-40px) scale(1.2);
+  }
+}
+
+.animate-float-up {
+  animation: float-up 1s ease-out forwards;
+}
+
+/* VS icon pulse */
+@keyframes vs-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.animate-vs-pulse {
+  animation: vs-pulse 2s ease-in-out infinite;
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-18px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideInRight {
+  from { transform: translateX(18px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes floatUpFade {
+  0%   { transform: translateY(0); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-18px); opacity: 0; }
+}
+
+.anim-slide-left { animation: slideInLeft 350ms ease-out both; }
+.anim-slide-right { animation: slideInRight 350ms ease-out both; }
+.anim-float-up { animation: floatUpFade 900ms ease-out both; }

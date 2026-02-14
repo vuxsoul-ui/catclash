@@ -1,80 +1,72 @@
-import { NextRequest, NextResponse } from 'next/server';
-export const dynamic = 'force-dynamic';
-import { createClient } from '@supabase/supabase-js';
-import { createHash } from 'crypto';
+// app/api/vote/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
+import { getGuestId } from "../_lib/guest";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+export const dynamic = "force-dynamic";
 
-function hashIp(ip: string): string {
-  return createHash('sha256').update(ip).digest('hex').substring(0, 16);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
+function getClientIp(req: NextRequest) {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0].trim();
+  const xr = req.headers.get("x-real-ip");
+  if (xr) return xr;
+  return null;
 }
 
-export async function POST(request: NextRequest) {
+function sha256Hex(input: string | null) {
+  if (!input) return null;
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+function errToString(err: unknown) {
+  if (err instanceof Error) return `${err.name}: ${err.message}`;
+  return String(err);
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { battleId, userId, votedFor } = body;
-    
-    if (!battleId || !votedFor) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const matchId = body?.match_id as string | undefined;
+    const votedFor = body?.voted_for as string | undefined;
+
+    if (!matchId || !votedFor) {
+      return NextResponse.json({ ok: false, error: "missing_params" }, { status: 400 });
+    }
+
+    const voterUserId = getGuestId() ?? null;
+    const userAgent = req.headers.get("user-agent") ?? null;
+    if (voterUserId) {
+      await supabase.rpc("bootstrap_user", { p_user_id: voterUserId });
     }
     
-    const forwarded = request.headers.get('x-forwarded-for');
-    const ip = forwarded ? forwarded.split(',')[0] : 'unknown';
-    const ipHash = hashIp(ip);
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Rate limit: 20 votes per minute per IP
-    const { data: rateData } = await supabase
-      .from('rate_limits')
-      .select('*')
-      .eq('key', `vote:${ipHash}`)
-      .single();
-    
-    const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
-    
-    if (rateData && rateData.window_start > oneMinuteAgo && rateData.count >= 20) {
-      return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
-    }
-    
-    // Check if already voted
-    const { data: existingVote } = await supabase
-      .from('votes')
-      .select('*')
-      .eq('battle_id', battleId)
-      .or(`voter_user_id.eq.${userId || '00000000-0000-0000-0000-000000000000'},ip_hash.eq.${ipHash}`)
-      .maybeSingle();
-    
-    if (existingVote) {
-      return NextResponse.json({ error: 'already_voted' }, { status: 409 });
-    }
-    
-    // Record vote
-    await supabase.from('votes').insert({
-      battle_id: battleId,
-      voter_user_id: userId || null,
-      ip_hash: ipHash,
-      voted_for: votedFor
+    const { data, error } = await supabase.rpc("cast_vote", {
+      p_match_id: matchId,
+      p_voter_user_id: voterUserId,
+      p_voted_for: votedFor,
+      p_ip_hash: sha256Hex(getClientIp(req)),
+      p_user_agent: userAgent,
     });
-    
-    // Update rate limit
-    if (rateData) {
-      await supabase.from('rate_limits').update({ count: rateData.count + 1 }).eq('key', `vote:${ipHash}`);
-    } else {
-      await supabase.from('rate_limits').insert({ key: `vote:${ipHash}`, count: 1, window_start: new Date().toISOString() });
+
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: "db_failed", details: error.message },
+        { status: 500 }
+      );
     }
-    
-    // Award XP
-    if (userId) {
-      const { data: progress } = await supabase.from('user_progress').select('*').eq('user_id', userId).single();
-      if (progress) {
-        await supabase.from('user_progress').update({ xp: progress.xp + 5 }).eq('user_id', userId);
-      }
-    }
-    
-    return NextResponse.json({ success: true, xp_earned: 5 });
-  } catch {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+
+    return NextResponse.json(data);
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { ok: false, error: "server_error", details: errToString(err) },
+      { status: 500 }
+    );
   }
 }
+
