@@ -7,6 +7,11 @@ export const dynamic = 'force-dynamic';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// Server-side power calculation based on stats
+function calculatePower(stats: { attack: number; defense: number; speed: number; charisma: number; chaos: number }): number {
+  return Math.round((stats.attack + stats.defense + stats.speed + stats.charisma + stats.chaos) / 5);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const guestId = getGuestId();
@@ -64,18 +69,20 @@ export async function POST(request: NextRequest) {
     const rand = Math.random();
     const rarity = rand > 0.98 ? 'Legendary' : rand > 0.90 ? 'Epic' : rand > 0.70 ? 'Rare' : 'Common';
     
-    const powers = ['Laser Eyes', 'Ultimate Fluff', 'Chaos Mode', 'Nine Lives', 'Royal Aura', 'Underdog Boost'];
-    const power = powers[Math.floor(Math.random() * powers.length)];
+    const abilities = ['Laser Eyes', 'Ultimate Fluff', 'Chaos Mode', 'Nine Lives', 'Royal Aura', 'Underdog Boost'];
+    const ability = abilities[Math.floor(Math.random() * abilities.length)];
     
-    // Insert cat using submit_cat_v2
+    // Calculate power server-side
+    const power = calculatePower(stats);
+    
+    // Insert cat using submit_cat_v2 - only send ability, not power
     const { data: result, error: rpcError } = await supabase.rpc('submit_cat_v2', {
       p_user_id: guestId,
       p_name: name,
       p_image_path: filePath,
       p_rarity: rarity,
       p_stats: stats,
-      p_power: power,
-      p_ability: power
+      p_ability: ability
     });
     
     if (rpcError) {
@@ -93,6 +100,7 @@ export async function POST(request: NextRequest) {
       cat_id: result.cat_id,
       image_url: publicUrlData.publicUrl,
       rarity,
+      ability,
       power,
       stats
     });

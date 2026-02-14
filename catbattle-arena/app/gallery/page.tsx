@@ -1,101 +1,118 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { Share2 } from 'lucide-react'
-import InstagramShare from './components/InstagramShare'
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 
-const mockCats = [
-  { id: 1, name: 'Whiskers', rarity: 'Legendary', attack: 95, defense: 80, speed: 70 },
-  { id: 2, name: 'Mittens', rarity: 'Epic', attack: 75, defense: 85, speed: 60 },
-  { id: 3, name: 'Shadow', rarity: 'Rare', attack: 65, defense: 70, speed: 90 },
-  { id: 4, name: 'Luna', rarity: 'Legendary', attack: 88, defense: 92, speed: 75 },
-  { id: 5, name: 'Oliver', rarity: 'Common', attack: 45, defense: 50, speed: 55 },
-  { id: 6, name: 'Bella', rarity: 'Epic', attack: 82, defense: 78, speed: 85 },
-]
-
-const rarityColors: Record<string, string> = {
-  Common: 'bg-gray-500',
-  Rare: 'bg-blue-500',
-  Epic: 'bg-purple-500',
-  Legendary: 'bg-yellow-500',
+interface Cat {
+  id: string;
+  name: string;
+  image_url: string;
+  rarity: string;
+  stats: { attack: number; defense: number; speed: number; charisma: number; chaos: number };
+  ability: string;
+  power: number;
+  cat_level: number;
 }
 
 export default function GalleryPage() {
-  const [filter, setFilter] = useState('all')
-  const [shareCat, setShareCat] = useState<typeof mockCats[0] | null>(null)
-  
-  const cats = filter === 'all' ? mockCats : mockCats.filter(c => c.rarity === filter)
+  const [cats, setCats] = useState<Cat[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadCats();
+  }, []);
+
+  async function loadCats() {
+    try {
+      const res = await fetch('/api/cats/approved');
+      const data = await res.json();
+      
+      if (!data.ok) {
+        setError(data.error || 'Failed to load cats');
+      } else {
+        setCats(data.cats || []);
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getRarityColor(rarity: string): string {
+    const colors: Record<string, string> = {
+      'Common': 'border-gray-500 text-gray-400',
+      'Rare': 'border-blue-500 text-blue-400',
+      'Epic': 'border-purple-500 text-purple-400',
+      'Legendary': 'border-yellow-500 text-yellow-400',
+      'Mythic': 'border-red-500 text-red-400',
+      'God-Tier': 'border-pink-500 text-pink-400'
+    };
+    return colors[rarity] || 'border-gray-500 text-gray-400';
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-white/50" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-8">
-      <h1 className="text-3xl font-bold mb-6">Battle Card Gallery</h1>
-      
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {['all', 'Common', 'Rare', 'Epic', 'Legendary'].map((r) => (
-          <button
-            key={r}
-            onClick={() => setFilter(r)}
-            className={`px-4 py-2 rounded ${filter === r ? 'bg-purple-600' : 'bg-slate-700'}`}
-          >
-            {r}
-          </button>
-        ))}
-      </div>
+    <div className="min-h-screen bg-black text-white py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        <Link href="/" className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-6">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Link>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {cats.map((cat) => (
-          <div key={cat.id} className="bg-slate-800 rounded-xl p-4 group relative">
-            {/* Share Button */}
-            <button
-              onClick={() => setShareCat(cat)}
-              className="absolute top-4 right-4 z-10 w-10 h-10 bg-slate-700/80 hover:bg-gradient-to-br hover:from-purple-600 hover:to-pink-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
-              title="Share to Instagram Story"
-            >
-              <Share2 className="w-5 h-5 text-white" />
-            </button>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-2">Cat Gallery</h1>
+          <p className="text-white/60">Meet the warriors</p>
+        </div>
 
-            <Link href={`/cat/${cat.id}`}>
-              <div className="h-48 bg-slate-700 rounded-lg mb-4 flex items-center justify-center text-slate-500 cursor-pointer hover:bg-slate-600 transition-colors">
-                <div className="text-center">
-                  <span className="text-6xl">🐱</span>
-                  <p className="text-sm mt-2">{cat.name}</p>
+        {error && <div className="mb-6 p-4 rounded-xl bg-red-500/20 text-red-200 text-center">{error}</div>}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {cats.map((cat) => (
+            <div key={cat.id} className={`glass rounded-2xl overflow-hidden border-2 ${getRarityColor(cat.rarity)}`}>
+              <div className="relative h-48 bg-white/5">
+                <Image src={cat.image_url} alt={cat.name} fill className="object-cover" 
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placekitten.com/300/300'; }} />
+              </div>
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-bold">{cat.name}</h3>
+                  <span className={`text-xs px-2 py-0.5 rounded border ${getRarityColor(cat.rarity)}`}>{cat.rarity}</span>
+                </div>
+                <p className="text-sm text-white/50 mb-2">{cat.ability}</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-white/40">
+                  <div>ATK: {cat.stats?.attack || 0}</div>
+                  <div>DEF: {cat.stats?.defense || 0}</div>
+                  <div>SPD: {cat.stats?.speed || 0}</div>
+                  <div>CHA: {cat.stats?.charisma || 0}</div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-white/10 flex justify-between">
+                  <span className="text-sm text-white/60">Power: {cat.power || 0}</span>
+                  <span className="text-xs text-white/40">Lvl {cat.cat_level || 1}</span>
                 </div>
               </div>
-            </Link>
-            <span className={`inline-block px-2 py-1 rounded text-xs ${rarityColors[cat.rarity]}`}>
-              {cat.rarity}
-            </span>
-            <Link href={`/cat/${cat.id}`}>
-              <h3 className="text-xl font-bold mt-2 hover:text-purple-400 transition-colors cursor-pointer">{cat.name}</h3>
-            </Link>
-            <div className="mt-4 space-y-1 text-sm">
-              <div className="flex justify-between"><span>Attack</span><span>{cat.attack}</span></div>
-              <div className="flex justify-between"><span>Defense</span><span>{cat.defense}</span></div>
-              <div className="flex justify-between"><span>Speed</span><span>{cat.speed}</span></div>
             </div>
-            
-            {/* Mobile share button (always visible) */}
-            <button
-              onClick={() => setShareCat(cat)}
-              className="mt-4 w-full py-2 bg-slate-700 hover:bg-gradient-to-r hover:from-purple-600 hover:to-pink-600 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold transition-all md:hidden"
-            >
-              <Share2 className="w-4 h-4" />
-              Share to Story
-            </button>
-          </div>
-        ))}
-      </div>
-      
-      <Link href="/" className="block text-center mt-8 text-slate-400">← Back</Link>
+          ))}
+        </div>
 
-      {/* Instagram Share Modal */}
-      {shareCat && (
-        <InstagramShare 
-          cat={shareCat} 
-          onClose={() => setShareCat(null)} 
-        />
-      )}
+        {!loading && cats.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-white/60 mb-4">No approved cats yet!</p>
+            <Link href="/submit" className="inline-block px-6 py-3 bg-white text-black rounded-xl font-bold">
+              Submit the first cat
+            </Link>
+          </div>
+        )}
+      </div>
     </div>
-  )
+  );
 }
