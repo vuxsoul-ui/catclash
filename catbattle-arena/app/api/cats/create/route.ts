@@ -10,13 +10,19 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export async function POST(request: NextRequest) {
   try {
     const guestId = getGuestId();
-    const formData = await request.formData();
+    let formData: FormData;
+    
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json({ ok: false, error: 'Invalid form data' }, { status: 400 });
+    }
     
     const name = formData.get('name') as string;
     const image = formData.get('image') as File;
     
     if (!name || !image) {
-      return NextResponse.json({ error: 'Missing name or image' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'Missing name or image' }, { status: 400 });
     }
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -24,17 +30,26 @@ export async function POST(request: NextRequest) {
     });
     
     // Upload image to Storage
-    const fileExt = image.name.split('.').pop();
+    const fileExt = image.name.split('.').pop() || 'jpg';
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
     const filePath = `cats/${guestId}/${fileName}`;
     
     const { error: uploadError } = await supabase.storage
       .from('cat-images')
-      .upload(filePath, image);
+      .upload(filePath, image, { contentType: image.type });
     
     if (uploadError) {
-      return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 });
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'upload_failed', 
+        details: uploadError.message 
+      }, { status: 500 });
     }
+    
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from('cat-images')
+      .getPublicUrl(filePath);
     
     // Generate random stats
     const stats = {
@@ -52,28 +67,41 @@ export async function POST(request: NextRequest) {
     const powers = ['Laser Eyes', 'Ultimate Fluff', 'Chaos Mode', 'Nine Lives', 'Royal Aura', 'Underdog Boost'];
     const power = powers[Math.floor(Math.random() * powers.length)];
     
-    // Insert cat using RPC
-    const { data: result, error: rpcError } = await supabase.rpc('submit_cat', {
+    // Insert cat using submit_cat_v2
+    const { data: result, error: rpcError } = await supabase.rpc('submit_cat_v2', {
       p_user_id: guestId,
       p_name: name,
       p_image_path: filePath,
       p_rarity: rarity,
       p_stats: stats,
-      p_power: power
+      p_power: power,
+      p_ability: power
     });
     
     if (rpcError) {
-      return NextResponse.json({ error: 'Failed to create cat: ' + rpcError.message }, { status: 500 });
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'db_failed', 
+        details: rpcError.message,
+        rpc_called: 'submit_cat_v2'
+      }, { status: 500 });
     }
     
     return NextResponse.json({
-      success: true,
+      ok: true,
+      rpc_called: 'submit_cat_v2',
       cat_id: result.cat_id,
+      image_url: publicUrlData.publicUrl,
       rarity,
       power,
       stats
     });
   } catch (e) {
-    return NextResponse.json({ error: 'Server error', details: String(e) }, { status: 500 });
+    return NextResponse.json({ 
+      ok: false, 
+      error: 'server_error', 
+      details: String(e),
+      rpc_called: 'submit_cat_v2'
+    }, { status: 500 });
   }
 }

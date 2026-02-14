@@ -1,92 +1,184 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import Link from 'next/link'
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { Trophy, Loader2, ArrowLeft, Swords } from 'lucide-react';
+import Link from 'next/link';
 
-const tournamentCats = [
-  { id: 1, name: 'Whiskers', level: 15, attack: 120, defense: 95 },
-  { id: 2, name: 'Mittens', level: 12, attack: 98, defense: 102 },
-  { id: 3, name: 'Shadow', level: 8, attack: 75, defense: 68 },
-  { id: 4, name: 'Luna', level: 10, attack: 88, defense: 92 },
-  { id: 5, name: 'Oliver', level: 5, attack: 45, defense: 50 },
-  { id: 6, name: 'Bella', level: 7, attack: 65, defense: 70 },
-  { id: 7, name: 'Max', level: 9, attack: 82, defense: 78 },
-  { id: 8, name: 'Lucy', level: 6, attack: 55, defense: 60 },
-]
+interface Match {
+  match_id: string;
+  cat_a: { id: string; name: string; image_path: string };
+  cat_b: { id: string; name: string; image_path: string };
+  status: string;
+  votes_a: number;
+  votes_b: number;
+}
+
+interface Tournament {
+  tournament_id: string;
+  date: string;
+  round: number;
+  matches: Match[];
+}
 
 export default function TournamentPage() {
-  const [currentRound] = useState(1)
-  const [votes, setVotes] = useState<Record<number, number>>({})
+  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [voting, setVoting] = useState<string | null>(null);
 
-  const rounds = ['Round 1', 'Quarter Finals', 'Semi Finals', 'Finals']
+  useEffect(() => {
+    loadTournament();
+  }, []);
 
-  const handleVote = (matchId: number, catId: number) => {
-    setVotes({ ...votes, [matchId]: catId })
+  async function loadTournament() {
+    try {
+      const res = await fetch('/api/tournament/today');
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        setError(data.error || 'Failed to load tournament');
+      } else {
+        setTournament(data.tournament);
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function vote(matchId: string, catId: string) {
+    setVoting(matchId);
+    try {
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ battleId: matchId, votedFor: catId })
+      });
+      
+      if (res.ok) {
+        await loadTournament(); // Refresh to show updated votes
+      }
+    } catch {
+      // ignore
+    } finally {
+      setVoting(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-white/50" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">{error}</p>
+          <Link href="/" className="text-blue-400 hover:text-blue-300">
+            ← Back to Arena
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-8">
-      <h1 className="text-3xl font-bold mb-2 text-center">🏆 Tournament</h1>
-      <p className="text-center text-slate-400 mb-6">16 cats enter. 1 champion emerges.</p>
-
-      {/* Progress */}
-      <div className="flex justify-center gap-2 mb-8">
-        {rounds.map((round, idx) => (
-          <div
-            key={round}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${
-              idx + 1 === currentRound ? 'bg-purple-600' : 'bg-slate-800'
-            }`}
-          >
-            {round}
-          </div>
-        ))}
-      </div>
-
-      {/* Bracket */}
+    <div className="min-h-screen bg-black text-white py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        <div className="grid md:grid-cols-2 gap-8">
-          {tournamentCats.filter((_, i) => i < 4).map((cat, idx) => {
-            const matchId = idx
-            const opponent = tournamentCats[idx + 4]
-            return (
-              <div key={matchId} className="bg-slate-800 rounded-xl p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <button
-                    onClick={() => handleVote(matchId, cat.id)}
-                    className={`flex-1 p-3 rounded-lg text-left transition-all ${
-                      votes[matchId] === cat.id ? 'bg-purple-600' : 'bg-slate-700 hover:bg-slate-600'
-                    }`}
-                  >
-                    <div className="font-bold">{cat.name}</div>
-                    <div className="text-xs text-slate-400">Lv.{cat.level}</div>
-                  </button>
-                  
-                  <span className="text-slate-500 font-bold">VS</span>
-                  
-                  <button
-                    onClick={() => handleVote(matchId, opponent.id)}
-                    className={`flex-1 p-3 rounded-lg text-left transition-all ${
-                      votes[matchId] === opponent.id ? 'bg-purple-600' : 'bg-slate-700 hover:bg-slate-600'
-                    }`}
-                  >
-                    <div className="font-bold">{opponent.name}</div>
-                    <div className="text-xs text-slate-400">Lv.{opponent.level}</div>
-                  </button>
-                </div>
-              </div>
-            )
-          })}
+        {/* Back button */}
+        <Link 
+          href="/" 
+          className="inline-flex items-center gap-2 text-white/60 hover:text-white mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Link>
+
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2 mb-4">
+            <Trophy className="w-8 h-8 text-yellow-400" />
+            <h1 className="text-3xl font-bold">Daily Tournament</h1>
+          </div>
+          <p className="text-white/60">
+            Round {tournament?.round} • {tournament?.matches?.length || 0} Matches
+          </p>
         </div>
-      </div>
 
-      <div className="text-center mt-8">
-        <button className="bg-yellow-500 text-black font-bold py-3 px-8 rounded-xl hover:bg-yellow-400">
-          Submit Bracket
-        </button>
-      </div>
+        <div className="space-y-6">
+          {tournament?.matches?.map((match, idx) => (
+            <div key={match.match_id} className="glass rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-white/40">Match {idx + 1}</span>
+                <span className={`text-xs px-2 py-1 rounded ${
+                  match.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/60'
+                }`}>
+                  {match.status}
+                </span>
+              </div>
 
-      <Link href="/" className="block text-center mt-8 text-slate-400">← Back to Home</Link>
+              <div className="grid grid-cols-2 gap-4 items-center">
+                {/* Cat A */}
+                <button
+                  onClick={() => vote(match.match_id, match.cat_a.id)}
+                  disabled={voting === match.match_id}
+                  className="relative group"
+                >
+                  <div className="relative h-32 rounded-xl overflow-hidden bg-white/5">
+                    <Image
+                      src={match.cat_a.image_path?.startsWith('http') ? match.cat_a.image_path : `https://placekitten.com/300/300`}
+                      alt={match.cat_a.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform"
+                    />
+                  </div>
+                  <p className="mt-2 font-bold text-center">{match.cat_a.name}</p>
+                  <p className="text-sm text-white/50 text-center">{match.votes_a} votes</p>
+                </button>
+
+                {/* VS */}
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
+                    <Swords className="w-6 h-6 text-white/50" />
+                  </div>
+                </div>
+
+                {/* Cat B */}
+                <button
+                  onClick={() => vote(match.match_id, match.cat_b.id)}
+                  disabled={voting === match.match_id}
+                  className="relative group"
+                >
+                  <div className="relative h-32 rounded-xl overflow-hidden bg-white/5">
+                    <Image
+                      src={match.cat_b.image_path?.startsWith('http') ? match.cat_b.image_path : `https://placekitten.com/301/301`}
+                      alt={match.cat_b.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform"
+                    />
+                  </div>
+                  <p className="mt-2 font-bold text-center">{match.cat_b.name}</p>
+                  <p className="text-sm text-white/50 text-center">{match.votes_b} votes</p>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {!tournament?.matches?.length && (
+          <div className="text-center py-12">
+            <p className="text-white/60">No matches yet. Submit cats to seed the tournament!</p>
+            <Link href="/submit" className="inline-block mt-4 px-6 py-3 bg-white text-black rounded-xl font-bold">
+              Submit a Cat
+            </Link>
+          </div>
+        )}
+      </div>
     </div>
-  )
+  );
 }
