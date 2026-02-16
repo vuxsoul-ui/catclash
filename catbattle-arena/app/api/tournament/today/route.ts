@@ -1,3 +1,4 @@
+// REPLACE: app/api/tournament/today/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getGuestId } from "../../_lib/guest";
@@ -30,21 +31,14 @@ type TournamentDTO = {
   matches: MatchDTO[];
 };
 
-function errToString(err: unknown) {
-  if (err instanceof Error) return `${err.name}: ${err.message}`;
-  return String(err);
-}
-
 export async function GET() {
   try {
-    const guestId = getGuestId();
+    const guestId = await getGuestId();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // get_today_tournament currently returns a nested shape from your SQL:
-    // { success: true, tournament: { date, round, matches, tournament_id } }
     const { data, error } = await supabase.rpc("get_today_tournament");
 
     if (error) {
@@ -54,34 +48,48 @@ export async function GET() {
       );
     }
 
-    // Normalize to the inner tournament object, whether it's nested or not
+    // Normalize nested vs flat shape
     const inner: TournamentDTO | null =
       (data?.tournament as TournamentDTO | undefined) ??
       (data as TournamentDTO | null);
 
     const matches = inner?.matches ?? [];
 
-    // Enrich matches with image URLs (so frontend can just use match.cat_a.image_url)
-    const enrichedMatches: MatchDTO[] = await Promise.all(
-      matches.map(async (match) => {
-        const pathA = match.cat_a?.image_path ?? null;
-        const pathB = match.cat_b?.image_path ?? null;
+    // Enrich with image URLs
+    const enrichedMatches: MatchDTO[] = matches.map((match) => {
+      const pathA = match.cat_a?.image_path ?? null;
+      const pathB = match.cat_b?.image_path ?? null;
 
-        const urlA = pathA
-          ? supabase.storage.from("cat-images").getPublicUrl(pathA).data?.publicUrl
-          : null;
+      const urlA = pathA
+        ? supabase.storage.from("cat-images").getPublicUrl(pathA).data?.publicUrl
+        : null;
+      const urlB = pathB
+        ? supabase.storage.from("cat-images").getPublicUrl(pathB).data?.publicUrl
+        : null;
 
-        const urlB = pathB
-          ? supabase.storage.from("cat-images").getPublicUrl(pathB).data?.publicUrl
-          : null;
+      return {
+        ...match,
+        cat_a: { ...match.cat_a, image_url: urlA ?? null },
+        cat_b: { ...match.cat_b, image_url: urlB ?? null },
+      };
+    });
 
-        return {
-          ...match,
-          cat_a: { ...match.cat_a, image_url: urlA ?? null },
-          cat_b: { ...match.cat_b, image_url: urlB ?? null },
-        };
-      })
-    );
+    // Get which matches this user already voted on
+    const matchIds = enrichedMatches.map(m => m.match_id);
+    const votedMatches: Record<string, string> = {};
+    if (guestId && matchIds.length > 0) {
+      const { data: votes } = await supabase
+        .from("votes")
+        .select("battle_id, voted_for")
+        .eq("voter_user_id", guestId)
+        .in("battle_id", matchIds);
+
+      if (votes) {
+        for (const v of votes) {
+          votedMatches[v.battle_id] = v.voted_for;
+        }
+      }
+    }
 
     const tournament: TournamentDTO | null = inner
       ? { ...inner, matches: enrichedMatches }
@@ -91,10 +99,12 @@ export async function GET() {
       success: true,
       guest_id: guestId,
       tournament,
+      voted_matches: votedMatches,
     });
   } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { success: false, error: "Server error", details: errToString(e) },
+      { success: false, error: "Server error", details: msg },
       { status: 500 }
     );
   }

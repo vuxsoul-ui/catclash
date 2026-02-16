@@ -9,22 +9,51 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET() {
   try {
+    console.log('[DEBUG] Starting pending cats fetch');
+    console.log('[DEBUG] URL:', supabaseUrl);
+    console.log('[DEBUG] Service key exists:', !!supabaseServiceKey);
+    console.log('[DEBUG] Service key first 20 chars:', supabaseServiceKey?.substring(0, 20));
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: cats, error } = await supabase
+    // Test 1: Get all cats (no filter)
+    console.log('[DEBUG] Fetching all cats...');
+    const { data: allCats, error: allError } = await supabase
+      .from('cats')
+      .select('id, name, status, created_at')
+      .limit(10);
+
+    console.log('[DEBUG] All cats result:', { 
+      count: allCats?.length, 
+      error: allError?.message,
+      sample: allCats?.[0]
+    });
+
+    // Test 2: Get only pending
+    console.log('[DEBUG] Fetching pending cats...');
+    const { data: pendingCats, error: pendingError } = await supabase
       .from('cats')
       .select('id, name, image_path, rarity, attack, defense, speed, charisma, chaos, ability, created_at')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[PENDING] Query error:', error);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    console.log('[DEBUG] Pending cats result:', { 
+      count: pendingCats?.length, 
+      error: pendingError?.message 
+    });
+
+    if (pendingError) {
+      return NextResponse.json({ 
+        ok: false, 
+        error: pendingError.message,
+        debug: { allCatsCount: allCats?.length }
+      }, { status: 500 });
     }
 
-    const catsWithUrls = (cats || []).map(cat => {
+    // Build URLs
+    const catsWithUrls = (pendingCats || []).map(cat => {
       let image_url = '';
       if (cat.image_path) {
         const { data: urlData } = supabase.storage.from('cat-images').getPublicUrl(cat.image_path);
@@ -47,9 +76,22 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ ok: true, cats: catsWithUrls });
+    return NextResponse.json({ 
+      ok: true, 
+      cats: catsWithUrls,
+      debug: {
+        allCatsCount: allCats?.length,
+        pendingCatsCount: pendingCats?.length,
+        url: supabaseUrl,
+        hasServiceKey: !!supabaseServiceKey
+      }
+    });
+
   } catch (e) {
-    console.error('[PENDING] Exception:', e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    console.error('[DEBUG] Exception:', e);
+    return NextResponse.json({ 
+      ok: false, 
+      error: String(e) 
+    }, { status: 500 });
   }
 }
