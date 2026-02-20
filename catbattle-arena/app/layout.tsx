@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import Nav from "./components/Nav";
+import GlobalToastHost from "./components/GlobalToastHost";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -16,10 +17,18 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "CatBattle Arena | Rate the Ultimate Cat",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://catclash.org"),
+  title: "CatClash Arena | Rate the Ultimate Cat",
   description: "Vote on the cutest, funniest, and most chaotic cats. The ultimate feline showdown.",
   icons: {
     icon: "/favicon.ico",
+  },
+  openGraph: {
+    title: "CatClash Arena | Rate the Ultimate Cat",
+    description: "Vote on the cutest, funniest, and most chaotic cats. The ultimate feline showdown.",
+    siteName: "CatClash Arena",
+    url: "/",
+    type: "website",
   },
 };
 
@@ -31,11 +40,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} antialiased gradient-mesh min-h-screen`}
+        className={`${inter.variable} ${spaceGrotesk.variable} antialiased min-h-screen relative bg-black`}
       >
         <div className="noise-overlay" />
         <Nav />
-        <div className="pt-16">{children}</div>
+        <div className="pt-[calc(var(--header-h)+env(safe-area-inset-top))] safe-bottom-pad sm:pb-0">{children}</div>
+        <GlobalToastHost />
+        <div className="vuxsolia-watermark" aria-hidden="true">Property of Vuxsolia.</div>
       </body>
     </html>
   );
