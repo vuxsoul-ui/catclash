@@ -43,3 +43,13 @@
 
 ### Phase 8 - Hooks Health Check
 - Captured current telemetry endpoint snapshot and retention nudges in `/Users/charon/go/catbattle-arena/docs/hooks-health-report.md`.
+
+### Follow-up - Home Polish + Arena Refresh Fix
+- Removed duplicate duel surfaces on Home by introducing a single reusable `LiveDuelsModule` and collapsing the second placement into an inline Duel link.
+- Compressed Home hero/header density for mobile and reduced awkward above-the-fold spacing.
+- Polished Pulse strip behavior (cleaner right alignment, hide noisy zero-value audience labels).
+- Tightened mission card defaults: collapsed-first, clear primary CTA, lightweight mission expansion link.
+- Added compact `ArenaFlameCard` mode and aligned Daily Core card sizing/padding for Flame + Crate.
+- Implemented shared `useArenaMatches` retry utility with deterministic refill backoff (400ms, 900ms, 1800ms), manual refresh fallback, and non-blocking stale-content behavior.
+- Added telemetry events for arena fetch lifecycle (`arena_fetch_start`, `arena_fetch_success`, `arena_fetch_empty`, `arena_refill_retry`, `arena_refill_failed`).
+- Updated arena page rotation to wrap by total pages, preventing out-of-range page drift.

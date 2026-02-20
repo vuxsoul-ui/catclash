@@ -17,6 +17,7 @@ import VoteEffectLayer from "./components/cosmetics/VoteEffectLayer";
 import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from "./_lib/cosmetics/effectsRegistry";
 import { computePowerRating, getMoveMeaning } from "./_lib/combat";
 import { Button, Card, SectionHeader } from "./components/ui/primitives";
+import { useArenaMatches } from "./hooks/useArenaMatches";
 
 // Types
 interface UserProgress {
@@ -101,6 +102,7 @@ interface StarterMission {
 }
 
 type DuelRow = DuelRowData;
+type ArenaRefreshResult = { ok: boolean; count: number; status?: string | null };
 
 // Config
 const ARENA_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string; accent: string; description: string }> = {
@@ -224,6 +226,51 @@ function commentTextClassFromColorSlug(slug: string | null | undefined): string 
 
 function commentBorderClassFromBorderSlug(slug: string | null | undefined): string {
   return cosmeticBorderClassFromSlug(slug);
+}
+
+function LiveDuelsModule({
+  duels,
+  pendingDuelCount,
+  liveDuelVotes2m,
+  compact = false,
+}: {
+  duels: DuelRow[];
+  pendingDuelCount: number;
+  liveDuelVotes2m: number;
+  compact?: boolean;
+}) {
+  return (
+    <Card className={`border-cyan-300/20 bg-cyan-500/8 ${compact ? 'p-2' : 'p-2.5'}`}>
+      <SectionHeader className="mb-1.5">
+        <h3 className="text-[12px] font-semibold text-cyan-100 inline-flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+          Live Duels
+        </h3>
+        <Link href="/duel" className="relative text-[10px] text-cyan-200 inline-flex items-center gap-1">
+          Open Duel Arena <ArrowRight className="w-3 h-3" />
+          {pendingDuelCount > 0 && (
+            <span className="absolute -top-2 -right-4 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center border border-red-300/40">
+              {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
+            </span>
+          )}
+        </Link>
+      </SectionHeader>
+      {duels.length > 0 ? (
+        <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory pb-0.5">
+          {duels.slice(0, compact ? 6 : 10).map((duel) => (
+            <div key={`live-duel-${duel.id}`} className="snap-start w-[38vw] min-w-[140px] max-w-[170px]">
+              <DuelCardMini duel={duel} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-white/60">No live duels yet.</p>
+      )}
+      {liveDuelVotes2m > 0 && (
+        <p className="text-[10px] text-cyan-100/70 mt-1.5">+{liveDuelVotes2m} duel votes in last 2m</p>
+      )}
+    </Card>
+  );
 }
 
 // ── Match Card ── Images link to profile, vote buttons below
@@ -709,7 +756,7 @@ function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, voteEffectSlug, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo,
+  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, voteEffectSlug, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   votingMatch: string | null;
@@ -721,23 +768,21 @@ function ArenaSection({
   hotMatchBiasEnabled?: boolean;
   voteEffectSlug?: string | null;
   globalPageInfo?: GlobalArenaPageInfo | null;
+  pulseCountdown?: string;
   onVote: (matchId: string, catId: string) => void;
   onPredict: (matchId: string, catId: string, bet: number) => void;
   onCreateCallout: (matchId: string, catId: string) => void;
-  onRequestMore?: () => void;
+  onRequestMore?: () => Promise<ArenaRefreshResult>;
 }) {
   const config = getArenaConfig(arena.type);
   const [segment, setSegment] = useState<"voting" | "results">("voting");
   const [stackIds, setStackIds] = useState<string[]>([]);
   const [cursor, setCursor] = useState(0);
   const [exitingId, setExitingId] = useState<string | null>(null);
-  const [isRefilling, setIsRefilling] = useState(false);
-  const [refillGateUntil, setRefillGateUntil] = useState(0);
-  const [refillPulse, setRefillPulse] = useState(0);
+  const [stackReady, setStackReady] = useState(false);
   const processedVotedRef = useRef<Set<string>>(new Set());
   const firstPageIdsRef = useRef<string[]>([]);
   const cursorRef = useRef(0);
-  const refillBusyRef = useRef(false);
   const MAX_VISIBLE = 4;
   const currentRound = arena.rounds.find((r) => r.round === arena.current_round);
   const voting = (currentRound?.matches || []).filter((m) => !isByeMatch(m) && m.status === "active");
@@ -826,6 +871,13 @@ function ArenaSection({
   }, [cursor]);
 
   useEffect(() => {
+    if (segment !== 'voting') {
+      setStackReady(false);
+      return;
+    }
+  }, [segment]);
+
+  useEffect(() => {
     if (segment !== 'voting') return;
     const votedSet = new Set(Object.keys(votedMatches));
     const initial: string[] = [];
@@ -839,6 +891,7 @@ function ArenaSection({
     setCursor(i);
     setExitingId(null);
     setStackIds(initial);
+    setStackReady(true);
     firstPageIdsRef.current = initial;
     processedVotedRef.current = new Set(
       orderedVoting.map((m) => m.match_id).filter((id) => votedSet.has(id))
@@ -893,34 +946,18 @@ function ArenaSection({
     const topped = fillStackToFour(stackIds);
     if (topped.length !== stackIds.length) {
       setStackIds(topped);
-      return;
     }
+  }, [segment, stackIds, votedMatches, orderedVoting]);
 
-    // Only refresh from server after the current visible stack is fully exhausted.
-    // This avoids mid-flow feed refreshes while users are still voting.
-    if (activeVoting.length > 0) return;
-    if (stackIds.length > 0) return;
-    if (votingMatch) return;
-    const firstPageIds = firstPageIdsRef.current;
-    const hasInitialPage = firstPageIds.length > 0;
-    const firstPageCompleted = hasInitialPage && firstPageIds.every((id) => !!votedMatches[id]);
-    if (hasInitialPage && !firstPageCompleted) return;
-    const now = Date.now();
-    if (now < refillGateUntil) {
-      const wait = Math.max(80, refillGateUntil - now);
-      const timer = window.setTimeout(() => setRefillPulse((v) => v + 1), wait);
-      return () => window.clearTimeout(timer);
-    }
-    if (!onRequestMore || refillBusyRef.current) return;
-    refillBusyRef.current = true;
-    setIsRefilling(true);
-    Promise.resolve(onRequestMore())
-      .catch(() => null)
-      .finally(() => {
-        refillBusyRef.current = false;
-        setIsRefilling(false);
-      });
-  }, [activeVoting.length, onRequestMore, refillGateUntil, refillPulse, segment, stackIds, votingMatch]);
+  const arenaFeed = useArenaMatches({
+    arenaType: String(arena.type || 'main'),
+    viewMode: segment,
+    pageIndex: Number(globalPageInfo?.pageIndex || 0),
+    round: Number(arena.current_round || 1),
+    matches: activeVoting,
+    enabled: segment === 'voting' && stackReady && !votingMatch && !exitingId && activeVoting.length === 0,
+    onRefresh: onRequestMore,
+  });
 
   const stackLead = activeVoting[0];
   const stackSecond = activeVoting[1];
@@ -977,8 +1014,20 @@ function ArenaSection({
       {segment === 'voting' && stackVelocity && (
         <p className="text-[10px] text-white/50 mb-2">{stackVelocity}</p>
       )}
-      {segment === 'voting' && isRefilling && (
-        <p className="text-[10px] text-cyan-200/80 mb-2 animate-pulse">Refilling arena...</p>
+      {segment === 'voting' && arenaFeed.isRefilling && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[10px] text-cyan-200/80 animate-pulse">
+            Refilling arena... {arenaFeed.retryAttempt > 0 ? `(retry ${arenaFeed.retryAttempt}/3)` : ''}
+          </p>
+          {arenaFeed.showManualRefresh && (
+            <button
+              onClick={() => void arenaFeed.refresh()}
+              className="h-7 px-2 rounded-full border border-cyan-300/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-100"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
       )}
       {segment === 'voting' && voteStreak >= 5 && (
         <p className="text-[10px] text-amber-200/90 mb-2">
@@ -991,8 +1040,20 @@ function ArenaSection({
           <Target className="w-7 h-7 text-white/40 mx-auto mb-2" />
           {segment === 'voting' ? (
             <>
-              <p className="text-sm text-cyan-200/85 animate-pulse">Refilling arena...</p>
-              <p className="text-xs text-white/45 mt-1">Checking for the next live matchups.</p>
+              <p className="text-sm text-cyan-200/85">
+                {arenaFeed.isLoading ? 'Loading arena...' : arenaFeed.error ? 'Arena is reloading' : 'Refilling arena...'}
+              </p>
+              <p className="text-xs text-white/45 mt-1">
+                {arenaFeed.error ? `No live matchups yet. Try refresh or return at next Pulse (${pulseCountdown || '--:--:--'}).` : 'Checking for the next live matchups.'}
+              </p>
+              {(arenaFeed.showManualRefresh || arenaFeed.error) && (
+                <button
+                  onClick={() => void arenaFeed.refresh()}
+                  className="mt-2 h-8 px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-[11px] font-semibold text-cyan-100"
+                >
+                  Refresh
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -1017,7 +1078,6 @@ function ArenaSection({
               isExiting={segment === 'voting' && exitingId === match.match_id}
               voteEffectSlug={voteEffectSlug || null}
               onVote={(matchId, catId) => {
-                setRefillGateUntil(Date.now() + 6000);
                 if (segment === 'voting' && !exitingId) {
                   setExitingId(matchId);
                   window.setTimeout(() => {
@@ -1064,10 +1124,20 @@ async function fetchUserState() {
   }
 }
 
+async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 2600) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchArenas(options?: { refresh?: boolean }): Promise<{ arenas: Arena[]; votedMatches: Record<string, string> }> {
   try {
     const refreshFlag = options?.refresh ? '?refresh=1' : '';
-    const res = await fetch(`/api/tournament/active${refreshFlag}`, { cache: "no-store" });
+    const res = await fetchWithTimeout(`/api/tournament/active${refreshFlag}`, { cache: "no-store" }, 2600);
     const data = await res.json();
     return { arenas: data.arenas || [], votedMatches: data.voted_matches || {} };
   } catch {
@@ -1416,6 +1486,7 @@ export default function Page() {
     const round = quickArena.rounds.find((r) => r.round === quickArena.current_round);
     return (round?.matches || []).find((m) => !isByeMatch(m) && m.status === 'active') || null;
   }, [quickArena]);
+  const activeVotersNow = Math.max(0, Number(globalPageInfo[arenaTypeTab]?.activeVoters10m || 0));
 
   function applyPageMatchesToArenas(current: Arena[], arenaType: 'main' | 'rookie', matches: ArenaMatch[]): Arena[] {
     return current.map((a) => {
@@ -1517,7 +1588,8 @@ export default function Page() {
     }
     setArenas(arenaData.arenas);
     setVotedMatches(arenaData.votedMatches);
-    await initializeGlobalPages();
+    setLoading(false);
+    void initializeGlobalPages();
     const gs = await fetch("/api/rewards/getting-started", { cache: "no-store" }).then((r) => r.json().catch(() => null)).catch(() => null);
     if (gs?.ok) {
       setGettingStarted(gs);
@@ -1588,6 +1660,7 @@ export default function Page() {
       setLiveDuels([]);
       setLiveDuelVotes2m(0);
     }
+    setLoading(false);
 
     // Show compact recap once per 4h UTC pulse window.
     try {
@@ -1608,7 +1681,6 @@ export default function Page() {
     } catch {
       // ignore localStorage issues
     }
-    setLoading(false);
   }
 
   async function refreshGettingStarted() {
@@ -1787,14 +1859,42 @@ export default function Page() {
     });
   }
 
-  async function handleArenaStackRefill(arenaType?: 'main' | 'rookie') {
+  async function handleArenaStackRefill(arenaType?: 'main' | 'rookie'): Promise<ArenaRefreshResult> {
     const type = arenaType || arenaTypeTab;
     const current = globalPageInfo[type];
-    const nextPage = Math.max(0, Number(current.pageIndex || 0) + 1);
+    const totalPages = Math.max(1, Number(current.totalPages || 1));
+    const nextPage = (Math.max(0, Number(current.pageIndex || 0)) + 1) % totalPages;
+    fetch('/api/telemetry/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'arena_fetch_start', payload: { arena: type, page: nextPage, tab: 'voting' } }),
+    }).catch(() => null);
     const loaded = await loadGlobalPage(type, nextPage, { persist: true });
-    if (!loaded) return;
+    if (!loaded) {
+      fetch('/api/telemetry/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'arena_refill_failed', payload: { arena: type, page: nextPage, tab: 'voting', reason: 'load_failed' } }),
+      }).catch(() => null);
+      return { ok: false, count: 0, status: 'failed' };
+    }
+    const count = Number(pageMatchIdsRef.current[type]?.length || 0);
     const votedIds = pageMatchIdsRef.current[type].filter((id) => !!votedMatches[id]);
     persistArenaProgress(type, nextPage, votedIds).catch(() => null);
+    if (count > 0) {
+      fetch('/api/telemetry/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'arena_fetch_success', payload: { arena: type, page: nextPage, tab: 'voting', count } }),
+      }).catch(() => null);
+      return { ok: true, count, status: 'ok' };
+    }
+    fetch('/api/telemetry/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'arena_fetch_empty', payload: { arena: type, page: nextPage, tab: 'voting' } }),
+    }).catch(() => null);
+    return { ok: true, count: 0, status: 'refilling' };
   }
 
   useEffect(() => {
@@ -2062,7 +2162,7 @@ export default function Page() {
       )}
 
       {/* Stats Bar */}
-      <div className="fixed top-16 left-0 right-0 z-30">
+      <div className="fixed top-16 left-0 right-0 z-30 hidden sm:block">
         <div className={`max-w-4xl mx-auto px-3 ${hudCompact ? 'pt-0.5' : 'pt-2'} transition-all duration-200`}>
           <div
             className={`rounded-2xl bg-neutral-950/94 backdrop-blur-xl shadow-[0_14px_34px_rgba(0,0,0,0.46)] transition-all duration-200 ${
@@ -2124,18 +2224,19 @@ export default function Page() {
       </div>
 
       {/* Hero */}
-      <section className="pt-24 pb-4">
-        <div className="max-w-4xl mx-auto text-center px-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass text-xs mb-4 border border-yellow-500/30 bg-yellow-500/10">
+      <section className="pt-18 pb-2">
+        <div className="max-w-2xl mx-auto px-3.5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/25 bg-yellow-500/8 text-[10px]">
             <Sparkles className="w-3 h-3 text-yellow-400" />
-            <span className="text-yellow-200">Unbox. Battle. Evolve.</span>
+            <span className="text-yellow-200/95">Unbox. Battle. Evolve.</span>
           </div>
-          <h1 className="font-bold text-3xl md:text-5xl tracking-tight mb-3">
-            <span className="text-gradient">The Ultimate</span><br />
-            <span className="text-white">Feline Showdown</span>
-          </h1>
-          <p className="text-white/40 text-sm max-w-md mx-auto">Vote for your favorite cats across multiple arenas. Every vote earns XP.</p>
-          <p className="vuxsolia-canon-line mt-2 text-[11px] text-cyan-200/70">Welcome to the Arena of Vuxsolia.</p>
+          <div className="mt-2.5 flex items-end justify-between gap-2">
+            <div>
+              <h1 className="text-lg font-bold tracking-tight text-white">Today&apos;s Arenas</h1>
+              <p className="text-[11px] text-white/55">Vote fast, stack streaks, and catch the next Pulse.</p>
+            </div>
+            <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
+          </div>
         </div>
       </section>
 
@@ -2160,8 +2261,8 @@ export default function Page() {
         </section>
       )}
 
-      <section className="px-3.5 mb-4">
-        <div className="max-w-2xl mx-auto space-y-2">
+      <section className="px-3.5 mb-3">
+        <div className="max-w-2xl mx-auto space-y-1.5">
           <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
               <Flame className="w-3 h-3 text-orange-300" /> {displayStats.streak}
@@ -2177,35 +2278,26 @@ export default function Page() {
             </span>
           </div>
 
-          <Card className="p-2.5 border-cyan-300/20 bg-cyan-500/8">
+          <Card className="p-2 border-cyan-300/20 bg-cyan-500/8">
             <div className="flex items-center justify-between gap-2 text-[11px]">
               <span className="text-cyan-100/90 inline-flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
                 Next Pulse {pulseCountdown}
               </span>
-              <span className="text-cyan-100/70">{Math.max(0, liveDuelVotes2m)} joined today</span>
-              <Link href="/tournament" className="text-cyan-100 underline underline-offset-2">Full Bracket</Link>
+              <div className="inline-flex items-center gap-2">
+                {activeVotersNow > 0 ? <span className="text-cyan-100/70">{activeVotersNow} online</span> : null}
+                <Link href="/tournament" className="text-cyan-100 underline underline-offset-2">Full Bracket</Link>
+              </div>
             </div>
             {pulseRecap && <p className="mt-1 text-[10px] text-cyan-100/75">{pulseRecap}</p>}
           </Card>
 
-          <Card className="p-2.5">
-            <SectionHeader>
-              <h3 className="text-[12px] font-semibold text-white/90">Live Duels</h3>
-              <Link href="/duel" className="text-[10px] text-cyan-200">Open</Link>
-            </SectionHeader>
-            {liveDuels.length > 0 ? (
-              <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory pb-0.5">
-                {liveDuels.slice(0, 6).map((duel) => (
-                  <div key={`quick-duel-${duel.id}`} className="snap-start w-[38vw] min-w-[140px] max-w-[170px]">
-                    <DuelCardMini duel={duel} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-white/60">No live duels yet.</p>
-            )}
-          </Card>
+          <LiveDuelsModule
+            compact
+            duels={liveDuels}
+            pendingDuelCount={pendingDuelCount}
+            liveDuelVotes2m={liveDuelVotes2m}
+          />
 
           {quickMatch && (
             <Card className="p-2.5 border-white/15 bg-white/[0.035]">
@@ -2272,24 +2364,30 @@ export default function Page() {
 
       {/* Enter the Arena Missions */}
       {gettingStarted && !gettingStarted.completion.complete && (
-        <section className="px-4 mb-5">
+        <section className="px-4 mb-4">
           <div className="max-w-md mx-auto">
-            <div id="mission-board" className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-3 shadow-[0_10px_35px_rgba(16,185,129,0.12)]">
-              <div className="flex items-center justify-between gap-2 mb-2">
+            <div id="mission-board" className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-2.5 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div>
-                  <h3 className="text-sm font-bold text-emerald-200">{gettingStarted.title || 'Enter the Arena'}</h3>
+                  <h3 className="text-[13px] font-bold text-emerald-200">{gettingStarted.title || 'Enter the Arena'}</h3>
                   <p className="text-[11px] text-emerald-100/80">{gettingStarted.rank_label || 'Arena Rank 1'} · {gettingStarted.progress.pct}% complete</p>
                 </div>
                 <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-300/20 border border-emerald-200/30 text-emerald-100">
                   {gettingStarted.progress.completed}/{gettingStarted.progress.total}
                 </span>
               </div>
-              <div className="h-2 rounded-full bg-black/30 overflow-hidden mb-2">
+              <div className="h-2 rounded-full bg-black/30 overflow-hidden mb-1.5">
                 <div className="h-full bg-gradient-to-r from-emerald-300 to-cyan-300 transition-all duration-500" style={{ width: `${gettingStarted.progress.pct}%` }} />
               </div>
               <button
+                onClick={handleMissionPrimaryAction}
+                className="h-10 w-full px-3 rounded-xl bg-emerald-300 text-black text-sm font-bold active:scale-[0.99] transition-transform"
+              >
+                Start Voting
+              </button>
+              <button
                 onClick={() => setMissionBoardOpen((v) => !v)}
-                className="h-11 w-full px-3 rounded-xl bg-emerald-400/15 border border-emerald-300/25 text-emerald-100 text-[13px] font-semibold mb-2"
+                className="mt-1.5 text-[11px] text-emerald-100/80 underline underline-offset-2"
               >
                 {missionBoardOpen ? 'Hide Missions' : 'Show Missions'}
               </button>
@@ -2395,38 +2493,34 @@ export default function Page() {
                   </div>
                 </div>
               )}
-              <button
-                onClick={handleMissionPrimaryAction}
-                className="h-12 w-full px-4 rounded-xl bg-emerald-300 text-black text-sm font-bold active:scale-[0.99] transition-transform"
-              >
-                {gettingStarted.missions.find((m) => m.status === 'active')?.cta || 'Continue Mission'}
-              </button>
             </div>
           </div>
         </section>
       )}
 
       {/* Flame + Crate */}
-      <section className="px-4 mb-6">
+      <section className="px-4 mb-4">
         <div className="max-w-md mx-auto">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-1.5 flex items-center justify-between">
             <h2 className="text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
             <Link href="/crate" className="text-[11px] text-yellow-200/90 hover:text-yellow-100">View Crates</Link>
           </div>
         </div>
-        <div className="max-w-md mx-auto grid grid-cols-2 gap-2.5 sm:gap-3">
+        <div className="max-w-md mx-auto grid grid-cols-2 gap-2">
           <ArenaFlameCard
             flame={flame}
             loading={loading && !flame}
             error={meError}
             onRetry={loadAll}
+            compact
+            className="h-full"
           />
-          <div className="glass rounded-xl p-4 text-center min-h-[232px]">
+          <div className="glass rounded-2xl p-3 text-center min-h-[210px] h-full">
             <div className="flex items-center justify-center gap-2 mb-2">
               <SigilIcon className="w-4 h-4" glow />
               <h3 className="font-bold text-sm">Crate</h3>
             </div>
-            <div className="crate-hero mb-2">
+            <div className="crate-hero mb-1.5">
               <div className={`crate-visual ${claimingCrate ? 'opening' : ''}`}>
                 <div className="crate-lid" />
                 <div className="crate-box" />
@@ -2434,10 +2528,10 @@ export default function Page() {
               </div>
             </div>
             <button onClick={handleClaimCrate} disabled={claimingCrate}
-              className="px-3 py-1.5 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1 mx-auto">
+              className="h-9 px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1 mx-auto">
               {claimingCrate ? <Loader2 className="w-3 h-3 animate-spin" /> : "Open"}
             </button>
-            <p className="text-[10px] text-white/55 mt-2">Daily resets in {crateCountdown}</p>
+            <p className="text-[10px] text-white/50 mt-1">Resets in {crateCountdown}</p>
             <div className="mt-2 flex items-center justify-center gap-1 text-[9px]">
               <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
               <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
@@ -2458,36 +2552,16 @@ export default function Page() {
       {/* Arenas */}
       <section id="home-arenas" className="px-2.5 sm:px-4 pb-8">
         <div className="mx-auto w-full max-w-none sm:max-w-2xl">
-          <Card className="mb-3 border-cyan-300/20 bg-cyan-500/8 p-2.5">
-            <SectionHeader className="mb-2">
-              <h3 className="text-[12px] font-bold text-cyan-100 inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                ⚔ Duel Arena
-              </h3>
-              <Link href="/duel" className="relative h-7 px-2.5 rounded-full border border-cyan-300/25 bg-cyan-500/10 text-cyan-200 text-[10px] font-semibold inline-flex items-center justify-center">
-                Open
-                {pendingDuelCount > 0 && (
-                  <span className="absolute -top-2 -right-2 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center border border-red-300/40">
-                    {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
-                  </span>
-                )}
-              </Link>
-            </SectionHeader>
-            {liveDuels.length === 0 ? (
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-[11px] text-white/60">
-                No live duels yet. Open Duel Arena to launch one.
-              </div>
-            ) : (
-              <div className="flex gap-2 overflow-x-auto pb-0.5 snap-x snap-mandatory">
-                {liveDuels.slice(0, 10).map((duel) => (
-                  <div key={`live-duel-${duel.id}`} className="snap-start w-[38vw] min-w-[140px] max-w-[170px]">
-                    <DuelCardMini duel={duel} />
-                  </div>
-                ))}
-              </div>
-            )}
-            <p className="text-[10px] text-cyan-100/70 mt-2">+{Math.max(0, liveDuelVotes2m)} duel votes in last 2m</p>
-          </Card>
+          <div className="mb-2 flex justify-end">
+            <Link href="/duel" className="text-[11px] text-cyan-200 inline-flex items-center gap-1">
+              Open Duel Arena <ArrowRight className="w-3 h-3" />
+              {pendingDuelCount > 0 ? (
+                <span className="px-1 py-0.5 rounded-full bg-red-500/20 border border-red-300/35 text-[9px] text-red-100 font-semibold">
+                  {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
+                </span>
+              ) : null}
+            </Link>
+          </div>
 
           <div className="grid grid-cols-2 gap-2 mb-4">
             <Button
@@ -2527,6 +2601,7 @@ export default function Page() {
                   voteStreak={voteStreak}
                   hotMatchBiasEnabled={hotMatchBiasEnabled}
                   globalPageInfo={arena.type === 'main' || arena.type === 'rookie' ? globalPageInfo[arena.type] : null}
+                  pulseCountdown={pulseCountdown}
                   voteEffectSlug={equippedCosmetics?.vote_effect?.slug || equippedCosmetics?.color?.slug || null}
                   onRequestMore={() => handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
                   onVote={handleVote}

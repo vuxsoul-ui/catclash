@@ -522,14 +522,22 @@ body {
   position: fixed;
   right: 0.75rem;
   bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
-  z-index: 45;
+  z-index: 8;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: rgba(255,255,255,0.26);
+  color: rgba(255,255,255,0.16);
   text-shadow: 0 1px 10px rgba(0,0,0,0.45);
   pointer-events: none;
   user-select: none;
+}
+
+@media (max-width: 640px) {
+  .vuxsolia-watermark {
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 2px);
+    font-size: 9px;
+    color: rgba(255,255,255,0.12);
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
