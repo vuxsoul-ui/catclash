@@ -1477,15 +1477,6 @@ export default function Page() {
     return () => clearInterval(id);
   }, []);
 
-  const quickArena = useMemo(
-    () => arenas.find((a) => a.type === arenaTypeTab) || arenas[0] || null,
-    [arenas, arenaTypeTab],
-  );
-  const quickMatch = useMemo(() => {
-    if (!quickArena) return null;
-    const round = quickArena.rounds.find((r) => r.round === quickArena.current_round);
-    return (round?.matches || []).find((m) => !isByeMatch(m) && m.status === 'active') || null;
-  }, [quickArena]);
   const activeVotersNow = Math.max(0, Number(globalPageInfo[arenaTypeTab]?.activeVoters10m || 0));
 
   function applyPageMatchesToArenas(current: Arena[], arenaType: 'main' | 'rookie', matches: ArenaMatch[]): Arena[] {
@@ -2299,32 +2290,6 @@ export default function Page() {
             liveDuelVotes2m={liveDuelVotes2m}
           />
 
-          {quickMatch && (
-            <Card className="p-2.5 border-white/15 bg-white/[0.035]">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] text-white/80">Voting Now • {quickArena?.type === 'rookie' ? 'Rookie Arena' : 'Main Arena'}</p>
-                <Link href="#home-arenas" className="text-[10px] text-cyan-200">Jump to feed</Link>
-              </div>
-              <div className="mt-1.5 grid grid-cols-2 gap-2">
-                <Button
-                  aria-label={`Vote ${quickMatch.cat_a.name}`}
-                  onClick={() => handleVote(quickMatch.match_id, quickMatch.cat_a.id)}
-                  disabled={votingMatch === quickMatch.match_id || !!votedMatches[quickMatch.match_id]}
-                  className="h-10 bg-blue-500/20 border-blue-300/30 text-blue-100"
-                >
-                  Vote {quickMatch.cat_a.name}
-                </Button>
-                <Button
-                  aria-label={`Vote ${quickMatch.cat_b.name}`}
-                  onClick={() => handleVote(quickMatch.match_id, quickMatch.cat_b.id)}
-                  disabled={votingMatch === quickMatch.match_id || !!votedMatches[quickMatch.match_id]}
-                  className="h-10 bg-rose-500/20 border-rose-300/30 text-rose-100"
-                >
-                  Vote {quickMatch.cat_b.name}
-                </Button>
-              </div>
-            </Card>
-          )}
         </div>
       </section>
 
