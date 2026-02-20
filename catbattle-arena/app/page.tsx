@@ -142,8 +142,8 @@ function getRarityColor(rarity: string): string {
 }
 
 function guildBadge(guild: string | null | undefined): { label: string; cls: string } | null {
-  if (guild === 'sun') return { label: 'Solar', cls: 'bg-amber-500/20 text-amber-100 border border-amber-300/30' };
-  if (guild === 'moon') return { label: 'Lunar', cls: 'bg-cyan-500/20 text-cyan-100 border border-cyan-300/30' };
+  if (guild === 'sun') return { label: '☀ Solar', cls: 'bg-gradient-to-r from-amber-500/35 to-orange-400/25 text-amber-50 border border-amber-200/45 shadow-[0_0_12px_rgba(251,191,36,0.28)]' };
+  if (guild === 'moon') return { label: '☾ Lunar', cls: 'bg-gradient-to-r from-cyan-500/35 to-blue-400/25 text-cyan-50 border border-cyan-200/45 shadow-[0_0_12px_rgba(34,211,238,0.25)]' };
   return null;
 }
 
@@ -308,7 +308,6 @@ function MatchCard({
   const [pressedSide, setPressedSide] = useState<'a' | 'b' | null>(null);
   const [voteEffectTriggerKey, setVoteEffectTriggerKey] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [predictOpen, setPredictOpen] = useState(false);
   const guildA = guildBadge(match.cat_a.owner_guild || null);
   const guildB = guildBadge(match.cat_b.owner_guild || null);
   const aPower = statPower(match.cat_a);
@@ -338,9 +337,6 @@ function MatchCard({
       return { a: pctA, b: pctB };
     });
   }, [pctA, pctB]);
-  useEffect(() => {
-    if (hasVoted) setPredictOpen(true);
-  }, [hasVoted]);
 
   async function loadComments() {
     setCommentsBusy(true);
@@ -568,7 +564,7 @@ function MatchCard({
         <div className={`bg-red-500 transition-all duration-300 ${voted === match.cat_b.id ? 'shadow-[0_0_10px_rgba(239,68,68,0.55)]' : ''}`} style={{ width: `${displayPct.b}%` }} />
       </div>
 
-      {!isComplete && predictOpen && (
+      {!isComplete && (
         <div className="mt-2">
           <div className="flex gap-1.5 mb-1.5">
             {[5, 10, 15, 20].map((chip) => (
@@ -649,16 +645,6 @@ function MatchCard({
               <span className="inline-flex px-2 py-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Return at next Pulse</span>
             </div>
           )}
-        </div>
-      )}
-      {!isComplete && !predictOpen && (
-        <div className="mt-2">
-          <button
-            className="h-8 px-3 rounded-lg bg-white/8 border border-white/15 text-white/80 text-[11px] font-semibold"
-            onClick={() => setPredictOpen(true)}
-          >
-            Predict (optional)
-          </button>
         </div>
       )}
       {hasVoted && socialEnabled && (
@@ -2269,27 +2255,6 @@ export default function Page() {
             </span>
           </div>
 
-          <Card className="p-2 border-cyan-300/20 bg-cyan-500/8">
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="text-cyan-100/90 inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                Next Pulse {pulseCountdown}
-              </span>
-              <div className="inline-flex items-center gap-2">
-                {activeVotersNow > 0 ? <span className="text-cyan-100/70">{activeVotersNow} online</span> : null}
-                <Link href="/tournament" className="text-cyan-100 underline underline-offset-2">Full Bracket</Link>
-              </div>
-            </div>
-            {pulseRecap && <p className="mt-1 text-[10px] text-cyan-100/75">{pulseRecap}</p>}
-          </Card>
-
-          <LiveDuelsModule
-            compact
-            duels={liveDuels}
-            pendingDuelCount={pendingDuelCount}
-            liveDuelVotes2m={liveDuelVotes2m}
-          />
-
         </div>
       </section>
 
@@ -2547,6 +2512,20 @@ export default function Page() {
             </Button>
           </div>
 
+          <Card className="mb-3 p-2.5 border-cyan-300/25 bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,0.2),transparent_42%),linear-gradient(145deg,rgba(8,47,73,0.45),rgba(8,145,178,0.18))]">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-cyan-50 inline-flex items-center gap-1.5 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                Next Pulse {pulseCountdown}
+              </span>
+              <div className="inline-flex items-center gap-2">
+                {activeVotersNow > 0 ? <span className="text-cyan-100/80">{activeVotersNow} online</span> : null}
+                <Link href="/tournament" className="h-7 px-2 rounded-md border border-cyan-200/35 bg-cyan-400/15 text-cyan-100 inline-flex items-center">Full Bracket</Link>
+              </div>
+            </div>
+            {pulseRecap && <p className="mt-1 text-[10px] text-cyan-100/85">{pulseRecap}</p>}
+          </Card>
+
           {arenas.filter((a) => a.type === arenaTypeTab).length === 0 ? (
             <div className="text-center py-12 glass rounded-2xl">
               <p className="text-white/50 mb-4">No active {arenaTypeTab} arena today.</p>
@@ -2576,6 +2555,15 @@ export default function Page() {
               ))}
             </div>
           )}
+
+          <div className="mt-4">
+            <LiveDuelsModule
+              compact
+              duels={liveDuels}
+              pendingDuelCount={pendingDuelCount}
+              liveDuelVotes2m={liveDuelVotes2m}
+            />
+          </div>
         </div>
       </section>
 
