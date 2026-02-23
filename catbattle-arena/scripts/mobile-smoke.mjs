@@ -230,8 +230,14 @@ async function main() {
 
     // Swipe vote check (best effort; only when an active card exists).
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    const preVoteCardCount = await page.locator('.arena-match-card').count();
     const didSwipe = await swipeOnMatch(page, 'left');
     if (didSwipe) {
+      await page.waitForTimeout(300);
+      const midVoteCardCount = await page.locator('.arena-match-card').count();
+      const midVoteLabel = page.getByText(/Submitting…|Voted ✅|Voted ✓|Voted A|Voted B/i).first();
+      const midVoteSignal = (await midVoteLabel.count()) > 0 || midVoteCardCount >= Math.max(1, preVoteCardCount - 1);
+      softAssert(midVoteSignal, 'Vote looked instant with no visible pending/confirmed feedback at 300ms', failures);
       const votedBadge = page.getByText(/Voted ✅|Voted ✓|Voted A|Voted B/i).first();
       softAssert((await votedBadge.count()) > 0, 'No voted confirmation visible after swipe vote', failures);
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -249,6 +255,14 @@ async function main() {
         }
       });
       softAssert(voteMapSize > 0, 'Voted map in localStorage is empty after vote + refresh', failures);
+
+      const remainingCards = await page.locator('.arena-match-card').count();
+      if (remainingCards === 0) {
+        const caughtUp = page.getByText(/You’ve voted on all matches for today|You've voted on all matches for today/i).first();
+        softAssert((await caughtUp.count()) > 0, 'Expected all-caught-up message when voting feed is empty', failures);
+        const wrongEmpty = page.getByText(/No active main arena today|No active rookie arena today/i).first();
+        softAssert((await wrongEmpty.count()) === 0, 'Incorrect global no-active-arena empty state shown after voting out feed', failures);
+      }
     }
 
     // Rematch smoke (best effort; requires at least one completed duel where current actor is a participant).
