@@ -13,12 +13,22 @@ import ArenaFlameCard, { type ArenaFlame } from "./components/ArenaFlameCard";
 import DuelCardMini from "./components/duel/DuelCardMini";
 import type { DuelRowData } from "./components/duel/types";
 import { showGlobalToast } from "./lib/global-toast";
-import VoteEffectLayer from "./components/cosmetics/VoteEffectLayer";
+import { resolveActorId, resolveProfileUsername, runIdentityResolutionChecks } from "./lib/identity";
+import {
+  mergeVotedMaps,
+  readVotedMatchesFromStorage,
+  removeVotedMatch,
+  runVoteStateChecks,
+  upsertVotedMatch,
+  writeVotedMatchesToStorage,
+} from "./lib/vote-state";
+import CatCardBack from "./components/CatCardBack";
 import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from "./_lib/cosmetics/effectsRegistry";
-import { computePowerRating, getMoveMeaning } from "./_lib/combat";
+import { computePowerRating } from "./_lib/combat";
 import { Button, Card, SectionHeader } from "./components/ui/primitives";
 import { useArenaMatches } from "./hooks/useArenaMatches";
-import { warnOnce } from "./lib/dev-click-guards";
+import { pickFairMatches } from "./api/_lib/pickFairMatches";
+import { checkTapTarget, warnOnce } from "./lib/dev-click-guards";
 import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
 
 // Types
@@ -276,9 +286,9 @@ function LiveDuelsModule({
 }
 
 // ── Match Card ── Images link to profile, vote buttons below
-function MatchCard({
+export function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
-  voteEffectSlug,
+  voteQueued, onRefreshQueued, showNextUp,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -287,15 +297,22 @@ function MatchCard({
   availableSigils: number;
   voteStreak: number;
   isExiting?: boolean;
-  voteEffectSlug?: string | null;
-  onVote: (matchId: string, catId: string) => void;
-  onPredict: (matchId: string, catId: string, bet: number) => void;
+  voteQueued?: boolean;
+  showNextUp?: boolean;
+  onRefreshQueued?: () => void;
+  onVote: (matchId: string, catId: string) => Promise<boolean>;
+  onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
 }) {
   const [pctA, pctB] = getVotePercent(match.votes_a, match.votes_b);
   const isComplete = match.status === "complete";
   const hasVoted = !!voted;
-  const canVote = !hasVoted && !isVoting && !isComplete;
+  const [votePending, setVotePending] = useState(false);
+  const [voteConfirm, setVoteConfirm] = useState(false);
+  const canVote = !hasVoted && !isVoting && !isComplete && !votePending;
+  const selectedSide: "a" | "b" | null = voted === match.cat_a.id ? "a" : voted === match.cat_b.id ? "b" : null;
+  const voteStage: "idle" | "pending" | "confirmed" =
+    votePending && !voteConfirm ? "pending" : (hasVoted || voteConfirm ? "confirmed" : "idle");
   const predictedCatId = match.user_prediction?.predicted_cat_id || null;
   const [bet, setBet] = useState(10);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -307,19 +324,42 @@ function MatchCard({
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [displayPct, setDisplayPct] = useState<{ a: number; b: number }>({ a: pctA, b: pctB });
-  const [pressedSide, setPressedSide] = useState<'a' | 'b' | null>(null);
-  const [voteEffectTriggerKey, setVoteEffectTriggerKey] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [predictOpen, setPredictOpen] = useState(false);
+  const [predictConfirmed, setPredictConfirmed] = useState(false);
+  const [previewToast, setPreviewToast] = useState<string | null>(null);
+  const [flipA, setFlipA] = useState(false);
+  const [flipB, setFlipB] = useState(false);
+  const voteInFlightRef = useRef(false);
+  const swipeRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    startTs: number;
+    active: boolean;
+    triggered: boolean;
+  }>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    startTs: 0,
+    active: false,
+    triggered: false,
+  });
   const guildA = guildBadge(match.cat_a.owner_guild || null);
   const guildB = guildBadge(match.cat_b.owner_guild || null);
   const aPower = statPower(match.cat_a);
   const bPower = statPower(match.cat_b);
   const strongerA = aPower >= bPower;
   const edgePct = Math.min(35, Math.round((Math.abs(aPower - bPower) / Math.max(1, Math.max(aPower, bPower))) * 100));
-  const statusLine = isComplete ? 'Decided' : (match.is_close_match ? 'Close Match' : 'Prediction Open');
-
-  const moveA = getMoveMeaning(match.cat_a.ability || null);
-  const moveB = getMoveMeaning(match.cat_b.ability || null);
+  const statsA = match.cat_a.stats || { attack: 0, defense: 0, speed: 0, charisma: 0, chaos: 0 };
+  const statsB = match.cat_b.stats || { attack: 0, defense: 0, speed: 0, charisma: 0, chaos: 0 };
+  const probA = Math.max(0.05, displayPct.a / 100);
+  const probB = Math.max(0.05, displayPct.b / 100);
+  const payoutA = (1 / probA).toFixed(2);
+  const payoutB = (1 / probB).toFixed(2);
+  const underdogA = probA < 0.35;
+  const underdogB = probB < 0.35;
   const borderA = cosmeticBorderClassFromSlug(
     match.cat_a.rarity === 'Legendary' ? 'border-flame'
       : match.cat_a.rarity === 'Mythic' || match.cat_a.rarity === 'Epic' ? 'border-void-drift'
@@ -332,6 +372,97 @@ function MatchCard({
       : match.cat_b.rarity === 'Rare' ? 'border-neon-cyan'
       : 'border-obsidian'
   );
+  const SWIPE_X_THRESHOLD = 56;
+  const SWIPE_X_FAST = 34;
+  const SWIPE_Y_CANCEL = 44;
+  const SWIPE_MIN_VELOCITY = 0.24; // px/ms
+
+  const commitVote = async (catId: string) => {
+    if (!canVote || voteInFlightRef.current) return;
+    voteInFlightRef.current = true;
+    setVotePending(true);
+    let ok = false;
+    try {
+      ok = await onVote(match.match_id, catId);
+      if (ok) {
+        setVoteConfirm(true);
+        if (catId === match.cat_a.id) {
+          setDisplayPct((prev) => ({
+            a: Math.min(100, prev.a + 2),
+            b: Math.max(0, prev.b - 2),
+          }));
+        } else {
+          setDisplayPct((prev) => ({
+            a: Math.max(0, prev.a - 2),
+            b: Math.min(100, prev.b + 2),
+          }));
+        }
+      } else {
+        setVotePending(false);
+      }
+    } finally {
+      voteInFlightRef.current = false;
+    }
+  };
+
+  function isSwipeBlockedTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    return !!target.closest(
+      '.arena-vote-btn, input, textarea, select, a, [role="button"], [data-no-swipe="1"]'
+    );
+  }
+
+  const handlePointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
+    if (isSwipeBlockedTarget(e.target) || !canVote || voteInFlightRef.current) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    swipeRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTs: performance.now(),
+      active: true,
+      triggered: false,
+    };
+  };
+
+  const maybeTriggerSwipeVote = (dx: number, dy: number, elapsedMs: number): boolean => {
+    if (!canVote || voteInFlightRef.current) return false;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    if (absDy > SWIPE_Y_CANCEL || absDx <= absDy + 8) return false;
+    const velocity = absDx / Math.max(1, elapsedMs);
+    const passesThreshold = absDx >= SWIPE_X_THRESHOLD || (absDx >= SWIPE_X_FAST && velocity >= SWIPE_MIN_VELOCITY);
+    if (!passesThreshold) return false;
+    void commitVote(dx > 0 ? match.cat_a.id : match.cat_b.id);
+    return true;
+  };
+
+  const handlePointerMove: React.PointerEventHandler<HTMLDivElement> = (e) => {
+    const s = swipeRef.current;
+    if (!s.active || s.pointerId !== e.pointerId || s.triggered) return;
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    if (Math.abs(dy) > SWIPE_Y_CANCEL) {
+      s.active = false;
+      return;
+    }
+    const triggered = maybeTriggerSwipeVote(dx, dy, performance.now() - s.startTs);
+    if (!triggered) return;
+    s.triggered = true;
+    s.active = false;
+  };
+
+  const handlePointerEnd: React.PointerEventHandler<HTMLDivElement> = (e) => {
+    const s = swipeRef.current;
+    if (s.pointerId !== e.pointerId) return;
+    if (s.active && !s.triggered) {
+      const dx = e.clientX - s.startX;
+      const dy = e.clientY - s.startY;
+      s.triggered = maybeTriggerSwipeVote(dx, dy, performance.now() - s.startTs);
+    }
+    s.active = false;
+    s.pointerId = null;
+  };
 
   useEffect(() => {
     setDisplayPct((prev) => {
@@ -339,6 +470,73 @@ function MatchCard({
       return { a: pctA, b: pctB };
     });
   }, [pctA, pctB]);
+
+  useEffect(() => {
+    if (!predictedCatId) return;
+    setPredictOpen(false);
+    setPredictConfirmed(true);
+    const id = window.setTimeout(() => setPredictConfirmed(false), 1500);
+    return () => window.clearTimeout(id);
+  }, [predictedCatId]);
+
+  useEffect(() => {
+    setDetailsOpen(false);
+    setPredictOpen(false);
+    setCommentsOpen(false);
+    setVotePending(false);
+    setVoteConfirm(false);
+    setFlipA(false);
+    setFlipB(false);
+    voteInFlightRef.current = false;
+  }, [match.match_id]);
+
+  useEffect(() => {
+    if (!voteConfirm) return;
+    const t = window.setTimeout(() => setVoteConfirm(false), 1400);
+    return () => window.clearTimeout(t);
+  }, [voteConfirm]);
+
+  useEffect(() => {
+    if (!hasVoted) return;
+    setVotePending(false);
+  }, [hasVoted]);
+
+  useEffect(() => {
+    if (!previewToast) return;
+    const id = window.setTimeout(() => setPreviewToast(null), 1200);
+    return () => window.clearTimeout(id);
+  }, [previewToast]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setFlipA(false);
+      setFlipB(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  function cosmeticChips(cat: ArenaCat): Array<{ slot: string; label: string; icon: string; previewable: boolean }> {
+    const anyCat = cat as any;
+    const slots = [
+      { slot: 'title', icon: '✦', value: anyCat.cosmetic_title || anyCat.title || anyCat.title_name || null, previewable: false },
+      { slot: 'border', icon: '▣', value: anyCat.cosmetic_border || anyCat.border || anyCat.border_name || null, previewable: true },
+      { slot: 'color', icon: '◉', value: anyCat.cosmetic_color || anyCat.color || anyCat.color_name || null, previewable: true },
+      { slot: 'badge', icon: '★', value: anyCat.cosmetic_badge || anyCat.badge || anyCat.badge_name || null, previewable: false },
+      { slot: 'effect', icon: '✺', value: anyCat.vote_effect || anyCat.effect || anyCat.effect_name || null, previewable: true },
+    ];
+    return slots
+      .filter((s) => !!s.value)
+      .map((s) => ({
+        slot: s.slot,
+        icon: s.icon,
+        label: String(s.value).replace(/^cat_/, '').replace(/_/g, ' '),
+        previewable: s.previewable,
+      }));
+  }
+
+  const cosmeticsA = cosmeticChips(match.cat_a);
+  const cosmeticsB = cosmeticChips(match.cat_b);
 
   async function loadComments() {
     setCommentsBusy(true);
@@ -388,267 +586,406 @@ function MatchCard({
   }
 
   return (
-    <div className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 active:scale-[0.995] transition-all duration-300 ease-out ${hasVoted || isComplete ? "opacity-65" : ""} ${isExiting ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-      <VoteEffectLayer
-        effectSlug={voteEffectSlug || null}
-        triggerKey={voteEffectTriggerKey}
-        onTriggered={() => {
-          fetch('/api/telemetry/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event: 'cosmetic_effect_triggered', payload: { effect: voteEffectSlug || 'default_vote' } }),
-          }).catch(() => null);
-        }}
-      />
-      <div className="grid grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] items-stretch gap-2">
-        <div className="min-w-0 flex h-full flex-col">
-          <div className={`arena-fighter-pane h-full rounded-2xl border border-white/15 p-1.5 flex flex-col ${borderA}`}>
-            <div className="flex items-center justify-between gap-1 mb-1">
-              <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
-                {match.cat_a.rarity}
-              </span>
-              <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[9px] text-white/85">LVL 1</span>
-            </div>
-            <Link href={`/cat/${match.cat_a.id}`} className="block">
-              <div className="relative h-24 rounded-xl overflow-hidden border border-white/15">
-                <img src={getCatImage(match.cat_a)} alt={match.cat_a.name} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <div className="absolute left-2 right-2 bottom-1">
-                  <p className="text-[14px] leading-none font-bold truncate hover:underline">{match.cat_a.name}</p>
-                  <p className="text-[9px] text-white/70 truncate">by {match.cat_a.owner_username || "Unknown"} · Arena Challenger</p>
+    <div
+      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-all duration-300 ease-out touch-pan-y ${hasVoted || isComplete ? "opacity-65" : ""} ${isExiting ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+    >
+      {previewToast && (
+        <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full border border-cyan-300/35 bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-100">
+          {previewToast}
+        </div>
+      )}
+      {showNextUp && (
+        <div className="pointer-events-none absolute left-2 top-2 z-20 rounded-full border border-emerald-300/35 bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-100 animate-pulse">
+          Next up
+        </div>
+      )}
+
+      <div className="grid grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)] items-start gap-2">
+        <div className="min-w-0">
+          <div className="arena-flip-scene h-[174px]">
+            <div className={`arena-flip-card ${flipA ? 'is-flipped' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all duration-300 ${borderA} ${selectedSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.2)]' : selectedSide === 'b' ? 'opacity-75' : ''}`}>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
+                    {match.cat_a.rarity}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[8px] text-white/85">LVL {Math.max(1, Number(match.cat_a.level || 1))}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFlipA(true)}
+                      aria-label={`Open ${match.cat_a.name} details`}
+                      className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
+                    >
+                      i
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFlipA((v) => !v)}
+                  aria-label={`Flip ${match.cat_a.name} card`}
+                  className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
+                >
+                  <div className="h-24 rounded-xl overflow-hidden border border-white/15">
+                    <img src={getCatImage(match.cat_a)} alt={match.cat_a.name} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
+                  </div>
+                </button>
+                <div className="mt-1">
+                  <p className="text-[13px] leading-tight font-semibold truncate">{match.cat_a.name}</p>
+                  <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
+                    <p className="min-w-0 truncate text-[9px] text-white/70">Challenger</p>
+                    {guildA ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildA.cls}`}>{guildA.label}</span> : null}
+                  </div>
                 </div>
               </div>
-            </Link>
-            {detailsOpen && (
-            <div className="arena-power-chip mt-1 rounded-lg border border-cyan-300/20 px-2 py-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] uppercase tracking-wide text-white/60">Power</span>
-                <span className="text-sm font-black text-cyan-100">{Math.round(aPower)}</span>
-              </div>
-              <div className="h-1 mt-1 rounded-full bg-cyan-200/15 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-cyan-300/35 via-cyan-300/80 to-cyan-300/35" style={{ width: `${Math.max(18, Math.min(100, Math.round((aPower / Math.max(1, Math.max(aPower, bPower))) * 100)))}%` }} />
-              </div>
-            </div>
-            )}
-            {detailsOpen && (
-            <div className="arena-move-chip mt-1 rounded-lg border border-white/10 px-2 py-1">
-              <p className="text-[8px] uppercase tracking-[0.08em] text-white/55">Move</p>
-              <p className="text-[11px] font-semibold text-white/90 truncate">{moveA.name}</p>
-              <p className="text-[9px] text-cyan-200/85 truncate">{moveA.short}</p>
-            </div>
-            )}
-            <div className="mt-1 min-h-[16px] text-[9px]">
-              {guildA && <span className={`px-1.5 py-0.5 rounded-full ${guildA.cls}`}>{guildA.label}</span>}
+              <CatCardBack
+                cat={match.cat_a}
+                role="Challenger"
+                votes={Number(match.votes_a || 0)}
+                sharePct={displayPct.a}
+                onClose={() => setFlipA(false)}
+                className={borderA}
+              />
             </div>
           </div>
-          {canVote && (
-            <button
-              onClick={() => {
-                setPressedSide('a');
-                setVoteEffectTriggerKey(`${match.match_id}:a:${Date.now()}`);
-                onVote(match.match_id, match.cat_a.id);
-                window.setTimeout(() => setPressedSide(null), 220);
-              }}
-              aria-label={`Vote for ${match.cat_a.name}`}
-              className={`mt-1.5 h-9 w-full rounded-lg border border-white/20 bg-white/8 text-white text-[11px] font-semibold inline-flex items-center justify-center gap-1.5 transition-transform duration-100 hover:bg-white/12 ${pressedSide === 'a' ? 'scale-[0.98]' : ''}`}
-            >
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
-              {isVoting ? "Submitting…" : "Vote A"}
-            </button>
-          )}
-          {voted === match.cat_a.id && (
-            <div className="mt-1.5 h-8 w-full rounded-lg border border-white/15 bg-white/6 text-white/85 text-[11px] font-semibold flex items-center justify-center gap-1.5">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
-              <Check className="w-3 h-3" /> Voted
-            </div>
-          )}
         </div>
 
         <div className="pt-12 flex flex-col items-center justify-center gap-1">
-          <span className="w-10 h-[2px] rounded-full bg-gradient-to-r from-cyan-300/20 via-cyan-300 to-orange-300/20" />
-          <div className="text-[10px] text-white/70 font-extrabold tracking-[0.15em]">VS</div>
-          <span className="w-10 h-[2px] rounded-full bg-gradient-to-r from-orange-300/20 via-orange-300 to-cyan-300/20" />
+          <span className="w-6 h-[2px] rounded-full bg-gradient-to-r from-cyan-300/25 to-orange-300/25" />
+          <div className="text-[9px] text-white/65 font-bold tracking-[0.12em]">VS</div>
+          <span className="w-6 h-[2px] rounded-full bg-gradient-to-r from-orange-300/25 to-cyan-300/25" />
         </div>
 
-        <div className="min-w-0 flex h-full flex-col">
-          <div className={`arena-fighter-pane h-full rounded-2xl border border-white/15 p-1.5 flex flex-col ${borderB}`}>
-            <div className="flex items-center justify-between gap-1 mb-1">
-              <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
-                {match.cat_b.rarity}
-              </span>
-              <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[9px] text-white/85">LVL 1</span>
-            </div>
-            <Link href={`/cat/${match.cat_b.id}`} className="block">
-              <div className="relative h-24 rounded-xl overflow-hidden border border-white/15">
-                <img src={getCatImage(match.cat_b)} alt={match.cat_b.name} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <div className="absolute left-2 right-2 bottom-1">
-                  <p className="text-[14px] leading-none font-bold truncate hover:underline">{match.cat_b.name}</p>
-                  <p className="text-[9px] text-white/70 truncate">by {match.cat_b.owner_username || "Unknown"} · Arena Defender</p>
+        <div className="min-w-0">
+          <div className="arena-flip-scene h-[174px]">
+            <div className={`arena-flip-card ${flipB ? 'is-flipped' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all duration-300 ${borderB} ${selectedSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.2)]' : selectedSide === 'a' ? 'opacity-75' : ''}`}>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
+                    {match.cat_b.rarity}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[8px] text-white/85">LVL {Math.max(1, Number(match.cat_b.level || 1))}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFlipB(true)}
+                      aria-label={`Open ${match.cat_b.name} details`}
+                      className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
+                    >
+                      i
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFlipB((v) => !v)}
+                  aria-label={`Flip ${match.cat_b.name} card`}
+                  className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
+                >
+                  <div className="h-24 rounded-xl overflow-hidden border border-white/15">
+                    <img src={getCatImage(match.cat_b)} alt={match.cat_b.name} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
+                  </div>
+                </button>
+                <div className="mt-1">
+                  <p className="text-[13px] leading-tight font-semibold truncate">{match.cat_b.name}</p>
+                  <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
+                    <p className="min-w-0 truncate text-[9px] text-white/70">Defender</p>
+                    {guildB ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildB.cls}`}>{guildB.label}</span> : null}
+                  </div>
                 </div>
               </div>
-            </Link>
-            {detailsOpen && (
-            <div className="arena-power-chip mt-1 rounded-lg border border-cyan-300/20 px-2 py-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] uppercase tracking-wide text-white/60">Power</span>
-                <span className="text-sm font-black text-cyan-100">{Math.round(bPower)}</span>
-              </div>
-              <div className="h-1 mt-1 rounded-full bg-cyan-200/15 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-cyan-300/35 via-cyan-300/80 to-cyan-300/35" style={{ width: `${Math.max(18, Math.min(100, Math.round((bPower / Math.max(1, Math.max(aPower, bPower))) * 100)))}%` }} />
-              </div>
-            </div>
-            )}
-            {detailsOpen && (
-            <div className="arena-move-chip mt-1 rounded-lg border border-white/10 px-2 py-1">
-              <p className="text-[8px] uppercase tracking-[0.08em] text-white/55">Move</p>
-              <p className="text-[11px] font-semibold text-white/90 truncate">{moveB.name}</p>
-              <p className="text-[9px] text-cyan-200/85 truncate">{moveB.short}</p>
-            </div>
-            )}
-            <div className="mt-1 min-h-[16px] text-[9px]">
-              {guildB && <span className={`px-1.5 py-0.5 rounded-full ${guildB.cls}`}>{guildB.label}</span>}
+              <CatCardBack
+                cat={match.cat_b}
+                role="Defender"
+                votes={Number(match.votes_b || 0)}
+                sharePct={displayPct.b}
+                onClose={() => setFlipB(false)}
+                className={borderB}
+              />
             </div>
           </div>
-          {canVote && (
-            <button
-              onClick={() => {
-                setPressedSide('b');
-                setVoteEffectTriggerKey(`${match.match_id}:b:${Date.now()}`);
-                onVote(match.match_id, match.cat_b.id);
-                window.setTimeout(() => setPressedSide(null), 220);
-              }}
-              aria-label={`Vote for ${match.cat_b.name}`}
-              className={`mt-1.5 h-9 w-full rounded-lg border border-white/20 bg-white/8 text-white text-[11px] font-semibold inline-flex items-center justify-center gap-1.5 transition-transform duration-100 hover:bg-white/12 ${pressedSide === 'b' ? 'scale-[0.98]' : ''}`}
-            >
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
-              {isVoting ? "Submitting…" : "Vote B"}
-            </button>
-          )}
-          {voted === match.cat_b.id && (
-            <div className="mt-1.5 h-8 w-full rounded-lg border border-white/15 bg-white/6 text-white/85 text-[11px] font-semibold flex items-center justify-center gap-1.5">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
-              <Check className="w-3 h-3" /> Voted
-            </div>
-          )}
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-[11px] text-white/60">
-        <span>{statusLine}</span>
-        <span className="tabular-nums">{displayPct.a}% · {displayPct.b}%</span>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          onClick={() => void commitVote(match.cat_a.id)}
+          aria-label={`Vote for ${match.cat_a.name}`}
+          disabled={!canVote}
+          className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
+        >
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
+          {voteStage === 'pending' && selectedSide === 'a' ? 'Submitting…' : voted === match.cat_a.id ? 'Voted A' : (isVoting ? "Voting..." : "Vote A")}
+        </button>
+        <button
+          onClick={() => void commitVote(match.cat_b.id)}
+          aria-label={`Vote for ${match.cat_b.name}`}
+          disabled={!canVote}
+          className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
+        >
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
+          {voteStage === 'pending' && selectedSide === 'b' ? 'Submitting…' : voted === match.cat_b.id ? 'Voted B' : (isVoting ? "Voting..." : "Vote B")}
+        </button>
       </div>
-      <div className="mt-1">
-        {edgePct <= 3 ? (
-          <span className="inline-flex px-2 py-0.5 rounded-full bg-white/10 text-[10px] text-white/75">Stat Edge: Balanced</span>
+
+      <div className="mt-2 flex items-center justify-between text-[10px] text-white/70">
+        {match.is_close_match ? (
+          <span className="inline-flex px-2 py-0.5 rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">Close Match</span>
         ) : (
-          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] ${strongerA ? 'bg-blue-500/20 text-blue-200' : 'bg-red-500/20 text-red-200'}`}>
-            Stat Edge: {strongerA ? 'A' : 'B'} +{edgePct}%
+          <span className={`inline-flex px-2 py-0.5 rounded-full border ${strongerA ? 'border-blue-300/35 bg-blue-500/12 text-blue-100' : 'border-rose-300/35 bg-rose-500/12 text-rose-100'}`}>
+            Edge: {strongerA ? 'A' : 'B'} +{edgePct}%
           </span>
         )}
+        <span className="tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
       </div>
-      <div className="mt-1 flex items-center justify-between">
-        <button
-          onClick={() => setDetailsOpen((v) => !v)}
-          className="text-[10px] px-2 py-1 rounded-full border border-white/15 bg-white/6 text-white/75"
-        >
-          {detailsOpen ? 'Hide details' : 'Expand details'}
-        </button>
-        {!isComplete && match.is_close_match && (
-          <span className="text-[10px] px-2 py-1 rounded-full border border-amber-300/35 bg-amber-500/15 text-amber-100">Close match</span>
-        )}
-        {!isComplete && !match.is_close_match && (
-          <span className="text-[10px] px-2 py-1 rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">Upset potential</span>
-        )}
-      </div>
-      <div className="mt-1 h-1.5 rounded-full overflow-hidden flex bg-white/5">
+
+      <div className="mt-1 h-1 rounded-full overflow-hidden flex bg-white/5">
         <div className={`bg-blue-500 transition-all duration-300 ${voted === match.cat_a.id ? 'shadow-[0_0_10px_rgba(59,130,246,0.55)]' : ''}`} style={{ width: `${displayPct.a}%` }} />
         <div className={`bg-red-500 transition-all duration-300 ${voted === match.cat_b.id ? 'shadow-[0_0_10px_rgba(239,68,68,0.55)]' : ''}`} style={{ width: `${displayPct.b}%` }} />
       </div>
 
-      {!isComplete && (
-        <div className="mt-2">
-          <div className="flex gap-1.5 mb-1.5">
-            {[5, 10, 15, 20].map((chip) => (
-              <button
-                key={`${match.match_id}-${chip}`}
-                disabled={chip > availableSigils || !!predictedCatId}
-                onClick={() => setBet(chip)}
-                className={`h-7 px-2 rounded-full text-[10px] border inline-flex items-center justify-center ${bet === chip ? 'border-amber-300 text-amber-200 bg-amber-500/15' : 'border-white/15 text-white/70 bg-white/5'} disabled:opacity-40`}
-              >
-                {chip}
-              </button>
-            ))}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        {!isComplete && !predictedCatId ? (
+          <button
+            onClick={() => setPredictOpen(true)}
+            aria-label="Open prediction panel"
+            className="h-9 px-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 text-cyan-100 text-[11px] font-semibold inline-flex items-center justify-center"
+          >
+            🔮 Predict
+          </button>
+        ) : (
+          <div className="h-9 inline-flex items-center">
+            {(predictedCatId || predictConfirmed) && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
+                Predicted +<SigilIcon className="w-3 h-3" />{match.user_prediction?.bet_sigils || bet}
+              </span>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+        )}
+        <button
+          onClick={() => setDetailsOpen((v) => !v)}
+          className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-[11px] font-semibold inline-flex items-center gap-1"
+          aria-label={detailsOpen ? 'Hide analyze section' : 'Open analyze section'}
+        >
+          {detailsOpen ? 'Hide' : 'Analyze'}
+          <span className={`transition-transform duration-150 ${detailsOpen ? 'rotate-180' : ''}`}>⌄</span>
+        </button>
+      </div>
+      {(hasVoted || voteConfirm || voteQueued || votePending) && (
+        <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+          {voteStage === 'pending' ? (
+            <span className="inline-flex px-2 py-0.5 rounded-full border border-cyan-300/30 bg-cyan-500/12 text-cyan-100">
+              Submitting…
+            </span>
+          ) : hasVoted ? (
+            <span className="inline-flex px-2 py-0.5 rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-100">
+              Voted ✅
+            </span>
+          ) : voteConfirm ? (
+            <span className="inline-flex px-2 py-0.5 rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-100">
+              Voted ✓
+            </span>
+          ) : null}
+          {voteQueued ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-flex px-2 py-0.5 rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">Queued</span>
+              {onRefreshQueued ? (
+                <button onClick={onRefreshQueued} className="underline text-cyan-200">Refresh</button>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
+      )}
+
+      {predictOpen && !isComplete && !predictedCatId && (
+        <>
+          <button
+            type="button"
+            aria-label="Close predict panel"
+            onClick={() => setPredictOpen(false)}
+            className="sm:hidden fixed inset-0 z-[88] bg-black/45"
+          />
+          <div className="fixed sm:static inset-x-0 bottom-0 z-[89] sm:z-auto sm:mt-2">
+            <div className="rounded-t-2xl sm:rounded-2xl border border-cyan-300/25 bg-[#05131e] p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.45)]">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[12px] font-semibold text-cyan-100">Predict Winner</p>
+                <button onClick={() => setPredictOpen(false)} className="h-7 px-2 rounded-md border border-white/15 bg-white/8 text-[10px] text-white/80">Close</button>
+              </div>
+              <p className="text-[10px] text-white/65">P(A)={displayPct.a}% • up to {payoutA}× · P(B)={displayPct.b}% • up to {payoutB}×</p>
+              {(underdogA || underdogB) && <p className="mt-1 text-[10px] text-amber-200">Underdogs pay more</p>}
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                {[5, 10, 15, 20].map((chip) => (
+                  <button
+                    key={`${match.match_id}-sheet-${chip}`}
+                    disabled={chip > availableSigils}
+                    onClick={() => setBet(chip)}
+                    className={`h-8 rounded-lg text-[10px] border ${bet === chip ? 'border-amber-300 text-amber-200 bg-amber-500/15' : 'border-white/15 text-white/70 bg-white/5'} disabled:opacity-40`}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  disabled={predictBusy || bet > availableSigils}
+                  onClick={async () => {
+                    const ok = await onPredict(match.match_id, match.cat_a.id, bet);
+                    if (ok) setPredictOpen(false);
+                  }}
+                  aria-label={`Predict ${match.cat_a.name} for ${bet} sigils`}
+                  className="h-11 rounded-lg bg-blue-500/15 text-blue-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
+                >
+                  Predict A (+<SigilIcon className="w-3 h-3" />{bet})
+                </button>
+                <button
+                  disabled={predictBusy || bet > availableSigils}
+                  onClick={async () => {
+                    const ok = await onPredict(match.match_id, match.cat_b.id, bet);
+                    if (ok) setPredictOpen(false);
+                  }}
+                  aria-label={`Predict ${match.cat_b.name} for ${bet} sigils`}
+                  className="h-11 rounded-lg bg-red-500/15 text-red-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
+                >
+                  Predict B (+<SigilIcon className="w-3 h-3" />{bet})
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {detailsOpen && (
+        <div className="mt-2 rounded-xl border border-white/10 bg-black/25 p-2.5 space-y-2">
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-cyan-100">Power A: {Math.round(aPower)}</span>
+              <span className="text-cyan-100">Power B: {Math.round(bPower)}</span>
+            </div>
+            <div className="mt-1 h-1 rounded-full overflow-hidden bg-white/10 flex">
+              <div className="bg-blue-500" style={{ width: `${Math.max(8, strongerA ? 50 + edgePct : 50 - edgePct)}%` }} />
+              <div className="bg-rose-500" style={{ width: `${Math.max(8, strongerA ? 50 - edgePct : 50 + edgePct)}%` }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1 text-[10px]">
+            <span className="text-white/55">Stat</span>
+            <span className="text-blue-200 text-right">A</span>
+            <span className="text-rose-200 text-right">B</span>
+            <span className="text-red-200">ATK</span><span className="text-right">{statsA.attack}</span><span className="text-right">{statsB.attack}</span>
+            <span className="text-cyan-200">DEF</span><span className="text-right">{statsA.defense}</span><span className="text-right">{statsB.defense}</span>
+            <span className="text-emerald-200">SPD</span><span className="text-right">{statsA.speed}</span><span className="text-right">{statsB.speed}</span>
+            <span className="text-violet-200">CHA</span><span className="text-right">{statsA.charisma}</span><span className="text-right">{statsB.charisma}</span>
+            <span className="text-amber-200">CHS</span><span className="text-right">{statsA.chaos}</span><span className="text-right">{statsB.chaos}</span>
+          </div>
+
+          <p className="text-[10px] text-white/65">{edgePct <= 3 ? 'Stat edge is balanced.' : `${strongerA ? match.cat_a.name : match.cat_b.name} has a ${edgePct}% stat edge.`}</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+              <p className="text-[10px] text-white/60 mb-1">{match.cat_a.name} cosmetics</p>
+              <div className="space-y-1">
+                {cosmeticsA.slice(0, 4).map((c) => (
+                  <div key={`a-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="truncate">{c.icon} {c.label}</span>
+                    {c.previewable ? <button onClick={() => setPreviewToast(`${c.label} preview`)} className="px-1.5 py-0.5 rounded border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Preview</button> : null}
+                  </div>
+                ))}
+                {cosmeticsA.length === 0 && <p className="text-[10px] text-white/45">No cosmetics equipped</p>}
+              </div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+              <p className="text-[10px] text-white/60 mb-1">{match.cat_b.name} cosmetics</p>
+              <div className="space-y-1">
+                {cosmeticsB.slice(0, 4).map((c) => (
+                  <div key={`b-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="truncate">{c.icon} {c.label}</span>
+                    {c.previewable ? <button onClick={() => setPreviewToast(`${c.label} preview`)} className="px-1.5 py-0.5 rounded border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Preview</button> : null}
+                  </div>
+                ))}
+                {cosmeticsB.length === 0 && <p className="text-[10px] text-white/45">No cosmetics equipped</p>}
+              </div>
+            </div>
+          </div>
+
+          <div>
             <button
-              disabled={!!predictedCatId || predictBusy || bet > availableSigils}
-              onClick={() => onPredict(match.match_id, match.cat_a.id, bet)}
-              aria-label={`Predict ${match.cat_a.name} for ${bet} sigils`}
-              className="h-8 rounded-lg bg-blue-500/15 text-blue-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
+              onClick={() => {
+                const nextOpen = !commentsOpen;
+                setCommentsOpen(nextOpen);
+                if (nextOpen && !commentsLoaded && !commentsBusy) {
+                  loadComments();
+                }
+              }}
+              className="h-9 px-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white/85 text-[11px] font-semibold inline-flex items-center gap-1.5"
             >
-              {predictedCatId === match.cat_a.id ? (
-                <span className="inline-flex items-center justify-center gap-1">
-                  Predicted
-                  <span className="inline-flex items-center gap-0.5">
-                    +
-                    <SigilIcon className="w-3 h-3" />
-                    {match.user_prediction?.bet_sigils || bet}
-                  </span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center justify-center gap-1">
-                  Predict A
-                  <span className="inline-flex items-center gap-0.5">
-                    (
-                    +
-                    <SigilIcon className="w-3 h-3" />
-                    {bet}
-                    )
-                  </span>
-                </span>
-              )}
-            </button>
-            <button
-              disabled={!!predictedCatId || predictBusy || bet > availableSigils}
-              onClick={() => onPredict(match.match_id, match.cat_b.id, bet)}
-              aria-label={`Predict ${match.cat_b.name} for ${bet} sigils`}
-              className="h-8 rounded-lg bg-red-500/15 text-red-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
-            >
-              {predictedCatId === match.cat_b.id ? (
-                <span className="inline-flex items-center justify-center gap-1">
-                  Predicted
-                  <span className="inline-flex items-center gap-0.5">
-                    +
-                    <SigilIcon className="w-3 h-3" />
-                    {match.user_prediction?.bet_sigils || bet}
-                  </span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center justify-center gap-1">
-                  Predict B
-                  <span className="inline-flex items-center gap-0.5">
-                    (
-                    +
-                    <SigilIcon className="w-3 h-3" />
-                    {bet}
-                    )
-                  </span>
-                </span>
-              )}
+              <MessageCircle className="w-3.5 h-3.5" />
+              Comments {comments.length > 0 ? `(${comments.length})` : ''}
             </button>
           </div>
-          <div className="mt-1.5 flex items-center justify-between text-[10px]">
-            <span className="text-orange-200/85">{voteStreak > 1 ? `🔥 x${voteStreak}` : '🔥 x1'}</span>
-            <span className="text-white/45">{match.votes_a}-{match.votes_b} votes</span>
-          </div>
-          {predictedCatId && (
-            <div className="mt-1 text-[10px]">
-              <span className="inline-flex px-2 py-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Return at next Pulse</span>
+
+          {commentsOpen && (
+            <div className="rounded-xl border border-white/10 bg-black/25 p-2.5">
+              {commentsDisabled ? (
+                <p className="text-[11px] text-white/50">Comments are not enabled yet on this deployment.</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      maxLength={240}
+                      placeholder="Say something..."
+                      className="flex-1 h-9 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white placeholder:text-white/35 focus:outline-none focus:border-white/25"
+                    />
+                    <button
+                      disabled={commentPosting || !commentText.trim()}
+                      onClick={handlePostComment}
+                      className="h-9 px-3 rounded-lg bg-cyan-500/20 border border-cyan-300/30 text-cyan-200 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+                    >
+                      {commentPosting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                      Send
+                    </button>
+                  </div>
+                  {commentError && <p className="text-[11px] text-red-300 mt-1.5">{commentError}</p>}
+                  <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {commentsBusy && <p className="text-[11px] text-white/50">Loading comments...</p>}
+                    {!commentsBusy && comments.length === 0 && (
+                      <p className="text-[11px] text-white/45">No comments yet. Start the thread.</p>
+                    )}
+                    {comments.map((c) => (
+                      <div key={c.id} className={`rounded-lg bg-white/[0.04] border p-2 ${commentBorderClassFromBorderSlug(c.commenter_cosmetics?.border_slug)}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex items-center gap-1.5">
+                            <p className={`text-[11px] font-semibold truncate ${commentTextClassFromColorSlug(c.commenter_cosmetics?.color_slug)}`}>{c.username || 'Guest'}</p>
+                            {c.commenter_cosmetics?.title && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-yellow-400/35 bg-yellow-500/15 text-yellow-200 shrink-0">
+                                {c.commenter_cosmetics.title}
+                              </span>
+                            )}
+                            {String(c.commenter_cosmetics?.color_slug || '').startsWith('vote-') && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-cyan-300/35 bg-cyan-500/15 text-cyan-200 shrink-0">
+                                ✨ Effect
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-white/45 shrink-0">{relativeTime(c.created_at)}</p>
+                        </div>
+                        <p className="text-[11px] text-white/75 mt-0.5 break-words">{c.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
       )}
+
       {hasVoted && socialEnabled && (
         <div className="mt-2">
           <button
@@ -657,82 +994,16 @@ function MatchCard({
               if (!voted) return;
               onCreateCallout(match.match_id, voted);
             }}
-            className="h-8 px-3 rounded-lg bg-cyan-500/15 text-cyan-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-50"
+            className="h-9 px-3 rounded-lg bg-cyan-500/15 text-cyan-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-50"
           >
             {calloutBusy ? 'Creating...' : 'Create Callout'}
           </button>
         </div>
       )}
 
-      <div className="mt-2.5">
-        <button
-          onClick={() => {
-            const nextOpen = !commentsOpen;
-            setCommentsOpen(nextOpen);
-            if (nextOpen && !commentsLoaded && !commentsBusy) {
-              loadComments();
-            }
-          }}
-          className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white/85 text-[11px] font-semibold inline-flex items-center gap-1.5"
-        >
-          <MessageCircle className="w-3.5 h-3.5" />
-          Comments {comments.length > 0 ? `(${comments.length})` : ''}
-        </button>
-      </div>
-
-      {commentsOpen && (
-        <div className="mt-2 rounded-xl border border-white/10 bg-black/25 p-2.5">
-          {commentsDisabled ? (
-            <p className="text-[11px] text-white/50">Comments are not enabled yet on this deployment.</p>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <input
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  maxLength={240}
-                  placeholder="Say something..."
-                  className="flex-1 h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white placeholder:text-white/35 focus:outline-none focus:border-white/25"
-                />
-                <button
-                  disabled={commentPosting || !commentText.trim()}
-                  onClick={handlePostComment}
-                  className="h-8 px-3 rounded-lg bg-cyan-500/20 border border-cyan-300/30 text-cyan-200 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
-                >
-                  {commentPosting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                  Send
-                </button>
-              </div>
-              {commentError && <p className="text-[11px] text-red-300 mt-1.5">{commentError}</p>}
-              <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                {commentsBusy && <p className="text-[11px] text-white/50">Loading comments...</p>}
-                {!commentsBusy && comments.length === 0 && (
-                  <p className="text-[11px] text-white/45">No comments yet. Start the thread.</p>
-                )}
-                {comments.map((c) => (
-                  <div key={c.id} className={`rounded-lg bg-white/[0.04] border p-2 ${commentBorderClassFromBorderSlug(c.commenter_cosmetics?.border_slug)}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex items-center gap-1.5">
-                        <p className={`text-[11px] font-semibold truncate ${commentTextClassFromColorSlug(c.commenter_cosmetics?.color_slug)}`}>{c.username || 'Guest'}</p>
-                        {c.commenter_cosmetics?.title && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-yellow-400/35 bg-yellow-500/15 text-yellow-200 shrink-0">
-                            {c.commenter_cosmetics.title}
-                          </span>
-                        )}
-                        {String(c.commenter_cosmetics?.color_slug || '').startsWith('vote-') && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-cyan-300/35 bg-cyan-500/15 text-cyan-200 shrink-0">
-                            ✨ Effect
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-white/45 shrink-0">{relativeTime(c.created_at)}</p>
-                    </div>
-                    <p className="text-[11px] text-white/75 mt-0.5 break-words">{c.body}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+      {predictedCatId && (
+        <div className="mt-1 text-[10px]">
+          <span className="inline-flex px-2 py-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Return at next Pulse</span>
         </div>
       )}
       {isExiting && (
@@ -744,7 +1015,7 @@ function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, voteEffectSlug, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown,
+  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   votingMatch: string | null;
@@ -754,11 +1025,12 @@ function ArenaSection({
   availableSigils: number;
   voteStreak: number;
   hotMatchBiasEnabled?: boolean;
-  voteEffectSlug?: string | null;
   globalPageInfo?: GlobalArenaPageInfo | null;
   pulseCountdown?: string;
-  onVote: (matchId: string, catId: string) => void;
-  onPredict: (matchId: string, catId: string, bet: number) => void;
+  onSwitchArena?: (arena: 'main' | 'rookie') => void;
+  debugInfo?: ArenaInventoryDebug | null;
+  onVote: (matchId: string, catId: string) => Promise<boolean>;
+  onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
   onRequestMore?: () => Promise<ArenaRefreshResult>;
 }) {
@@ -767,10 +1039,13 @@ function ArenaSection({
   const [stackIds, setStackIds] = useState<string[]>([]);
   const [cursor, setCursor] = useState(0);
   const [exitingId, setExitingId] = useState<string | null>(null);
+  const [queuedVotes, setQueuedVotes] = useState<Record<string, boolean>>({});
+  const [nextUpId, setNextUpId] = useState<string | null>(null);
   const [stackReady, setStackReady] = useState(false);
-  const processedVotedRef = useRef<Set<string>>(new Set());
-  const firstPageIdsRef = useRef<string[]>([]);
   const cursorRef = useRef(0);
+  const autoTopupBusyRef = useRef(false);
+  const lastAutoTopupAtRef = useRef(0);
+  const lowInventoryRetryKeyRef = useRef('');
   const MAX_VISIBLE = 4;
   const currentRound = arena.rounds.find((r) => r.round === arena.current_round);
   const voting = (currentRound?.matches || []).filter((m) => !isByeMatch(m) && m.status === "active");
@@ -806,21 +1081,69 @@ function ArenaSection({
     return scored.sort((a, b) => (b.energy - a.energy) || (a.margin - b.margin)).map((x) => x.m);
   }, [arena.type, globalPageInfo, hotMatchBiasEnabled, voting]);
 
-  const votingById = useMemo(() => new Map(orderedVoting.map((m) => [m.match_id, m])), [orderedVoting]);
+  const visiblePageOrder = useMemo(() => {
+    if (orderedVoting.length <= 4) return orderedVoting;
+    const out: ArenaMatch[] = [];
+    const used = new Set<string>();
+
+    for (let i = 0; i < orderedVoting.length; i += 4) {
+      const window = orderedVoting
+        .slice(i, i + 12)
+        .filter((m) => !used.has(String(m.match_id || "")));
+      const picked = pickFairMatches(window, 4, {
+        maxPerOwner: 1,
+        avoidSameOwnerMatch: true,
+      });
+
+      if (picked.length > 0) {
+        for (const m of picked) {
+          const id = String(m.match_id || "");
+          if (!id || used.has(id)) continue;
+          used.add(id);
+          out.push(m);
+        }
+      } else {
+        const fallback = window.slice(0, 4);
+        for (const m of fallback) {
+          const id = String(m.match_id || "");
+          if (!id || used.has(id)) continue;
+          used.add(id);
+          out.push(m);
+        }
+      }
+    }
+
+    // Keep any unconsumed matches reachable for graceful degradation.
+    for (const m of orderedVoting) {
+      const id = String(m.match_id || "");
+      if (!id || used.has(id)) continue;
+      used.add(id);
+      out.push(m);
+    }
+    return out;
+  }, [orderedVoting]);
+
+  const votingById = useMemo(() => new Map(visiblePageOrder.map((m) => [m.match_id, m])), [visiblePageOrder]);
   const resultsList = useMemo(() => results.slice(0, MAX_VISIBLE), [results]);
   const activeVoting = useMemo(
     () =>
       stackIds
         .map((id) => votingById.get(id))
         .filter((m): m is ArenaMatch => !!m)
-        .filter((m) => !votedMatches[m.match_id]),
-    [stackIds, votingById, votedMatches]
+        .filter((m) => !votedMatches[m.match_id] || !!queuedVotes[m.match_id]),
+    [queuedVotes, stackIds, votingById, votedMatches]
   );
   const activeList = segment === "voting" ? activeVoting : resultsList;
+  const totalVotableCount = useMemo(() => visiblePageOrder.length, [visiblePageOrder]);
+  const remainingForUserCount = useMemo(
+    () => visiblePageOrder.filter((m) => !votedMatches[m.match_id]).length,
+    [visiblePageOrder, votedMatches]
+  );
+  const userCaughtUp = segment === "voting" && totalVotableCount > 0 && remainingForUserCount === 0;
 
   function pullNextMatchId(excluded: Set<string>): string | null {
-    for (let i = cursorRef.current; i < orderedVoting.length; i += 1) {
-      const id = orderedVoting[i]?.match_id;
+    for (let i = cursorRef.current; i < visiblePageOrder.length; i += 1) {
+      const id = visiblePageOrder[i]?.match_id;
       if (!id) continue;
       if (excluded.has(id)) continue;
       if (votedMatches[id]) continue;
@@ -844,13 +1167,21 @@ function ArenaSection({
     return next;
   }
 
-  function replaceCard(matchId: string) {
+  function replaceCard(matchId: string, onResolved?: (result: { replaced: boolean; insertedId: string | null }) => void) {
     setStackIds((prev) => {
       const index = prev.indexOf(matchId);
-      if (index < 0) return fillStackToFour(prev);
+      if (index < 0) {
+        const filled = fillStackToFour(prev);
+        onResolved?.({ replaced: filled.length >= prev.length, insertedId: null });
+        return filled;
+      }
       const next = [...prev];
       next.splice(index, 1);
-      return fillStackToFour(next);
+      const filled = fillStackToFour(next);
+      const replaced = filled.length >= prev.length;
+      const insertedId = replaced ? filled[index] || null : null;
+      onResolved?.({ replaced, insertedId });
+      return filled;
     });
   }
 
@@ -870,8 +1201,8 @@ function ArenaSection({
     const votedSet = new Set(Object.keys(votedMatches));
     const initial: string[] = [];
     let i = 0;
-    for (; i < orderedVoting.length && initial.length < MAX_VISIBLE; i += 1) {
-      const id = orderedVoting[i]?.match_id;
+    for (; i < visiblePageOrder.length && initial.length < MAX_VISIBLE; i += 1) {
+      const id = visiblePageOrder[i]?.match_id;
       if (!id || votedSet.has(id)) continue;
       initial.push(id);
     }
@@ -879,25 +1210,10 @@ function ArenaSection({
     setCursor(i);
     setExitingId(null);
     setStackIds(initial);
+    setQueuedVotes({});
+    setNextUpId(null);
     setStackReady(true);
-    firstPageIdsRef.current = initial;
-    processedVotedRef.current = new Set(
-      orderedVoting.map((m) => m.match_id).filter((id) => votedSet.has(id))
-    );
-  }, [arena.tournament_id, orderedVoting, segment, votedMatches]);
-
-  useEffect(() => {
-    if (segment !== 'voting') return;
-    if (exitingId) return;
-    const newlyVotedVisible = stackIds.find((id) => votedMatches[id] && !processedVotedRef.current.has(id));
-    if (!newlyVotedVisible) return;
-    processedVotedRef.current.add(newlyVotedVisible);
-    setExitingId(newlyVotedVisible);
-    window.setTimeout(() => {
-      replaceCard(newlyVotedVisible);
-      setExitingId((current) => (current === newlyVotedVisible ? null : current));
-    }, 150);
-  }, [exitingId, segment, stackIds, votedMatches]);
+  }, [arena.tournament_id, segment, visiblePageOrder]);
 
   useEffect(() => {
     if (!globalPageInfo) return;
@@ -926,8 +1242,8 @@ function ArenaSection({
     if (exitingId) return;
     const hasVotedCardsInStack = stackIds.some((id) => !!votedMatches[id]);
     if (!hasVotedCardsInStack) return;
-    setStackIds((prev) => fillStackToFour(prev.filter((id) => !votedMatches[id])));
-  }, [exitingId, segment, stackIds, votedMatches]);
+    setStackIds((prev) => fillStackToFour(prev.filter((id) => !votedMatches[id] || !!queuedVotes[id])));
+  }, [exitingId, queuedVotes, segment, stackIds, votedMatches]);
 
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -935,7 +1251,7 @@ function ArenaSection({
     if (topped.length !== stackIds.length) {
       setStackIds(topped);
     }
-  }, [segment, stackIds, votedMatches, orderedVoting]);
+  }, [segment, stackIds, visiblePageOrder, votedMatches]);
 
   const arenaFeed = useArenaMatches({
     arenaType: String(arena.type || 'main'),
@@ -1064,20 +1380,44 @@ function ArenaSection({
               availableSigils={availableSigils}
               voteStreak={voteStreak}
               isExiting={segment === 'voting' && exitingId === match.match_id}
-              voteEffectSlug={voteEffectSlug || null}
-              onVote={(matchId, catId) => {
+              voteQueued={!!queuedVotes[match.match_id]}
+              showNextUp={nextUpId === match.match_id}
+              onRefreshQueued={() => {
+                setQueuedVotes((prev) => {
+                  const next = { ...prev };
+                  delete next[match.match_id];
+                  return next;
+                });
+                void arenaFeed.refresh();
+              }}
+              onVote={async (matchId, catId) => {
+                const ok = await onVote(matchId, catId);
+                if (!ok) return false;
                 if (segment === 'voting' && !exitingId) {
-                  setExitingId(matchId);
                   const CONFIRMED_HOLD_MS = 950;
                   const EXIT_ANIMATION_MS = 320;
+                  setExitingId(matchId);
                   window.setTimeout(() => {
-                    replaceCard(matchId);
-                    window.setTimeout(() => {
-                      setExitingId((current) => (current === matchId ? null : current));
-                    }, EXIT_ANIMATION_MS);
+                    replaceCard(matchId, (result) => {
+                      if (!result.replaced) {
+                        setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
+                      } else if (result.insertedId) {
+                        setQueuedVotes((prev) => {
+                          if (!prev[matchId]) return prev;
+                          const next = { ...prev };
+                          delete next[matchId];
+                          return next;
+                        });
+                        setNextUpId(result.insertedId);
+                        window.setTimeout(() => setNextUpId((id) => (id === result.insertedId ? null : id)), 800);
+                      }
+                      window.setTimeout(() => {
+                        setExitingId((current) => (current === matchId ? null : current));
+                      }, EXIT_ANIMATION_MS);
+                    });
                   }, CONFIRMED_HOLD_MS);
                 }
-                onVote(matchId, catId);
+                return true;
               }}
               onPredict={onPredict}
               onCreateCallout={onCreateCallout}
@@ -1270,6 +1610,12 @@ export default function Page() {
   });
   const pageMatchIdsRef = useRef<Record<'main' | 'rookie', string[]>>({ main: [], rookie: [] });
   const pollSinceRef = useRef<Record<'main' | 'rookie', number>>({ main: 0, rookie: 0 });
+  const arenaVersionRef = useRef<Record<'main' | 'rookie', string>>({ main: '', rookie: '' });
+  const duelVersionRef = useRef<string>('');
+  const statusBurstUntilRef = useRef<number>(0);
+  const duelSectionRef = useRef<HTMLDivElement | null>(null);
+  const [duelSectionInView, setDuelSectionInView] = useState(false);
+  const lowEgressMode = process.env.NEXT_PUBLIC_LOW_EGRESS === '1';
 
   useEffect(() => { loadAll(); }, []);
   useEffect(() => {
@@ -1688,10 +2034,21 @@ export default function Page() {
     }
   }
 
-  async function handleVote(matchId: string, catId: string) {
-    if (votingMatch || votedMatches[matchId]) return;
+  async function handleVote(matchId: string, catId: string): Promise<boolean> {
+    if (votingMatch || votedMatches[matchId]) return false;
     setVotingMatch(matchId);
     setError(null);
+    setVotedMatches((prev) => {
+      const next = upsertVotedMatch(prev, matchId, catId);
+      writeVotedMatchesToStorage(next);
+      const arenaType = arenas.find((a) =>
+        (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
+      )?.type as 'main' | 'rookie' | undefined;
+      if (arenaType === 'main' || arenaType === 'rookie') {
+        persistCurrentArenaProgress(arenaType, next);
+      }
+      return next;
+    });
     try {
       const r = await fetch("/api/vote", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1700,10 +2057,23 @@ export default function Page() {
       const data = await r.json().catch(() => null);
       if (!r.ok || !data?.ok) {
         const msg = data?.error || "Vote failed";
-        if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("duplicate")) {
-          setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
+                if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("duplicate")) {
+          statusBurstUntilRef.current = Date.now() + 20_000;
+          setVotedMatches((prev) => {
+            const next = upsertVotedMatch(prev, matchId, catId);
+            writeVotedMatchesToStorage(next);
+            return next;
+          });
+          showToast("Vote registered ✅");
+          return true;
         }
+        setVotedMatches((prev) => {
+          const next = removeVotedMatch(prev, matchId);
+          writeVotedMatchesToStorage(next);
+          return next;
+        });
         showToast("Vote failed — try again");
+        return false;
       } else {
         const nowMs = Date.now();
         setVoteStreak((prev) => {
@@ -1739,7 +2109,8 @@ export default function Page() {
           }
         }
         setVotedMatches((prev) => {
-          const next = { ...prev, [matchId]: catId };
+          const next = upsertVotedMatch(prev, matchId, catId);
+          writeVotedMatchesToStorage(next);
           const arenaType = arenas.find((a) =>
             (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
           )?.type as 'main' | 'rookie' | undefined;
@@ -1916,8 +2287,8 @@ export default function Page() {
     }
   }, [openMissionKey, missionBoardOpen]);
 
-  async function handlePredict(matchId: string, catId: string, bet: number) {
-    if (predictBusyMatch) return;
+  async function handlePredict(matchId: string, catId: string, bet: number): Promise<boolean> {
+    if (predictBusyMatch) return false;
     setPredictBusyMatch(matchId);
     try {
       const r = await fetch('/api/match/predict', {
@@ -1928,6 +2299,7 @@ export default function Page() {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data?.ok) {
         showToast(data?.error || 'Prediction failed');
+        return false;
       } else {
         setProgress((p) => p ? { ...p, sigils: Number(data.sigils_after ?? p.sigils), predictionStreak: Number(data.current_streak ?? p.predictionStreak) } : p);
         showToast(`Prediction locked (-${bet})`);
@@ -1935,9 +2307,11 @@ export default function Page() {
         setArenas(updated.arenas);
         setVotedMatches((prev) => ({ ...prev, ...updated.votedMatches }));
         refreshGettingStarted();
+        return true;
       }
     } catch {
       showToast("Network error");
+      return false;
     } finally {
       setPredictBusyMatch(null);
     }
