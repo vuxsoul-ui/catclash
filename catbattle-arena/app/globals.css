@@ -100,6 +100,10 @@ body {
   pointer-events: auto;
 }
 
+.tap-target {
+  touch-action: manipulation;
+}
+
 @media (max-width: 374px) {
   .global-toast-bubble {
     max-width: calc(100vw - 20px);
