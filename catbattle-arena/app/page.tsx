@@ -19,6 +19,7 @@ import { computePowerRating, getMoveMeaning } from "./_lib/combat";
 import { Button, Card, SectionHeader } from "./components/ui/primitives";
 import { useArenaMatches } from "./hooks/useArenaMatches";
 import { warnOnce } from "./lib/dev-click-guards";
+import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
 
 // Types
 interface UserProgress {
@@ -1839,6 +1840,11 @@ export default function Page() {
     }, 260);
     return () => window.clearTimeout(timer);
   }, [arenas, arenaTypeTab, liveDuels, loading]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const timer = window.setTimeout(() => scanDuplicateTestIds("home"), 140);
+    return () => window.clearTimeout(timer);
+  }, [arenas, arenaTypeTab, showClaimNamePrompt]);
 
   function handleClutchSignal(label: string) {
     if (!clutchSharePromptEnabled) return;
