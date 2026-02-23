@@ -13,6 +13,9 @@ import {
   Users,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
+import { checkTapTarget, warnOnce } from '../lib/dev-click-guards';
+import { scanDuplicateTestIds } from '../lib/dev-testid-guard';
 
 export default function Nav() {
   const pathname = usePathname();
@@ -48,6 +51,45 @@ export default function Nav() {
         // ignore
       });
     return () => { alive = false; };
+  }, [pathname]);
+
+  useEffect(() => {
+    runIdentityResolutionChecks();
+    if (process.env.NODE_ENV === 'production') return;
+    const timer = window.setTimeout(() => {
+      const noise = document.querySelector('.noise-overlay') as HTMLElement | null;
+      const watermark = document.querySelector('.vuxsolia-watermark') as HTMLElement | null;
+      const toastHost = document.querySelector('.global-toast-host') as HTMLElement | null;
+      const touchTarget = document.elementFromPoint(
+        Math.floor(window.innerWidth * 0.5),
+        Math.max(0, window.innerHeight - 8)
+      ) as HTMLElement | null;
+      const pointerSafe =
+        (!noise || getComputedStyle(noise).pointerEvents === 'none') &&
+        (!watermark || getComputedStyle(watermark).pointerEvents === 'none') &&
+        (!toastHost || getComputedStyle(toastHost).pointerEvents === 'none');
+      if (!pointerSafe) {
+        warnOnce('overlay-pointer-safe', '[DEV_CHECK] Overlay layers must keep pointer-events: none');
+      }
+      const isAnchor = touchTarget?.tagName === 'A' || !!touchTarget?.closest('a');
+      if (!isAnchor) {
+        warnOnce('nav-bottom-probe', '[DEV_CHECK] Bottom viewport click target should resolve to a nav anchor', {
+          tag: touchTarget?.tagName || null,
+          className: touchTarget?.className || null,
+        });
+      }
+
+      checkTapTarget({ key: 'nav-home-hit', selector: '[data-testid="nav-home"]', expect: ['A'] });
+      checkTapTarget({ key: 'nav-duel-hit', selector: '[data-testid="nav-duel"]', expect: ['A'] });
+      checkTapTarget({ key: 'nav-profile-hit', selector: '[data-testid="nav-profile"]', expect: ['A'] });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const timer = window.setTimeout(() => scanDuplicateTestIds('nav'), 120);
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   const mobilePrimaryLinks = [
