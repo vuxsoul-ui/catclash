@@ -388,7 +388,7 @@ function MatchCard({
   }
 
   return (
-    <div className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 active:scale-[0.995] transition-all duration-150 ${hasVoted || isComplete ? "opacity-65" : ""} ${isExiting ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+    <div className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 active:scale-[0.995] transition-all duration-300 ease-out ${hasVoted || isComplete ? "opacity-65" : ""} ${isExiting ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
       <VoteEffectLayer
         effectSlug={voteEffectSlug || null}
         triggerKey={voteEffectTriggerKey}
@@ -453,7 +453,7 @@ function MatchCard({
               className={`mt-1.5 h-9 w-full rounded-lg border border-white/20 bg-white/8 text-white text-[11px] font-semibold inline-flex items-center justify-center gap-1.5 transition-transform duration-100 hover:bg-white/12 ${pressedSide === 'a' ? 'scale-[0.98]' : ''}`}
             >
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
-              {isVoting ? "Voting..." : "Vote A"}
+              {isVoting ? "Submitting…" : "Vote A"}
             </button>
           )}
           {voted === match.cat_a.id && (
@@ -522,7 +522,7 @@ function MatchCard({
               className={`mt-1.5 h-9 w-full rounded-lg border border-white/20 bg-white/8 text-white text-[11px] font-semibold inline-flex items-center justify-center gap-1.5 transition-transform duration-100 hover:bg-white/12 ${pressedSide === 'b' ? 'scale-[0.98]' : ''}`}
             >
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
-              {isVoting ? "Voting..." : "Vote B"}
+              {isVoting ? "Submitting…" : "Vote B"}
             </button>
           )}
           {voted === match.cat_b.id && (
@@ -1068,10 +1068,14 @@ function ArenaSection({
               onVote={(matchId, catId) => {
                 if (segment === 'voting' && !exitingId) {
                   setExitingId(matchId);
+                  const CONFIRMED_HOLD_MS = 950;
+                  const EXIT_ANIMATION_MS = 320;
                   window.setTimeout(() => {
                     replaceCard(matchId);
-                    setExitingId((current) => (current === matchId ? null : current));
-                  }, 150);
+                    window.setTimeout(() => {
+                      setExitingId((current) => (current === matchId ? null : current));
+                    }, EXIT_ANIMATION_MS);
+                  }, CONFIRMED_HOLD_MS);
                 }
                 onVote(matchId, catId);
               }}
@@ -1699,7 +1703,7 @@ export default function Page() {
         if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("duplicate")) {
           setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
         }
-        showToast(msg);
+        showToast("Vote failed — try again");
       } else {
         const nowMs = Date.now();
         setVoteStreak((prev) => {
@@ -1744,7 +1748,7 @@ export default function Page() {
           }
           return next;
         });
-        showToast(data?.message || "Vote recorded! +5 XP");
+        showToast("Vote registered ✅");
         setProgress((prev) => prev ? {
           ...prev,
           xp: prev.xp + Number(data?.xp_earned || 5),
@@ -1754,7 +1758,7 @@ export default function Page() {
         // Arena data refreshes when the current stack is exhausted.
         refreshGettingStarted();
       }
-    } catch { showToast("Network error"); }
+    } catch { showToast("Vote failed — try again"); }
     setVotingMatch(null);
   }
 
