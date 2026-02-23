@@ -18,6 +18,7 @@ import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from "./_lib/c
 import { computePowerRating, getMoveMeaning } from "./_lib/combat";
 import { Button, Card, SectionHeader } from "./components/ui/primitives";
 import { useArenaMatches } from "./hooks/useArenaMatches";
+import { warnOnce } from "./lib/dev-click-guards";
 
 // Types
 interface UserProgress {
@@ -1821,6 +1822,23 @@ export default function Page() {
     predictBusyMatch,
     votingMatch,
   ]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const timer = window.setTimeout(() => {
+      const imgs = Array.from(document.querySelectorAll("img"));
+      for (const img of imgs) {
+        const src = String((img as HTMLImageElement).currentSrc || (img as HTMLImageElement).src || "").trim();
+        if (!src) continue;
+        const lower = src.toLowerCase();
+        if (lower.includes("/thumb.webp")) continue;
+        if (lower.includes("/cat-placeholder")) continue;
+        if (lower.startsWith("data:") || lower.startsWith("blob:")) continue;
+        warnOnce(`non-thumb-image:${src}`, `[DEV WARNING] Non-thumb image detected: ${src}`);
+      }
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [arenas, arenaTypeTab, liveDuels, loading]);
 
   function handleClutchSignal(label: string) {
     if (!clutchSharePromptEnabled) return;
