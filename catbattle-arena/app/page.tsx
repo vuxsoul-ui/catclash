@@ -2930,10 +2930,19 @@ export default function Page() {
 
           {arenas.filter((a) => a.type === arenaTypeTab).length === 0 ? (
             <div className="text-center py-12 glass rounded-2xl">
-              <p className="text-white/50 mb-4">No active {arenaTypeTab} arena today.</p>
-              <Link href="/submit" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:scale-105 transition-transform">
-                Submit a Cat
-              </Link>
+              {(hasSeenArenaByType[arenaTypeTab] || Object.keys(votedMatches).length > 0) ? (
+                <>
+                  <p className="text-white/70 mb-2">You've voted on all matches for today. Come back later!</p>
+                  <p className="text-white/45 text-sm">Next Pulse in {pulseCountdown || '--:--:--'}.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-white/50 mb-4">No active {arenaTypeTab} arena today.</p>
+                  <Link href="/submit" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:scale-105 transition-transform">
+                    Submit a Cat
+                  </Link>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -2946,19 +2955,20 @@ export default function Page() {
                   availableSigils={progress?.sigils || 0}
                   voteStreak={voteStreak}
                   hotMatchBiasEnabled={hotMatchBiasEnabled}
-                  globalPageInfo={arena.type === 'main' || arena.type === 'rookie' ? globalPageInfo[arena.type] : null}
+                  globalPageInfo={null}
+                  debugInfo={null}
                   pulseCountdown={pulseCountdown}
-                  voteEffectSlug={equippedCosmetics?.vote_effect?.slug || equippedCosmetics?.color?.slug || null}
+                  onSwitchArena={setArenaTypeTab}
                   onRequestMore={() => handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
                   onVote={handleVote}
                   onPredict={handlePredict}
                   onCreateCallout={handleCreateCallout}
-                />
-              ))}
-            </div>
-          )}
+            />
+          ))}
+        </div>
+      )}
 
-          <div className="mt-4">
+          <div className="mt-4" ref={duelSectionRef}>
             <LiveDuelsModule
               compact
               duels={liveDuels}
