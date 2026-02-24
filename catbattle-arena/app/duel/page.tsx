@@ -174,6 +174,48 @@ export default function DuelPage() {
     }
   }
 
+  async function rematch(duel: DuelRowData): Promise<boolean> {
+    if (busy) return false;
+    const amChallenger = meId && duel.challenger_user_id === meId;
+    const amChallenged = meId && duel.challenged_user_id === meId;
+    if (!amChallenger && !amChallenged) {
+      setMessage('Only duel participants can request a rematch');
+      return false;
+    }
+    const challengedUserId = amChallenger ? duel.challenged_user_id : duel.challenger_user_id;
+    const challengerCatId = amChallenger ? duel.challenger_cat?.id : duel.challenged_cat?.id;
+    if (!challengedUserId || !challengerCatId) {
+      setMessage('Rematch unavailable for this duel');
+      return false;
+    }
+
+    setBusy(`rematch:${duel.id}`);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/duel/challenge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challenged_user_id: challengedUserId, challenger_cat_id: challengerCatId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setMessage(data?.error || 'Rematch failed');
+        return false;
+      }
+      setMessage('Rematch sent');
+      await loadAll();
+      setActiveTab('pending');
+      setRouteState('pending', data?.duel?.id || null);
+      if (data?.duel?.id) setSelectedDuelId(String(data.duel.id));
+      return true;
+    } catch {
+      setMessage('Rematch failed');
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function pickRandomTraitor() {
     if (!players.length) return;
     const pool = [...players];
@@ -209,8 +251,9 @@ export default function DuelPage() {
     }
   }
 
-  async function voteDuel(duelId: string, catId: string) {
-    if (busy) return;
+  async function voteDuel(duelId: string, catId: string): Promise<boolean> {
+    if (busy) return false;
+    const holdAfterVoteMs = 900;
     setBusy(`vote:${duelId}:${catId}`);
     setMessage(null);
     try {
@@ -222,12 +265,16 @@ export default function DuelPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
         setMessage(data?.error || 'Vote failed');
+        return false;
       } else {
         setMessage(data?.status === 'completed' ? 'Duel vote completed' : 'Vote recorded');
+        await new Promise((resolve) => window.setTimeout(resolve, holdAfterVoteMs));
         await loadAll();
+        return true;
       }
     } catch {
       setMessage('Vote failed');
+      return false;
     } finally {
       setBusy(null);
     }
@@ -310,6 +357,7 @@ export default function DuelPage() {
             ].map((tab) => (
               <button
                 key={tab.key}
+                data-testid={`duel-tab-${tab.key}`}
                 onClick={() => {
                   const next = tab.key as DuelTab;
                   setActiveTab(next);
@@ -382,6 +430,20 @@ export default function DuelPage() {
                     className="h-11 px-3 rounded-lg bg-red-400/20 text-red-200 text-xs font-bold disabled:opacity-50"
                   >
                     Decline
+                  </button>
+                </div>
+              </div>
+            )}
+            {selectedDuel.status === 'completed' && (selectedDuel.challenger_user_id === meId || selectedDuel.challenged_user_id === meId) && (
+              <div className="mt-2 rounded-lg border border-cyan-300/30 bg-cyan-500/10 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-cyan-100">Run it back with the same opponent.</p>
+                  <button
+                    onClick={() => void rematch(selectedDuel)}
+                    disabled={!!busy}
+                    className="h-10 px-3 rounded-lg bg-cyan-300 text-black text-xs font-bold disabled:opacity-50"
+                  >
+                    {busy?.startsWith('rematch:') ? 'Creating…' : 'Rematch'}
                   </button>
                 </div>
               </div>
