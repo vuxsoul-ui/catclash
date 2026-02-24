@@ -1708,6 +1708,44 @@ export default function Page() {
     return () => window.clearTimeout(timer);
   }, [challengeIntro]);
   useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (!(showClaimNamePrompt && hasCredentials && !hasProfileUsername)) return;
+    const timer = window.setTimeout(() => {
+      checkTapTarget({ key: 'claim-name-cta-hit', selector: '[data-testid="claim-name-cta"]', expect: ['A'] });
+      checkTapTarget({ key: 'claim-name-later-hit', selector: '[data-testid="claim-name-later"]', expect: ['BUTTON'] });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [hasCredentials, hasProfileUsername, showClaimNamePrompt]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const timer = window.setTimeout(() => {
+      checkTapTarget({ key: 'home-open-duel-live-hit', selector: '[data-testid="open-duel-arena-cta-live"]', expect: ['A'] });
+      checkTapTarget({ key: 'home-open-duel-arenas-hit', selector: '[data-testid="open-duel-arena-cta-arenas"]', expect: ['A'] });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [arenaTypeTab, liveDuels.length, loading]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const timer = window.setTimeout(() => scanDuplicateTestIds('home'), 140);
+    return () => window.clearTimeout(timer);
+  }, [arenas, showClaimNamePrompt, arenaTypeTab]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const timer = window.setTimeout(() => {
+      const imgs = Array.from(document.querySelectorAll('img'));
+      for (const img of imgs) {
+        const src = String((img as HTMLImageElement).currentSrc || (img as HTMLImageElement).src || '').trim();
+        if (!src) continue;
+        const lower = src.toLowerCase();
+        if (lower.includes('/thumb.webp')) continue;
+        if (lower.includes('/cat-placeholder')) continue;
+        if (lower.startsWith('data:') || lower.startsWith('blob:')) continue;
+        warnOnce(`non-thumb-image:${src}`, `[DEV WARNING] Non-thumb image detected: ${src}`);
+      }
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [arenas, arenaTypeTab, liveDuels, loading]);
+  useEffect(() => {
     if (!clutchSharePrompt) return;
     fetch('/api/telemetry/event', {
       method: 'POST',
