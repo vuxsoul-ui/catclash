@@ -1,7 +1,7 @@
 // REPLACE: app/page.tsx
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Sparkles, Flame, Target, Zap, Loader2, Check, Crosshair,
   ArrowRight, Crown, Swords, Star, MessageCircle, Send,
@@ -26,10 +26,10 @@ import CatCardBack from "./components/CatCardBack";
 import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from "./_lib/cosmetics/effectsRegistry";
 import { computePowerRating } from "./_lib/combat";
 import { Button, Card, SectionHeader } from "./components/ui/primitives";
-import { useArenaMatches } from "./hooks/useArenaMatches";
 import { pickFairMatches } from "./api/_lib/pickFairMatches";
 import { checkTapTarget, warnOnce } from "./lib/dev-click-guards";
 import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
+import { canonicalThumbForCat } from "./lib/cat-images";
 
 // Types
 interface UserProgress {
@@ -41,18 +41,27 @@ interface UserProgress {
   catXpPool: number;
 }
 
-interface ArenaCat {
+export interface ArenaCat {
   id: string;
   name: string;
   image_url: string | null;
   rarity: string;
+  level?: number;
   ability?: string | null;
+  ability_description?: string | null;
+  description?: string | null;
+  lore?: string | null;
+  tagline?: string | null;
+  origin?: string | null;
+  wins?: number;
+  losses?: number;
+  owner_id?: string | null;
   owner_username?: string | null;
   owner_guild?: 'sun' | 'moon' | null;
   stats?: { attack: number; defense: number; speed: number; charisma: number; chaos: number };
 }
 
-interface ArenaMatch {
+export interface ArenaMatch {
   match_id: string;
   cat_a: ArenaCat;
   cat_b: ArenaCat;
@@ -103,6 +112,29 @@ interface GlobalArenaPageInfo {
   livePulseAt: number | null;
 }
 
+interface ArenaQueuePageInfo {
+  pageIndex: number;
+  pageSize: number;
+  totalSize: number;
+  votedCount: number;
+}
+
+interface ArenaInventoryDebug {
+  requestedCount?: number;
+  returnedCount?: number;
+  arena?: string;
+  pageIndex?: number;
+  roundId?: number;
+  eligibleCatsCount?: number;
+  openMatchesCount?: number;
+  existingCount?: number;
+  generatedCount?: number;
+  attempts?: number;
+  timeWindow?: string;
+  whyNotFilled?: string[];
+  votingClosedUntilNextPulse?: boolean;
+}
+
 interface StarterMission {
   key: string;
   title: string;
@@ -114,7 +146,14 @@ interface StarterMission {
 }
 
 type DuelRow = DuelRowData;
-type ArenaRefreshResult = { ok: boolean; count: number; status?: string | null };
+type ArenaRefreshResult = {
+  ok: boolean;
+  count: number;
+  status?: string | null;
+  pageIndex?: number;
+  renderableCount?: number;
+  advanced?: boolean;
+};
 
 // Config
 const ARENA_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string; accent: string; description: string }> = {
@@ -160,13 +199,41 @@ function guildBadge(guild: string | null | undefined): { label: string; cls: str
 }
 
 function getCatImage(cat: ArenaCat): string {
-  return cat.image_url || "/cat-placeholder.svg";
+  const raw = String((cat as any)?.image_url || "").trim();
+  if (!raw) return "/cat-placeholder.svg";
+  if (raw.includes('/cat-placeholder')) return raw;
+  return /\/thumb\.webp(?:$|[?#])/i.test(raw) ? raw : "/cat-placeholder.svg";
+}
+
+function getCatDisplayName(cat: Partial<ArenaCat> | null | undefined): string {
+  const candidates = [
+    (cat as any)?.display_name,
+    cat?.name,
+    (cat as any)?.title,
+  ];
+  for (const v of candidates) {
+    const s = String(v || '').trim();
+    if (!s) continue;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+    const isLongId = /^[a-z0-9_-]{24,}$/i.test(s);
+    if (isUuid || isLongId || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') continue;
+    return s;
+  }
+  return 'Unnamed Cat';
 }
 
 function getVotePercent(a: number, b: number): [number, number] {
   const total = a + b;
   if (total === 0) return [50, 50];
   return [Math.round((a / total) * 100), Math.round((b / total) * 100)];
+}
+
+function voteScopeFromArenas(arenas: Arena[]): string {
+  const ids = arenas
+    .map((a) => String(a.tournament_id || '').trim())
+    .filter(Boolean)
+    .sort();
+  return ids.length > 0 ? ids.join('|') : 'global';
 }
 
 function arrangeWithCatSpacing(matches: ArenaMatch[], minGap = 10): ArenaMatch[] {
@@ -222,6 +289,16 @@ function isByeMatch(match: ArenaMatch): boolean {
   return match.cat_a.id === match.cat_b.id;
 }
 
+function isArenaVotingStatus(status: string | null | undefined): boolean {
+  const s = String(status || '').toLowerCase();
+  return s === 'active' || s === 'in_progress' || s === 'pending';
+}
+
+function isArenaCompleteStatus(status: string | null | undefined): boolean {
+  const s = String(status || '').toLowerCase();
+  return s === 'complete' || s === 'completed';
+}
+
 function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
@@ -258,7 +335,11 @@ function LiveDuelsModule({
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
           Live Duels
         </h3>
-        <Link href="/duel" className="relative text-[10px] text-cyan-200 inline-flex items-center gap-1">
+        <Link
+          href="/duel"
+          data-testid="open-duel-arena-cta-live"
+          className="relative z-20 pointer-events-auto text-[10px] text-cyan-200 inline-flex items-center gap-1 tap-target"
+        >
           Open Duel Arena <ArrowRight className="w-3 h-3" />
           {pendingDuelCount > 0 && (
             <span className="absolute -top-2 -right-4 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center border border-red-300/40">
@@ -285,10 +366,24 @@ function LiveDuelsModule({
   );
 }
 
+function LoadingNextFightsCard({ text = "Loading next fights..." }: { text?: string }) {
+  return (
+    <div className="min-h-[140px] rounded-2xl border border-cyan-300/25 bg-cyan-500/8 p-4 pointer-events-none">
+      <div className="h-full w-full flex items-center justify-between gap-3 pointer-events-auto">
+        <div>
+          <p className="text-sm font-semibold text-cyan-100">{text}</p>
+          <p className="text-[11px] text-cyan-100/70 mt-1">Keeping your current queue stable while we refill.</p>
+        </div>
+        <Loader2 className="w-5 h-5 text-cyan-200 animate-spin shrink-0" />
+      </div>
+    </div>
+  );
+}
+
 // ── Match Card ── Images link to profile, vote buttons below
-export function MatchCard({
+export const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
-  voteQueued, onRefreshQueued, showNextUp,
+  voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -299,20 +394,32 @@ export function MatchCard({
   isExiting?: boolean;
   voteQueued?: boolean;
   showNextUp?: boolean;
-  onRefreshQueued?: () => void;
+  onRefreshQueued?: (matchId: string) => void;
+  onVoteAccepted?: (matchId: string, side: "a" | "b") => void;
+  slotPhase?: "idle" | "voted" | "exiting";
+  slotChosenSide?: "a" | "b" | null;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
 }) {
   const [pctA, pctB] = getVotePercent(match.votes_a, match.votes_b);
-  const isComplete = match.status === "complete";
+  const isComplete = String(match.status || '').toLowerCase() === "complete" || String(match.status || '').toLowerCase() === "completed";
   const hasVoted = !!voted;
   const [votePending, setVotePending] = useState(false);
+  const [chosenSide, setChosenSide] = useState<"a" | "b" | null>(null);
+  const [voteSubmitted, setVoteSubmitted] = useState(false);
   const [voteConfirm, setVoteConfirm] = useState(false);
   const canVote = !hasVoted && !isVoting && !isComplete && !votePending;
   const selectedSide: "a" | "b" | null = voted === match.cat_a.id ? "a" : voted === match.cat_b.id ? "b" : null;
+  const liveSide: "a" | "b" | null = slotChosenSide || chosenSide || selectedSide;
+  const parentConfirmed = slotPhase === "voted" || slotPhase === "exiting";
+  const exitingVisual = isExiting || slotPhase === "exiting";
   const voteStage: "idle" | "pending" | "confirmed" =
-    votePending && !voteConfirm ? "pending" : (hasVoted || voteConfirm ? "confirmed" : "idle");
+    parentConfirmed
+      ? "confirmed"
+      : votePending && !voteSubmitted
+        ? "pending"
+        : (hasVoted || voteSubmitted || voteConfirm ? "confirmed" : "idle");
   const predictedCatId = match.user_prediction?.predicted_cat_id || null;
   const [bet, setBet] = useState(10);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -330,7 +437,10 @@ export function MatchCard({
   const [previewToast, setPreviewToast] = useState<string | null>(null);
   const [flipA, setFlipA] = useState(false);
   const [flipB, setFlipB] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const voteInFlightRef = useRef(false);
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
   const swipeRef = useRef<{
     pointerId: number | null;
     startX: number;
@@ -348,6 +458,8 @@ export function MatchCard({
   });
   const guildA = guildBadge(match.cat_a.owner_guild || null);
   const guildB = guildBadge(match.cat_b.owner_guild || null);
+  const catAName = getCatDisplayName(match.cat_a);
+  const catBName = getCatDisplayName(match.cat_b);
   const aPower = statPower(match.cat_a);
   const bPower = statPower(match.cat_b);
   const strongerA = aPower >= bPower;
@@ -377,28 +489,39 @@ export function MatchCard({
   const SWIPE_Y_CANCEL = 44;
   const SWIPE_MIN_VELOCITY = 0.24; // px/ms
 
+  const applyVoteBias = useCallback((prev: { a: number; b: number }, side: "a" | "b") => {
+    const delta = 12;
+    if (side === 'a') {
+      const nextA = Math.max(62, Math.min(94, prev.a + delta));
+      return { a: nextA, b: 100 - nextA };
+    }
+    const nextB = Math.max(62, Math.min(94, prev.b + delta));
+    return { a: 100 - nextB, b: nextB };
+  }, []);
+
   const commitVote = async (catId: string) => {
     if (!canVote || voteInFlightRef.current) return;
     voteInFlightRef.current = true;
+    const side: "a" | "b" = catId === match.cat_a.id ? "a" : "b";
+    setChosenSide(side);
     setVotePending(true);
+    setVoteSubmitted(false);
+    setDisplayPct((prev) => applyVoteBias(prev, side));
     let ok = false;
     try {
       ok = await onVote(match.match_id, catId);
       if (ok) {
-        setVoteConfirm(true);
-        if (catId === match.cat_a.id) {
-          setDisplayPct((prev) => ({
-            a: Math.min(100, prev.a + 2),
-            b: Math.max(0, prev.b - 2),
-          }));
-        } else {
-          setDisplayPct((prev) => ({
-            a: Math.max(0, prev.a - 2),
-            b: Math.min(100, prev.b + 2),
-          }));
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(10);
         }
+        setVoteSubmitted(true);
+        setVoteConfirm(true);
+        onVoteAccepted?.(match.match_id, side);
       } else {
+        setChosenSide(null);
+        setVoteSubmitted(false);
         setVotePending(false);
+        setDisplayPct({ a: pctA, b: pctB });
       }
     } finally {
       voteInFlightRef.current = false;
@@ -484,6 +607,8 @@ export function MatchCard({
     setPredictOpen(false);
     setCommentsOpen(false);
     setVotePending(false);
+    setChosenSide(null);
+    setVoteSubmitted(false);
     setVoteConfirm(false);
     setFlipA(false);
     setFlipB(false);
@@ -499,7 +624,26 @@ export function MatchCard({
   useEffect(() => {
     if (!hasVoted) return;
     setVotePending(false);
+    setVoteSubmitted(true);
   }, [hasVoted]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => setReduceMotion(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, []);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (catAName === 'Unnamed Cat') {
+      warnOnce(`unnamed-cat-a:${match.match_id}`, `[DEV WARNING] Unresolved cat A name on match ${match.match_id}`);
+    }
+    if (catBName === 'Unnamed Cat') {
+      warnOnce(`unnamed-cat-b:${match.match_id}`, `[DEV WARNING] Unresolved cat B name on match ${match.match_id}`);
+    }
+  }, [catAName, catBName, match.match_id]);
 
   useEffect(() => {
     if (!previewToast) return;
@@ -587,12 +731,17 @@ export function MatchCard({
 
   return (
     <div
-      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-all duration-300 ease-out touch-pan-y ${hasVoted || isComplete ? "opacity-65" : ""} ${isExiting ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}
+      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-all ${reduceMotion ? 'duration-0' : 'duration-300'} ease-out touch-pan-y ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
     >
+      {process.env.NODE_ENV !== 'production' && (
+        <div className="pointer-events-none absolute left-2 top-2 z-30 rounded-full border border-fuchsia-300/40 bg-fuchsia-500/15 px-2 py-0.5 text-[9px] text-fuchsia-100">
+          R{renderCountRef.current}
+        </div>
+      )}
       {previewToast && (
         <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full border border-cyan-300/35 bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-100">
           {previewToast}
@@ -608,7 +757,7 @@ export function MatchCard({
         <div className="min-w-0">
           <div className="arena-flip-scene h-[174px]">
             <div className={`arena-flip-card ${flipA ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all duration-300 ${borderA} ${selectedSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.2)]' : selectedSide === 'b' ? 'opacity-75' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'b' ? 'opacity-75' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
                     {match.cat_a.rarity}
@@ -618,7 +767,7 @@ export function MatchCard({
                     <button
                       type="button"
                       onClick={() => setFlipA(true)}
-                      aria-label={`Open ${match.cat_a.name} details`}
+                      aria-label={`Open ${catAName} details`}
                       className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
                     >
                       i
@@ -628,15 +777,15 @@ export function MatchCard({
                 <button
                   type="button"
                   onClick={() => setFlipA((v) => !v)}
-                  aria-label={`Flip ${match.cat_a.name} card`}
+                  aria-label={`Flip ${catAName} card`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
-                  <div className="h-24 rounded-xl overflow-hidden border border-white/15">
-                    <img src={getCatImage(match.cat_a)} alt={match.cat_a.name} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
+                  <div className="w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15">
+                    <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
                   </div>
                 </button>
                 <div className="mt-1">
-                  <p className="text-[13px] leading-tight font-semibold truncate">{match.cat_a.name}</p>
+                  <p className="text-[13px] leading-tight font-semibold truncate">{catAName}</p>
                   <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
                     <p className="min-w-0 truncate text-[9px] text-white/70">Challenger</p>
                     {guildA ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildA.cls}`}>{guildA.label}</span> : null}
@@ -664,7 +813,7 @@ export function MatchCard({
         <div className="min-w-0">
           <div className="arena-flip-scene h-[174px]">
             <div className={`arena-flip-card ${flipB ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all duration-300 ${borderB} ${selectedSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.2)]' : selectedSide === 'a' ? 'opacity-75' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'a' ? 'opacity-75' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
                     {match.cat_b.rarity}
@@ -674,7 +823,7 @@ export function MatchCard({
                     <button
                       type="button"
                       onClick={() => setFlipB(true)}
-                      aria-label={`Open ${match.cat_b.name} details`}
+                      aria-label={`Open ${catBName} details`}
                       className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
                     >
                       i
@@ -684,15 +833,15 @@ export function MatchCard({
                 <button
                   type="button"
                   onClick={() => setFlipB((v) => !v)}
-                  aria-label={`Flip ${match.cat_b.name} card`}
+                  aria-label={`Flip ${catBName} card`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
-                  <div className="h-24 rounded-xl overflow-hidden border border-white/15">
-                    <img src={getCatImage(match.cat_b)} alt={match.cat_b.name} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
+                  <div className="w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15">
+                    <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
                   </div>
                 </button>
                 <div className="mt-1">
-                  <p className="text-[13px] leading-tight font-semibold truncate">{match.cat_b.name}</p>
+                  <p className="text-[13px] leading-tight font-semibold truncate">{catBName}</p>
                   <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
                     <p className="min-w-0 truncate text-[9px] text-white/70">Defender</p>
                     {guildB ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildB.cls}`}>{guildB.label}</span> : null}
@@ -715,7 +864,7 @@ export function MatchCard({
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           onClick={() => void commitVote(match.cat_a.id)}
-          aria-label={`Vote for ${match.cat_a.name}`}
+          aria-label={`Vote for ${catAName}`}
           disabled={!canVote}
           className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
@@ -724,7 +873,7 @@ export function MatchCard({
         </button>
         <button
           onClick={() => void commitVote(match.cat_b.id)}
-          aria-label={`Vote for ${match.cat_b.name}`}
+          aria-label={`Vote for ${catBName}`}
           disabled={!canVote}
           className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
@@ -745,8 +894,14 @@ export function MatchCard({
       </div>
 
       <div className="mt-1 h-1 rounded-full overflow-hidden flex bg-white/5">
-        <div className={`bg-blue-500 transition-all duration-300 ${voted === match.cat_a.id ? 'shadow-[0_0_10px_rgba(59,130,246,0.55)]' : ''}`} style={{ width: `${displayPct.a}%` }} />
-        <div className={`bg-red-500 transition-all duration-300 ${voted === match.cat_b.id ? 'shadow-[0_0_10px_rgba(239,68,68,0.55)]' : ''}`} style={{ width: `${displayPct.b}%` }} />
+        <div
+          className={`h-full w-full bg-blue-500 transition-transform ${reduceMotion ? 'duration-0' : 'duration-500'} origin-left ${liveSide === 'a' ? 'shadow-[0_0_10px_rgba(59,130,246,0.55)]' : ''}`}
+          style={{ transform: `scaleX(${Math.max(0, Math.min(1, displayPct.a / 100))})` }}
+        />
+        <div
+          className={`h-full w-full -ml-full bg-red-500 transition-transform ${reduceMotion ? 'duration-0' : 'duration-500'} origin-right ${liveSide === 'b' ? 'shadow-[0_0_10px_rgba(239,68,68,0.55)]' : ''}`}
+          style={{ transform: `scaleX(${Math.max(0, Math.min(1, displayPct.b / 100))})` }}
+        />
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -776,13 +931,13 @@ export function MatchCard({
           <span className={`transition-transform duration-150 ${detailsOpen ? 'rotate-180' : ''}`}>⌄</span>
         </button>
       </div>
-      {(hasVoted || voteConfirm || voteQueued || votePending) && (
+      {(hasVoted || voteSubmitted || voteConfirm || voteQueued || votePending || parentConfirmed) && (
         <div className="mt-1.5 flex items-center gap-2 text-[10px]">
           {voteStage === 'pending' ? (
             <span className="inline-flex px-2 py-0.5 rounded-full border border-cyan-300/30 bg-cyan-500/12 text-cyan-100">
               Submitting…
             </span>
-          ) : hasVoted ? (
+          ) : (hasVoted || voteSubmitted || parentConfirmed) ? (
             <span className="inline-flex px-2 py-0.5 rounded-full border border-emerald-300/30 bg-emerald-500/15 text-emerald-100">
               Voted ✅
             </span>
@@ -792,11 +947,16 @@ export function MatchCard({
             </span>
           ) : null}
           {voteQueued ? (
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-flex px-2 py-0.5 rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">Queued</span>
-              {onRefreshQueued ? (
-                <button onClick={onRefreshQueued} className="underline text-cyan-200">Refresh</button>
-              ) : null}
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex px-2 py-0.5 rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">Queued</span>
+                  {onRefreshQueued ? (
+                    <button onClick={() => onRefreshQueued(match.match_id)} className="underline text-cyan-200">Refresh</button>
+                  ) : null}
+                </span>
+          ) : null}
+          {votePending && liveSide ? (
+            <span className={`inline-flex px-2 py-0.5 rounded-full border ${liveSide === 'a' ? 'border-blue-300/35 bg-blue-500/12 text-blue-100' : 'border-rose-300/35 bg-rose-500/12 text-rose-100'}`}>
+              +1
             </span>
           ) : null}
         </div>
@@ -814,7 +974,7 @@ export function MatchCard({
             <div className="rounded-t-2xl sm:rounded-2xl border border-cyan-300/25 bg-[#05131e] p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.45)]">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-[12px] font-semibold text-cyan-100">Predict Winner</p>
-                <button onClick={() => setPredictOpen(false)} className="h-7 px-2 rounded-md border border-white/15 bg-white/8 text-[10px] text-white/80">Close</button>
+                <button onClick={() => setPredictOpen(false)} className="h-11 min-h-[44px] px-3 rounded-md border border-white/15 bg-white/8 text-[10px] text-white/80 touch-manipulation">Close</button>
               </div>
               <p className="text-[10px] text-white/65">P(A)={displayPct.a}% • up to {payoutA}× · P(B)={displayPct.b}% • up to {payoutB}×</p>
               {(underdogA || underdogB) && <p className="mt-1 text-[10px] text-amber-200">Underdogs pay more</p>}
@@ -837,7 +997,7 @@ export function MatchCard({
                     const ok = await onPredict(match.match_id, match.cat_a.id, bet);
                     if (ok) setPredictOpen(false);
                   }}
-                  aria-label={`Predict ${match.cat_a.name} for ${bet} sigils`}
+                  aria-label={`Predict ${catAName} for ${bet} sigils`}
                   className="h-11 rounded-lg bg-blue-500/15 text-blue-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
                 >
                   Predict A (+<SigilIcon className="w-3 h-3" />{bet})
@@ -848,7 +1008,7 @@ export function MatchCard({
                     const ok = await onPredict(match.match_id, match.cat_b.id, bet);
                     if (ok) setPredictOpen(false);
                   }}
-                  aria-label={`Predict ${match.cat_b.name} for ${bet} sigils`}
+                  aria-label={`Predict ${catBName} for ${bet} sigils`}
                   className="h-11 rounded-lg bg-red-500/15 text-red-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
                 >
                   Predict B (+<SigilIcon className="w-3 h-3" />{bet})
@@ -867,8 +1027,14 @@ export function MatchCard({
               <span className="text-cyan-100">Power B: {Math.round(bPower)}</span>
             </div>
             <div className="mt-1 h-1 rounded-full overflow-hidden bg-white/10 flex">
-              <div className="bg-blue-500" style={{ width: `${Math.max(8, strongerA ? 50 + edgePct : 50 - edgePct)}%` }} />
-              <div className="bg-rose-500" style={{ width: `${Math.max(8, strongerA ? 50 - edgePct : 50 + edgePct)}%` }} />
+              <div
+                className="h-full w-full bg-blue-500 origin-left transition-transform duration-300"
+                style={{ transform: `scaleX(${Math.max(0.08, Math.min(1, (strongerA ? 50 + edgePct : 50 - edgePct) / 100))})` }}
+              />
+              <div
+                className="h-full w-full -ml-full bg-rose-500 origin-right transition-transform duration-300"
+                style={{ transform: `scaleX(${Math.max(0.08, Math.min(1, (strongerA ? 50 - edgePct : 50 + edgePct) / 100))})` }}
+              />
             </div>
           </div>
 
@@ -883,11 +1049,11 @@ export function MatchCard({
             <span className="text-amber-200">CHS</span><span className="text-right">{statsA.chaos}</span><span className="text-right">{statsB.chaos}</span>
           </div>
 
-          <p className="text-[10px] text-white/65">{edgePct <= 3 ? 'Stat edge is balanced.' : `${strongerA ? match.cat_a.name : match.cat_b.name} has a ${edgePct}% stat edge.`}</p>
+          <p className="text-[10px] text-white/65">{edgePct <= 3 ? 'Stat edge is balanced.' : `${strongerA ? catAName : catBName} has a ${edgePct}% stat edge.`}</p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <p className="text-[10px] text-white/60 mb-1">{match.cat_a.name} cosmetics</p>
+              <p className="text-[10px] text-white/60 mb-1">{catAName} cosmetics</p>
               <div className="space-y-1">
                 {cosmeticsA.slice(0, 4).map((c) => (
                   <div key={`a-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
@@ -899,7 +1065,7 @@ export function MatchCard({
               </div>
             </div>
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <p className="text-[10px] text-white/60 mb-1">{match.cat_b.name} cosmetics</p>
+              <p className="text-[10px] text-white/60 mb-1">{catBName} cosmetics</p>
               <div className="space-y-1">
                 {cosmeticsB.slice(0, 4).map((c) => (
                   <div key={`b-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
@@ -1006,16 +1172,37 @@ export function MatchCard({
           <span className="inline-flex px-2 py-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Return at next Pulse</span>
         </div>
       )}
-      {isExiting && (
+      {exitingVisual && (
         <div className="mt-1 text-[10px] text-cyan-200/90 animate-pulse">Next matchup loading...</div>
       )}
     </div>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.match === next.match &&
+    prev.voted === next.voted &&
+    prev.isVoting === next.isVoting &&
+    prev.predictBusy === next.predictBusy &&
+    prev.calloutBusy === next.calloutBusy &&
+    prev.socialEnabled === next.socialEnabled &&
+    prev.availableSigils === next.availableSigils &&
+    prev.voteStreak === next.voteStreak &&
+    prev.isExiting === next.isExiting &&
+    prev.voteQueued === next.voteQueued &&
+    prev.showNextUp === next.showNextUp &&
+    prev.slotPhase === next.slotPhase &&
+    prev.slotChosenSide === next.slotChosenSide &&
+    prev.onVote === next.onVote &&
+    prev.onPredict === next.onPredict &&
+    prev.onCreateCallout === next.onCreateCallout &&
+    prev.onRefreshQueued === next.onRefreshQueued &&
+    prev.onVoteAccepted === next.onVoteAccepted
+  );
+});
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo,
+  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   votingMatch: string | null;
@@ -1029,30 +1216,62 @@ function ArenaSection({
   pulseCountdown?: string;
   onSwitchArena?: (arena: 'main' | 'rookie') => void;
   debugInfo?: ArenaInventoryDebug | null;
+  queueInfo?: ArenaQueuePageInfo | null;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
   onRequestMore?: () => Promise<ArenaRefreshResult>;
 }) {
+  type SlotUiState = { phase: "idle" | "voted" | "exiting"; chosenSide: "a" | "b" | null };
   const config = getArenaConfig(arena.type);
   const [segment, setSegment] = useState<"voting" | "results">("voting");
   const [stackIds, setStackIds] = useState<string[]>([]);
   const [cursor, setCursor] = useState(0);
-  const [exitingId, setExitingId] = useState<string | null>(null);
+  const [slotUiByMatchId, setSlotUiByMatchId] = useState<Record<string, SlotUiState>>({});
   const [queuedVotes, setQueuedVotes] = useState<Record<string, boolean>>({});
   const [nextUpId, setNextUpId] = useState<string | null>(null);
   const [stackReady, setStackReady] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const cursorRef = useRef(0);
+  const mountedRef = useRef(true);
+  const presentMatchIdsRef = useRef<Set<string>>(new Set());
+  const transitionTimeoutsRef = useRef<Map<string, number[]>>(new Map());
   const autoTopupBusyRef = useRef(false);
   const lastAutoTopupAtRef = useRef(0);
   const lowInventoryRetryKeyRef = useRef('');
-  const MAX_VISIBLE = 4;
+  const onVoteRef = useRef(onVote);
+  const onPredictRef = useRef(onPredict);
+  const onCreateCalloutRef = useRef(onCreateCallout);
+  const refillRequestSeqRef = useRef(0);
+  const preserveSnapshotOnEmptyRef = useRef(false);
+  const refillSettleTimerRef = useRef<number | null>(null);
+  const lastRefillCallAtRef = useRef(0);
+  const [snapshotOrder, setSnapshotOrder] = useState<string[]>([]);
+  const [snapshotById, setSnapshotById] = useState<Record<string, ArenaMatch>>({});
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
+  const [feedStatus, setFeedStatus] = useState<"ready" | "refilling" | "transitioning" | "error">("ready");
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [refillRetryAttempt, setRefillRetryAttempt] = useState(0);
+  const [showManualRefresh, setShowManualRefresh] = useState(false);
+  const MAX_VISIBLE = 6;
   const currentRound = arena.rounds.find((r) => r.round === arena.current_round);
-  const voting = (currentRound?.matches || []).filter((m) => !isByeMatch(m) && m.status === "active");
+  const allArenaMatches = [...arena.rounds].reverse().flatMap((r) => r.matches || []).filter((m) => !isByeMatch(m));
+  const voting = (currentRound?.matches || []).filter((m) => !isByeMatch(m) && isArenaVotingStatus(m.status));
   const [globalResults, setGlobalResults] = useState<ArenaMatch[]>([]);
-  const results = globalResults.length > 0
-    ? globalResults
-    : [...arena.rounds].reverse().flatMap((r) => r.matches || []).filter((m) => !isByeMatch(m) && m.status === "complete");
+  const fallbackResults = useMemo(() => {
+    const out: ArenaMatch[] = [];
+    const seen = new Set<string>();
+    for (const m of allArenaMatches) {
+      const id = String(m.match_id || '');
+      if (!id || seen.has(id)) continue;
+      const isVotedByUser = !!votedMatches[id];
+      if (!(isArenaCompleteStatus(m.status) || isVotedByUser)) continue;
+      seen.add(id);
+      out.push(m);
+    }
+    return out;
+  }, [allArenaMatches, votedMatches]);
+  const results = globalResults.length > 0 ? globalResults : fallbackResults;
   const orderedVoting = useMemo(() => {
     if (globalPageInfo) return voting;
     const arranged = arrangeWithCatSpacing(voting, 10);
@@ -1082,15 +1301,15 @@ function ArenaSection({
   }, [arena.type, globalPageInfo, hotMatchBiasEnabled, voting]);
 
   const visiblePageOrder = useMemo(() => {
-    if (orderedVoting.length <= 4) return orderedVoting;
+    if (orderedVoting.length <= MAX_VISIBLE) return orderedVoting;
     const out: ArenaMatch[] = [];
     const used = new Set<string>();
 
-    for (let i = 0; i < orderedVoting.length; i += 4) {
+    for (let i = 0; i < orderedVoting.length; i += MAX_VISIBLE) {
       const window = orderedVoting
-        .slice(i, i + 12)
+        .slice(i, i + 18)
         .filter((m) => !used.has(String(m.match_id || "")));
-      const picked = pickFairMatches(window, 4, {
+      const picked = pickFairMatches(window, MAX_VISIBLE, {
         maxPerOwner: 1,
         avoidSameOwnerMatch: true,
       });
@@ -1103,7 +1322,7 @@ function ArenaSection({
           out.push(m);
         }
       } else {
-        const fallback = window.slice(0, 4);
+        const fallback = window.slice(0, MAX_VISIBLE);
         for (const m of fallback) {
           const id = String(m.match_id || "");
           if (!id || used.has(id)) continue;
@@ -1130,8 +1349,13 @@ function ArenaSection({
       stackIds
         .map((id) => votingById.get(id))
         .filter((m): m is ArenaMatch => !!m)
-        .filter((m) => !votedMatches[m.match_id] || !!queuedVotes[m.match_id]),
-    [queuedVotes, stackIds, votingById, votedMatches]
+        .filter((m) => {
+          if (votingMatch === m.match_id) return true;
+          const slotUi = slotUiByMatchId[m.match_id];
+          if (slotUi && slotUi.phase !== "idle") return true;
+          return !votedMatches[m.match_id] || !!queuedVotes[m.match_id];
+        }),
+    [queuedVotes, stackIds, slotUiByMatchId, votingById, votedMatches, votingMatch]
   );
   const activeList = segment === "voting" ? activeVoting : resultsList;
   const totalVotableCount = useMemo(() => visiblePageOrder.length, [visiblePageOrder]);
@@ -1140,6 +1364,101 @@ function ArenaSection({
     [visiblePageOrder, votedMatches]
   );
   const userCaughtUp = segment === "voting" && totalVotableCount > 0 && remainingForUserCount === 0;
+  const hasSlotTransition = useMemo(
+    () => Object.values(slotUiByMatchId).some((state) => state.phase !== "idle"),
+    [slotUiByMatchId]
+  );
+
+  const clearTransitionTimeoutsFor = useCallback((matchId: string) => {
+    const bucket = transitionTimeoutsRef.current.get(matchId);
+    if (!bucket?.length) return;
+    for (const tid of bucket) window.clearTimeout(tid);
+    transitionTimeoutsRef.current.delete(matchId);
+  }, []);
+
+  const clearAllTransitionTimeouts = useCallback(() => {
+    for (const ids of transitionTimeoutsRef.current.values()) {
+      for (const tid of ids) window.clearTimeout(tid);
+    }
+    transitionTimeoutsRef.current.clear();
+  }, []);
+
+  const queueTransitionTimeout = useCallback((matchId: string, ms: number, fn: () => void) => {
+    const tid = window.setTimeout(() => {
+      const bucket = transitionTimeoutsRef.current.get(matchId);
+      if (bucket?.length) {
+        const next = bucket.filter((id) => id !== tid);
+        if (next.length) transitionTimeoutsRef.current.set(matchId, next);
+        else transitionTimeoutsRef.current.delete(matchId);
+      }
+      if (!mountedRef.current) return;
+      if (!presentMatchIdsRef.current.has(matchId)) return;
+      fn();
+    }, ms);
+    const bucket = transitionTimeoutsRef.current.get(matchId) || [];
+    bucket.push(tid);
+    transitionTimeoutsRef.current.set(matchId, bucket);
+    return tid;
+  }, []);
+
+  const clearRefillSettleTimer = useCallback(() => {
+    if (refillSettleTimerRef.current === null) return;
+    window.clearTimeout(refillSettleTimerRef.current);
+    refillSettleTimerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => setReduceMotion(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearAllTransitionTimeouts();
+      clearRefillSettleTimer();
+    };
+  }, [clearAllTransitionTimeouts, clearRefillSettleTimer]);
+
+  useEffect(() => {
+    const present = new Set(visiblePageOrder.map((m) => m.match_id).filter(Boolean));
+    presentMatchIdsRef.current = present;
+    const staleIds: string[] = [];
+    for (const matchId of transitionTimeoutsRef.current.keys()) {
+      if (!present.has(matchId)) staleIds.push(matchId);
+    }
+    if (!staleIds.length) return;
+    for (const matchId of staleIds) clearTransitionTimeoutsFor(matchId);
+    setSlotUiByMatchId((prev) => {
+      let changed = false;
+      const next: Record<string, SlotUiState> = {};
+      for (const [id, state] of Object.entries(prev)) {
+        if (!present.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = state;
+      }
+      return changed ? next : prev;
+    });
+    setQueuedVotes((prev) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [id, state] of Object.entries(prev)) {
+        if (!present.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = state;
+      }
+      return changed ? next : prev;
+    });
+  }, [clearTransitionTimeoutsFor, visiblePageOrder]);
 
   function pullNextMatchId(excluded: Set<string>): string | null {
     for (let i = cursorRef.current; i < visiblePageOrder.length; i += 1) {
@@ -1167,7 +1486,7 @@ function ArenaSection({
     return next;
   }
 
-  function replaceCard(matchId: string, onResolved?: (result: { replaced: boolean; insertedId: string | null }) => void) {
+  const replaceCard = useCallback((matchId: string, onResolved?: (result: { replaced: boolean; insertedId: string | null }) => void) => {
     setStackIds((prev) => {
       const index = prev.indexOf(matchId);
       if (index < 0) {
@@ -1183,7 +1502,7 @@ function ArenaSection({
       onResolved?.({ replaced, insertedId });
       return filled;
     });
-  }
+  }, [fillStackToFour]);
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -1198,6 +1517,7 @@ function ArenaSection({
 
   useEffect(() => {
     if (segment !== 'voting') return;
+    clearAllTransitionTimeouts();
     const votedSet = new Set(Object.keys(votedMatches));
     const initial: string[] = [];
     let i = 0;
@@ -1208,12 +1528,12 @@ function ArenaSection({
     }
     cursorRef.current = i;
     setCursor(i);
-    setExitingId(null);
+    setSlotUiByMatchId({});
     setStackIds(initial);
     setQueuedVotes({});
     setNextUpId(null);
     setStackReady(true);
-  }, [arena.tournament_id, segment, visiblePageOrder]);
+  }, [arena.tournament_id, clearAllTransitionTimeouts, segment, visiblePageOrder]);
 
   useEffect(() => {
     if (!globalPageInfo) return;
@@ -1239,11 +1559,11 @@ function ArenaSection({
 
   useEffect(() => {
     if (segment !== 'voting') return;
-    if (exitingId) return;
+    if (hasSlotTransition) return;
     const hasVotedCardsInStack = stackIds.some((id) => !!votedMatches[id]);
     if (!hasVotedCardsInStack) return;
     setStackIds((prev) => fillStackToFour(prev.filter((id) => !votedMatches[id] || !!queuedVotes[id])));
-  }, [exitingId, queuedVotes, segment, stackIds, votedMatches]);
+  }, [hasSlotTransition, queuedVotes, segment, stackIds, votedMatches]);
 
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -1253,15 +1573,69 @@ function ArenaSection({
     }
   }, [segment, stackIds, visiblePageOrder, votedMatches]);
 
-  const arenaFeed = useArenaMatches({
-    arenaType: String(arena.type || 'main'),
-    viewMode: segment,
-    pageIndex: Number(globalPageInfo?.pageIndex || 0),
-    round: Number(arena.current_round || 1),
-    matches: activeVoting,
-    enabled: segment === 'voting' && stackReady && !votingMatch && !exitingId && activeVoting.length === 0,
-    onRefresh: onRequestMore,
-  });
+  const refillArena = useCallback(
+    async (reason: "manual" | "auto-empty" | "auto-low" | "queued" = "manual"): Promise<boolean> => {
+      if (!onRequestMore) return false;
+      const now = Date.now();
+      if (now - lastRefillCallAtRef.current < 900) return false;
+      if ((reason === 'auto-empty' || reason === 'auto-low') && feedStatus !== 'ready') return false;
+      if ((reason === 'manual' || reason === 'queued') && !(feedStatus === 'ready' || feedStatus === 'error')) return false;
+      if (refillRequestSeqRef.current > 0 && feedStatus === "refilling") return false;
+      lastRefillCallAtRef.current = now;
+      clearRefillSettleTimer();
+      const reqId = ++refillRequestSeqRef.current;
+      preserveSnapshotOnEmptyRef.current = true;
+      setFeedStatus("refilling");
+      setFeedError(null);
+      setShowManualRefresh(false);
+      setRefillRetryAttempt((prev) => (reason === "manual" ? prev : prev + 1));
+      const result = await onRequestMore().catch(() => ({ ok: false, count: 0 } as ArenaRefreshResult));
+      if (!mountedRef.current || reqId !== refillRequestSeqRef.current) return false;
+      if (result?.ok && Number(result.count || 0) > 0) {
+        setFeedStatus("transitioning");
+        setFeedError(null);
+        setShowManualRefresh(false);
+        const settleMs = reduceMotion ? 80 : 220;
+        refillSettleTimerRef.current = window.setTimeout(() => {
+          refillSettleTimerRef.current = null;
+          if (!mountedRef.current || reqId !== refillRequestSeqRef.current) return;
+          setFeedStatus("ready");
+          setRefillRetryAttempt(0);
+        }, settleMs);
+        return true;
+      }
+      clearRefillSettleTimer();
+      setFeedStatus("error");
+      setFeedError("Arena is reloading.");
+      setShowManualRefresh(true);
+      return false;
+    },
+    [clearRefillSettleTimer, feedStatus, onRequestMore, reduceMotion]
+  );
+
+  useEffect(() => {
+    if (segment !== 'voting') return;
+    if (!stackReady) return;
+    if (!onRequestMore) return;
+    if (votingMatch || hasSlotTransition) return;
+    if (feedStatus !== 'ready') return;
+    // If we still have a visible snapshot, do not auto-refill again.
+    if (snapshotOrder.length > 0) return;
+    if (activeVoting.length !== 0) return;
+    if (autoTopupBusyRef.current) return;
+    const now = Date.now();
+    if (now - lastAutoTopupAtRef.current < 900) return;
+
+    autoTopupBusyRef.current = true;
+    lastAutoTopupAtRef.current = now;
+    refillArena('auto-empty')
+      .then((ok) => {
+        if (ok) setQueuedVotes({});
+      })
+      .finally(() => {
+        autoTopupBusyRef.current = false;
+      });
+  }, [activeVoting.length, feedStatus, hasSlotTransition, onRequestMore, refillArena, segment, snapshotOrder.length, stackReady, votingMatch]);
 
   const stackLead = activeVoting[0];
   const stackSecond = activeVoting[1];
@@ -1271,6 +1645,238 @@ function ArenaSection({
     const total = base.reduce((sum, m) => sum + Number(m.votes_a || 0) + Number(m.votes_b || 0), 0);
     return `+${Math.max(0, Math.round(total / 2))} votes in this cycle`;
   }, [stackLead, stackSecond]);
+  const lowInventory = segment === 'voting' && activeVoting.length > 0 && activeVoting.length < MAX_VISIBLE;
+  const snapshotKey = useMemo(() => activeVoting.map((m) => m.match_id).join('|'), [activeVoting]);
+  useEffect(() => {
+    if (segment !== 'voting') return;
+    const nextOrder = activeVoting.map((m) => m.match_id).filter(Boolean);
+    const nextById: Record<string, ArenaMatch> = {};
+    for (const m of activeVoting) nextById[m.match_id] = m;
+
+    if (nextOrder.length > 0) {
+      preserveSnapshotOnEmptyRef.current = false;
+    }
+
+    if (nextOrder.length === 0 && snapshotOrder.length > 0 && preserveSnapshotOnEmptyRef.current) {
+      if (feedStatus !== 'error') {
+        setFeedStatus('error');
+        setFeedError('Arena refill returned no matches.');
+        setShowManualRefresh(true);
+      }
+      return;
+    }
+
+    // Refill returned data but none are vote-renderable. Stop auto cycling and require explicit retry.
+    if (nextOrder.length === 0 && snapshotOrder.length === 0 && feedStatus === 'transitioning') {
+      setFeedStatus('error');
+      setFeedError('No new votable matches right now.');
+      setShowManualRefresh(true);
+      return;
+    }
+
+    // Keep prior snapshot visible while refilling/transitioning/error if the new pull is empty.
+    if (nextOrder.length === 0 && (feedStatus === 'refilling' || feedStatus === 'transitioning' || feedStatus === 'error')) {
+      return;
+    }
+    setSnapshotOrder((prev) => {
+      if (prev.join('|') === nextOrder.join('|')) return prev;
+      setSnapshotVersion((v) => v + 1);
+      return nextOrder;
+    });
+    setSnapshotById(nextById);
+  }, [activeVoting, feedStatus, segment, snapshotKey, snapshotOrder.length]);
+
+  const votingSlots = useMemo(() => {
+    if (segment !== 'voting') return [] as Array<{ key: string; match: ArenaMatch | null }>;
+    const ids = snapshotOrder.filter((id) => !!snapshotById[id]);
+    return ids.map((id) => ({
+      key: id,
+      match: snapshotById[id] || null,
+    }));
+  }, [segment, snapshotById, snapshotOrder]);
+  const queueDebug = useMemo(() => {
+    if (process.env.NODE_ENV === 'production') return null;
+    const pendingSnapshot =
+      snapshotOrder.length > 0 &&
+      activeVoting.length === 0 &&
+      (feedStatus === 'refilling' || feedStatus === 'transitioning' || feedStatus === 'error');
+    const slots = votingSlots.map((slot, slotIndex) => {
+      const matchId = slot.match?.match_id || null;
+      const ui = matchId ? slotUiByMatchId[matchId] : null;
+      return {
+        slotIndex,
+        matchId,
+        phase: ui?.phase || 'idle',
+      };
+    });
+    return {
+      arenaType: arena.type,
+      poolLen: snapshotOrder.length,
+      pageIndex: Number(queueInfo?.pageIndex || 0),
+      votedCount: Number(queueInfo?.votedCount || 0),
+      status: feedStatus,
+      snapshotVersion,
+      requestSeq: refillRequestSeqRef.current,
+      pendingSnapshot,
+      slots,
+    };
+  }, [activeVoting.length, arena.type, feedStatus, queueInfo?.pageIndex, queueInfo?.votedCount, slotUiByMatchId, snapshotOrder.length, snapshotVersion, votingSlots]);
+
+  useEffect(() => {
+    const activeIds = new Set(activeVoting.map((m) => m.match_id));
+    const staleIds: string[] = [];
+    for (const matchId of Object.keys(slotUiByMatchId)) {
+      if (!activeIds.has(matchId) && !presentMatchIdsRef.current.has(matchId)) staleIds.push(matchId);
+    }
+    if (!staleIds.length) return;
+    const staleSet = new Set(staleIds);
+    for (const matchId of staleIds) clearTransitionTimeoutsFor(matchId);
+    setSlotUiByMatchId((prev) => {
+      let changed = false;
+      const next: Record<string, SlotUiState> = {};
+      for (const [id, state] of Object.entries(prev)) {
+        if (staleSet.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = state;
+      }
+      return changed ? next : prev;
+    });
+  }, [activeVoting, clearTransitionTimeoutsFor, slotUiByMatchId]);
+
+  useEffect(() => {
+    if (!lowInventory || !onRequestMore || feedStatus !== 'ready' || votingMatch || hasSlotTransition) return;
+    if (snapshotOrder.length > 0) return;
+    const key = `${arena.type}:${globalPageInfo?.pageIndex || 0}:${activeVoting.map((m) => m.match_id).join(',')}`;
+    if (lowInventoryRetryKeyRef.current === key) return;
+    lowInventoryRetryKeyRef.current = key;
+    const id = window.setTimeout(() => {
+      void refillArena('auto-low');
+    }, 900);
+    return () => window.clearTimeout(id);
+  }, [activeVoting, arena.type, feedStatus, globalPageInfo?.pageIndex, hasSlotTransition, lowInventory, onRequestMore, refillArena, snapshotOrder.length, votingMatch]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (!(feedStatus === 'refilling' || feedStatus === 'transitioning')) return;
+    const id = window.setTimeout(() => {
+      const x = Math.floor(window.innerWidth * 0.5);
+      const y = Math.max(0, window.innerHeight - 8);
+      const top = document.elementFromPoint(x, y) as HTMLElement | null;
+      const style = top ? getComputedStyle(top) : null;
+      const fixedAncestors: Array<Record<string, string | null>> = [];
+      let cursor: HTMLElement | null = top;
+      while (cursor && fixedAncestors.length < 5) {
+        const cs = getComputedStyle(cursor);
+        if (cs.position === 'fixed' || cs.position === 'absolute') {
+          fixedAncestors.push({
+            tag: cursor.tagName,
+            className: String(cursor.className || ''),
+            id: cursor.id || null,
+            position: cs.position,
+            zIndex: cs.zIndex,
+            pointerEvents: cs.pointerEvents,
+          });
+        }
+        cursor = cursor.parentElement;
+      }
+      // eslint-disable-next-line no-console
+      console.log('[DEV] arena-refill bottom probe', {
+        arena: arena.type,
+        phase: feedStatus,
+        point: { x, y },
+        topTag: top?.tagName || null,
+        topClass: top?.className || null,
+        topZ: style?.zIndex || null,
+        topPointerEvents: style?.pointerEvents || null,
+        fixedAncestors,
+      });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [arena.type, feedStatus]);
+
+  useEffect(() => {
+    onVoteRef.current = onVote;
+  }, [onVote]);
+
+  useEffect(() => {
+    onPredictRef.current = onPredict;
+  }, [onPredict]);
+
+  useEffect(() => {
+    onCreateCalloutRef.current = onCreateCallout;
+  }, [onCreateCallout]);
+
+  const stableVote = useCallback((matchId: string, catId: string) => {
+    return onVoteRef.current(matchId, catId);
+  }, []);
+
+  const stablePredict = useCallback((matchId: string, catId: string, bet: number) => {
+    return onPredictRef.current(matchId, catId, bet);
+  }, []);
+
+  const stableCreateCallout = useCallback((matchId: string, catId: string) => {
+    onCreateCalloutRef.current(matchId, catId);
+  }, []);
+
+  const handleRefreshQueued = useCallback((matchId: string) => {
+    setQueuedVotes((prev) => {
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
+    void refillArena('queued');
+  }, [refillArena]);
+
+  const handleVoteAccepted = useCallback((matchId: string, side: "a" | "b") => {
+    if (segment !== 'voting') return;
+    if (!presentMatchIdsRef.current.has(matchId)) return;
+    const CONFIRMED_HOLD_MS = reduceMotion ? 220 : 820;
+    const EXIT_ANIMATION_MS = reduceMotion ? 0 : 320;
+    clearTransitionTimeoutsFor(matchId);
+    setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
+    setSlotUiByMatchId((prev) => ({ ...prev, [matchId]: { phase: "voted", chosenSide: side } }));
+    queueTransitionTimeout(matchId, CONFIRMED_HOLD_MS, () => {
+      setSlotUiByMatchId((prev) => {
+        const current = prev[matchId];
+        if (!current) return prev;
+        return { ...prev, [matchId]: { ...current, phase: "exiting" } };
+      });
+      const finalize = () => {
+        if (!presentMatchIdsRef.current.has(matchId)) return;
+        replaceCard(matchId, (result) => {
+          clearTransitionTimeoutsFor(matchId);
+          setQueuedVotes((prev) => {
+            const next = { ...prev };
+            delete next[matchId];
+            return next;
+          });
+          setSlotUiByMatchId((prev) => {
+            if (!prev[matchId]) return prev;
+            const next = { ...prev };
+            delete next[matchId];
+            return next;
+          });
+          if (!result.replaced) {
+            setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
+            return;
+          }
+          if (result.insertedId) {
+            setNextUpId(result.insertedId);
+            queueTransitionTimeout(matchId, 800, () =>
+              setNextUpId((id) => (id === result.insertedId ? null : id))
+            );
+          }
+        });
+      };
+      if (EXIT_ANIMATION_MS > 0) {
+        queueTransitionTimeout(matchId, EXIT_ANIMATION_MS, finalize);
+      } else {
+        finalize();
+      }
+    });
+  }, [clearTransitionTimeoutsFor, queueTransitionTimeout, reduceMotion, replaceCard, segment]);
 
   return (
     <div className="rounded-3xl bg-white/[0.03] shadow-[0_10px_25px_rgba(0,0,0,0.25)] p-4">
@@ -1314,21 +1920,38 @@ function ArenaSection({
           </button>
         ))}
       </div>
+      {queueDebug && (
+        <div className="mb-2 rounded-lg border border-white/15 bg-black/35 p-2 text-[10px] text-white/70">
+          <div>
+            debug arena={queueDebug.arenaType} phase={queueDebug.status} snapshotV={queueDebug.snapshotVersion} reqSeq={queueDebug.requestSeq} orderLen={queueDebug.poolLen} pendingSnapshot={String(queueDebug.pendingSnapshot)}
+          </div>
+          <div>page={queueDebug.pageIndex} voted={queueDebug.votedCount}</div>
+          <div className="mt-1 break-all">
+            {queueDebug.slots.map((slot) => `${slot.slotIndex}:${slot.matchId || 'empty'}:${slot.phase}`).join(' | ')}
+          </div>
+        </div>
+      )}
 
       {segment === 'voting' && stackVelocity && (
         <p className="text-[10px] text-white/50 mb-2">{stackVelocity}</p>
       )}
-      {segment === 'voting' && arenaFeed.isRefilling && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-[10px] text-cyan-200/80 animate-pulse">
-            Refilling arena... {arenaFeed.retryAttempt > 0 ? `(retry ${arenaFeed.retryAttempt}/3)` : ''}
-          </p>
-          {arenaFeed.showManualRefresh && (
+      {segment === 'voting' && debugInfo?.whyNotFilled?.length ? (
+        <p className="text-[10px] text-white/45 mb-2">
+          debug: {debugInfo.whyNotFilled.join(', ')} · eligible {Number(debugInfo.eligibleCatsCount || 0)} · open {Number(debugInfo.openMatchesCount || 0)}
+        </p>
+      ) : null}
+      {segment === 'voting' && feedError && (
+        <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-[11px] text-amber-100 flex items-center justify-between gap-2 pointer-events-none">
+          <span>{feedError}</span>
+          {showManualRefresh && (
             <button
-              onClick={() => void arenaFeed.refresh()}
-              className="h-7 px-2 rounded-full border border-cyan-300/35 bg-cyan-500/10 text-[10px] font-semibold text-cyan-100"
+              onClick={() => {
+                setQueuedVotes({});
+                void refillArena('manual');
+              }}
+              className="h-9 min-h-[36px] px-3 rounded-lg border border-amber-300/45 bg-amber-500/15 text-[11px] font-semibold text-amber-100 touch-manipulation pointer-events-auto"
             >
-              Refresh
+              Retry
             </button>
           )}
         </div>
@@ -1339,25 +1962,40 @@ function ArenaSection({
         </p>
       )}
 
-      {activeList.length === 0 ? (
+      {(segment === 'voting' ? votingSlots.length === 0 && feedStatus === 'ready' : activeList.length === 0) ? (
         <div className="rounded-2xl bg-white/[0.02] p-6 text-center">
           <Target className="w-7 h-7 text-white/40 mx-auto mb-2" />
           {segment === 'voting' ? (
             <>
               <p className="text-sm text-cyan-200/85">
-                {arenaFeed.isLoading ? 'Loading arena...' : arenaFeed.error ? 'Arena is reloading' : 'Refilling arena...'}
+                {userCaughtUp
+                  ? "You've voted on all matches for today. Come back later!"
+                  : feedStatus === 'refilling' || feedStatus === 'transitioning'
+                    ? `${config.label} loading...`
+                    : `${config.label} is refilling.`}
               </p>
               <p className="text-xs text-white/45 mt-1">
-                {arenaFeed.error ? `No live matchups yet. Try refresh or return at next Pulse (${pulseCountdown || '--:--:--'}).` : 'Checking for the next live matchups.'}
+                {userCaughtUp ? `Next Pulse in ${pulseCountdown || '--:--:--'}.` : `Next Pulse in ${pulseCountdown || '--:--:--'}.`}
               </p>
-              {(arenaFeed.showManualRefresh || arenaFeed.error) && (
+              <div className="mt-2 flex items-center justify-center gap-2">
                 <button
-                  onClick={() => void arenaFeed.refresh()}
-                  className="mt-2 h-8 px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-[11px] font-semibold text-cyan-100"
+                  onClick={() => {
+                    setQueuedVotes({});
+                    void refillArena('manual');
+                  }}
+                  className="h-11 min-h-[44px] px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-[11px] font-semibold text-cyan-100 touch-manipulation"
                 >
                   Refresh
                 </button>
-              )}
+                {arena.type === 'main' && onSwitchArena && (
+                  <button
+                    onClick={() => onSwitchArena('rookie')}
+                    className="h-11 min-h-[44px] px-3 rounded-lg border border-emerald-300/35 bg-emerald-500/10 text-[11px] font-semibold text-emerald-100 touch-manipulation"
+                  >
+                    Switch to Rookie
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -1368,65 +2006,98 @@ function ArenaSection({
         </div>
       ) : (
         <div className="space-y-3">
-          {activeList.map((match) => (
-            <MatchCard
-              key={match.match_id}
-              match={match}
-              voted={votedMatches[match.match_id] || null}
-              isVoting={votingMatch === match.match_id}
-              predictBusy={predictBusyMatch === match.match_id}
-              calloutBusy={calloutBusyMatch === match.match_id}
-              socialEnabled={socialEnabled}
-              availableSigils={availableSigils}
-              voteStreak={voteStreak}
-              isExiting={segment === 'voting' && exitingId === match.match_id}
-              voteQueued={!!queuedVotes[match.match_id]}
-              showNextUp={nextUpId === match.match_id}
-              onRefreshQueued={() => {
-                setQueuedVotes((prev) => {
-                  const next = { ...prev };
-                  delete next[match.match_id];
-                  return next;
-                });
-                void arenaFeed.refresh();
-              }}
-              onVote={async (matchId, catId) => {
-                const ok = await onVote(matchId, catId);
-                if (!ok) return false;
-                if (segment === 'voting' && !exitingId) {
-                  const CONFIRMED_HOLD_MS = 950;
-                  const EXIT_ANIMATION_MS = 320;
-                  setExitingId(matchId);
-                  window.setTimeout(() => {
-                    replaceCard(matchId, (result) => {
-                      if (!result.replaced) {
-                        setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
-                      } else if (result.insertedId) {
-                        setQueuedVotes((prev) => {
-                          if (!prev[matchId]) return prev;
-                          const next = { ...prev };
-                          delete next[matchId];
-                          return next;
-                        });
-                        setNextUpId(result.insertedId);
-                        window.setTimeout(() => setNextUpId((id) => (id === result.insertedId ? null : id)), 800);
-                      }
-                      window.setTimeout(() => {
-                        setExitingId((current) => (current === matchId ? null : current));
-                      }, EXIT_ANIMATION_MS);
-                    });
-                  }, CONFIRMED_HOLD_MS);
-                }
-                return true;
-              }}
-              onPredict={onPredict}
-              onCreateCallout={onCreateCallout}
-            />
-          ))}
+          {segment === 'voting' ? (
+            <>
+              {votingSlots.map((slot) => (
+                <div key={slot.key} className={slot.match ? "min-h-[420px]" : "min-h-[140px]"}>
+                {slot.match ? (
+                  <MatchCard
+                    match={slot.match}
+                    voted={votedMatches[slot.match.match_id] || null}
+                    isVoting={votingMatch === slot.match.match_id}
+                    predictBusy={predictBusyMatch === slot.match.match_id}
+                    calloutBusy={calloutBusyMatch === slot.match.match_id}
+                    socialEnabled={socialEnabled}
+                    availableSigils={availableSigils}
+                    voteStreak={voteStreak}
+                    isExiting={slotUiByMatchId[slot.match.match_id]?.phase === 'exiting'}
+                    slotPhase={slotUiByMatchId[slot.match.match_id]?.phase || 'idle'}
+                    slotChosenSide={slotUiByMatchId[slot.match.match_id]?.chosenSide || null}
+                    voteQueued={!!queuedVotes[slot.match.match_id]}
+                    showNextUp={nextUpId === slot.match.match_id}
+                    onRefreshQueued={handleRefreshQueued}
+                    onVote={stableVote}
+                    onVoteAccepted={handleVoteAccepted}
+                    onPredict={stablePredict}
+                    onCreateCallout={stableCreateCallout}
+                  />
+                ) : (
+                  <LoadingNextFightsCard />
+                )}
+                </div>
+              ))}
+              {(feedStatus === 'refilling' || feedStatus === 'transitioning') && (
+                <LoadingNextFightsCard
+                  text={
+                    refillRetryAttempt > 0
+                        ? `Loading next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
+                        : 'Loading next fights...'
+                  }
+                />
+              )}
+            </>
+          ) : (
+            activeList.map((match) => (
+              <MatchCard
+                key={match.match_id}
+                match={match}
+                voted={votedMatches[match.match_id] || null}
+                isVoting={votingMatch === match.match_id}
+                predictBusy={predictBusyMatch === match.match_id}
+                calloutBusy={calloutBusyMatch === match.match_id}
+                socialEnabled={socialEnabled}
+                availableSigils={availableSigils}
+                voteStreak={voteStreak}
+                voteQueued={!!queuedVotes[match.match_id]}
+                showNextUp={nextUpId === match.match_id}
+                onRefreshQueued={handleRefreshQueued}
+                onVote={stableVote}
+                onVoteAccepted={handleVoteAccepted}
+                onPredict={stablePredict}
+                onCreateCallout={stableCreateCallout}
+              />
+            ))
+          )}
+          {segment === 'voting' && visiblePageOrder.length > MAX_VISIBLE && (
+            <div className="pt-1 flex items-center justify-center">
+              <button
+                onClick={() => {
+                  const excluded = new Set<string>(Object.keys(votedMatches));
+                  const nextIds: string[] = [];
+                  while (nextIds.length < MAX_VISIBLE) {
+                    const id = pullNextMatchId(excluded);
+                    if (!id) break;
+                    nextIds.push(id);
+                    excluded.add(id);
+                  }
+                  if (nextIds.length === 0) {
+                    cursorRef.current = 0;
+                    setCursor(0);
+                    setStackIds(fillStackToFour([]));
+                  } else {
+                    setStackIds(nextIds);
+                  }
+                }}
+                className="h-8 px-3 rounded-full border border-white/20 bg-white/8 text-[11px] font-semibold text-white/85"
+              >
+                See more fights
+              </button>
+            </div>
+          )}
           {arena.status === "complete" && arena.champion && (
             <div className="mt-2 p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg overflow-hidden">
-                <img src={getCatImage(arena.champion)} alt={arena.champion.name} className="w-full h-full object-cover object-center" />
+                <img src={getCatImage(arena.champion)} alt={arena.champion.name} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover object-center" />
               </div>
               <div className="text-sm">
                 <div className="flex items-center gap-1.5">
@@ -1447,7 +2118,7 @@ function ArenaSection({
 // ── API Helpers ──
 async function fetchUserState() {
   try {
-    const res = await fetch("/api/me");
+    const res = await fetch("/api/me", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed");
     return data;
@@ -1456,29 +2127,66 @@ async function fetchUserState() {
   }
 }
 
+function isClientFixtureMode(): boolean {
+  if (process.env.NEXT_PUBLIC_FIXTURE_MODE === "1") return true;
+  if (typeof window === "undefined") return false;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("fixture") === "1") {
+      localStorage.setItem("fixture_mode", "1");
+      return true;
+    }
+    return localStorage.getItem("fixture_mode") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function withFixtureRequest(input: string, init: RequestInit = {}) {
+  if (!isClientFixtureMode()) return { input, init };
+  const headers = new Headers(init.headers || {});
+  headers.set("x-fixture-mode", "1");
+  const nextInput = input.includes("?") ? `${input}&fixture=1` : `${input}?fixture=1`;
+  return { input: nextInput, init: { ...init, headers } };
+}
+
 async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 2600) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const req = withFixtureRequest(input, init);
+    return await fetch(req.input, { ...req.init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function fetchArenas(options?: { refresh?: boolean }): Promise<{ arenas: Arena[]; votedMatches: Record<string, string> }> {
+async function fetchArenas(options?: { refresh?: boolean }): Promise<{ arenas: Arena[]; votedMatches: Record<string, string>; mainPool: ArenaMatch[]; rookiePool: ArenaMatch[] }> {
   try {
     const refreshFlag = options?.refresh ? '?refresh=1' : '';
     const res = await fetchWithTimeout(`/api/tournament/active${refreshFlag}`, { cache: "no-store" }, 2600);
     const data = await res.json();
-    return { arenas: data.arenas || [], votedMatches: data.voted_matches || {} };
+    return {
+      arenas: data.arenas || [],
+      votedMatches: data.voted_matches || {},
+      mainPool: Array.isArray(data?.mainPool) ? data.mainPool : [],
+      rookiePool: Array.isArray(data?.rookiePool) ? data.rookiePool : [],
+    };
   } catch {
-    return { arenas: [], votedMatches: {} };
+    return { arenas: [], votedMatches: {}, mainPool: [], rookiePool: [] };
   }
 }
 
 async function fetchArenaPage(arena: "main" | "rookie", page: number, tab: "voting" | "results" = "voting") {
-  const res = await fetch(`/api/arena/pages?arena=${arena}&page=${Math.max(0, page)}&tab=${tab}`, { cache: "no-store" });
+  const debugMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
+  const req = withFixtureRequest(`/api/arena/pages?arena=${arena}&page=${Math.max(0, page)}&tab=${tab}${debugMode ? '&debug=1' : ''}`, { cache: "no-store" });
+  const res = await fetch(req.input, req.init);
+  return await res.json().catch(() => null);
+}
+
+async function fetchArenaQueuePage(arena: "main" | "rookie") {
+  const req = withFixtureRequest(`/api/arena/page?arena=${arena}&page_size=6&total_size=36`, { cache: "no-store" });
+  const res = await fetch(req.input, req.init);
   return await res.json().catch(() => null);
 }
 
@@ -1511,7 +2219,7 @@ async function fetchHomeDashboard() {
 
 async function apiClaimCrate() {
   try {
-    const res = await fetch("/api/crate/claim", { method: "POST", headers: { "Content-Type": "application/json" } });
+    const res = await fetch("/api/crates/open", { method: "POST", headers: { "Content-Type": "application/json" } });
     return await res.json();
   } catch (e) { return { error: e instanceof Error ? e.message : "Error" }; }
 }
@@ -1530,6 +2238,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = useState(true);
+  const [hasProfileUsername, setHasProfileUsername] = useState(false);
   const [showClaimNamePrompt, setShowClaimNamePrompt] = useState(false);
   const [guestId, setGuestId] = useState<string>("");
   const [flame, setFlame] = useState<ArenaFlame | null>(null);
@@ -1608,6 +2317,18 @@ export default function Page() {
     main: { dayKey: '', pageIndex: 0, pageSize: 16, totalPages: 1, activeVoters10m: 0, livePulseAt: null },
     rookie: { dayKey: '', pageIndex: 0, pageSize: 16, totalPages: 1, activeVoters10m: 0, livePulseAt: null },
   });
+  const [arenaQueueInfo, setArenaQueueInfo] = useState<Record<'main' | 'rookie', ArenaQueuePageInfo>>({
+    main: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0 },
+    rookie: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0 },
+  });
+  const [arenaDebugInfo, setArenaDebugInfo] = useState<Record<'main' | 'rookie', ArenaInventoryDebug | null>>({
+    main: null,
+    rookie: null,
+  });
+  const [hasSeenArenaByType, setHasSeenArenaByType] = useState<Record<'main' | 'rookie', boolean>>({
+    main: false,
+    rookie: false,
+  });
   const pageMatchIdsRef = useRef<Record<'main' | 'rookie', string[]>>({ main: [], rookie: [] });
   const pollSinceRef = useRef<Record<'main' | 'rookie', number>>({ main: 0, rookie: 0 });
   const arenaVersionRef = useRef<Record<'main' | 'rookie', string>>({ main: '', rookie: '' });
@@ -1616,8 +2337,25 @@ export default function Page() {
   const duelSectionRef = useRef<HTMLDivElement | null>(null);
   const [duelSectionInView, setDuelSectionInView] = useState(false);
   const lowEgressMode = process.env.NEXT_PUBLIC_LOW_EGRESS === '1';
+  const guestRewardsHintShownRef = useRef(false);
+  const arenaRefillInFlightRef = useRef<Record<'main' | 'rookie', boolean>>({ main: false, rookie: false });
+  const arenaRefillLastAtRef = useRef<Record<'main' | 'rookie', number>>({ main: 0, rookie: 0 });
+  const voteStateScope = useMemo(() => voteScopeFromArenas(arenas), [arenas]);
 
   useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    const seenMain = arenas.some((a) => a.type === 'main');
+    const seenRookie = arenas.some((a) => a.type === 'rookie');
+    if (!seenMain && !seenRookie) return;
+    setHasSeenArenaByType((prev) => ({
+      main: prev.main || seenMain,
+      rookie: prev.rookie || seenRookie,
+    }));
+  }, [arenas]);
+  useEffect(() => {
+    runIdentityResolutionChecks();
+    runVoteStateChecks();
+  }, []);
   useEffect(() => {
     fetch('/api/telemetry/event', {
       method: 'POST',
@@ -1756,6 +2494,11 @@ export default function Page() {
     return () => window.clearTimeout(timer);
   }, [clutchSharePrompt]);
   useEffect(() => {
+    if (!dailyRewardSplash) return;
+    const timer = window.setTimeout(() => setDailyRewardSplash(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [dailyRewardSplash]);
+  useEffect(() => {
     const tick = () => {
       const now = new Date();
       const next = new Date(now);
@@ -1838,6 +2581,16 @@ export default function Page() {
       .catch(() => {});
   }, []);
   useEffect(() => {
+    const el = duelSectionRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      setDuelSectionInView(entries.some((e) => e.isIntersecting));
+    }, { threshold: 0.15 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (lowEgressMode && !duelSectionInView) return;
     const tick = async () => {
       const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
       if (!duel?.ok) return;
@@ -1849,9 +2602,10 @@ export default function Page() {
       setLiveDuels(top);
       setLiveDuelVotes2m(Number(duel?.recent_votes_2m || 0));
     };
-    const id = setInterval(tick, 15000);
+    tick();
+    const id = setInterval(tick, lowEgressMode ? 60000 : 15000);
     return () => clearInterval(id);
-  }, []);
+  }, [duelSectionInView, lowEgressMode]);
 
   const activeVotersNow = Math.max(0, Number(globalPageInfo[arenaTypeTab]?.activeVoters10m || 0));
 
@@ -1866,10 +2620,39 @@ export default function Page() {
     });
   }
 
-  async function loadGlobalPage(arenaType: 'main' | 'rookie', pageIndex: number, opts?: { dayKey?: string; persist?: boolean }) {
+  async function loadArenaQueuePage(arenaType: 'main' | 'rookie', options?: { preserveExistingOnEmpty?: boolean }): Promise<{ ok: boolean; count: number }> {
+    const data = await fetchArenaQueuePage(arenaType);
+    if (!data?.ok) return { ok: false, count: 0 };
+    const matches = Array.isArray(data.matches) ? (data.matches as ArenaMatch[]) : [];
+    if (options?.preserveExistingOnEmpty && matches.length === 0) return { ok: true, count: 0 };
+    setArenas((prev) => applyPageMatchesToArenas(prev, arenaType, matches));
+    setArenaQueueInfo((prev) => ({
+      ...prev,
+      [arenaType]: {
+        pageIndex: Math.max(0, Number(data.page_index || 0)),
+        pageSize: Math.max(1, Number(data.page_size || 6)),
+        totalSize: Math.max(1, Number(data.total_size || 36)),
+        votedCount: Math.max(0, Number(data.voted_count || 0)),
+      },
+    }));
+    return { ok: true, count: matches.length };
+  }
+
+  async function loadGlobalPage(
+    arenaType: 'main' | 'rookie',
+    pageIndex: number,
+    opts?: { dayKey?: string; persist?: boolean; preserveExistingOnEmpty?: boolean },
+  ) {
     const data = await fetchArenaPage(arenaType, pageIndex, 'voting');
     if (!data?.ok) return false;
     const matches = Array.isArray(data.matches) ? (data.matches as ArenaMatch[]) : [];
+    if (opts?.preserveExistingOnEmpty && matches.length === 0) {
+      setArenaDebugInfo((prev) => ({
+        ...prev,
+        [arenaType]: data?.debug ? (data.debug as ArenaInventoryDebug) : prev[arenaType],
+      }));
+      return false;
+    }
     setArenas((prev) => applyPageMatchesToArenas(prev, arenaType, matches));
     pageMatchIdsRef.current[arenaType] = matches.map((m) => m.match_id);
     pollSinceRef.current[arenaType] = Date.now();
@@ -1883,6 +2666,10 @@ export default function Page() {
         activeVoters10m: Math.max(0, Number(data.activeVoters10m || 0)),
         livePulseAt: prev[arenaType].livePulseAt,
       },
+    }));
+    setArenaDebugInfo((prev) => ({
+      ...prev,
+      [arenaType]: data?.debug ? (data.debug as ArenaInventoryDebug) : null,
     }));
     if (opts?.persist !== false) {
       try {
@@ -1925,7 +2712,9 @@ export default function Page() {
     const [userData, arenaData, homeData] = await Promise.all([fetchUserState(), fetchArenas(), fetchHomeDashboard()]);
     if (!userData.error) {
       setMeError(null);
-      setGuestId(userData.guest_id || "");
+      const actorId = resolveActorId(userData);
+      setGuestId(actorId || userData.guest_id || "");
+      setHasProfileUsername(!!resolveProfileUsername(userData));
       setFlame(userData.data?.flame || null);
       setProgress({
         xp: userData.data?.progress?.xp || 0,
@@ -1935,7 +2724,7 @@ export default function Page() {
         predictionStreak: userData.data?.prediction_streak || 0,
         catXpPool: Number(userData.data?.cat_xp_pool || 0),
       });
-      setHasCredentials(!!userData.data?.has_credentials);
+      setHasCredentials(Boolean(userData.data?.has_credentials));
       setEquippedCosmetics((userData.data?.equipped_cosmetics || {}) as any);
       const daily = await fetch('/api/rewards/daily-visit', {
         method: 'POST',
@@ -1953,10 +2742,31 @@ export default function Page() {
       setMeError(String(userData.error || 'Failed to load Arena Flame'));
       setFlame(null);
     }
-    setArenas(arenaData.arenas);
-    setVotedMatches(arenaData.votedMatches);
+    const poolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
+      main: Array.isArray(arenaData.mainPool) ? arenaData.mainPool : [],
+      rookie: Array.isArray(arenaData.rookiePool) ? arenaData.rookiePool : [],
+    };
+    const arenasWithPools = (arenaData.arenas || []).map((a) => {
+      const t = a.type === 'main' || a.type === 'rookie' ? a.type : null;
+      if (!t) return a;
+      const currentRound = Number(a.current_round || 1);
+      const poolMatches = poolMap[t];
+      if (!poolMatches.length) return a;
+      return {
+        ...a,
+        rounds: [{ round: currentRound, matches: poolMatches }],
+      };
+    });
+    setArenas(arenasWithPools);
+    await Promise.all([
+      loadArenaQueuePage('main').catch(() => ({ ok: false, count: 0 })),
+      loadArenaQueuePage('rookie').catch(() => ({ ok: false, count: 0 })),
+    ]);
+    const nextVoteScope = voteScopeFromArenas(arenasWithPools as Arena[]);
+    const mergedVotes = mergeVotedMaps(arenaData.votedMatches, readVotedMatchesFromStorage(nextVoteScope));
+    setVotedMatches(mergedVotes);
+    writeVotedMatchesToStorage(mergedVotes, nextVoteScope);
     setLoading(false);
-    void initializeGlobalPages();
     const gs = await fetch("/api/rewards/getting-started", { cache: "no-store" }).then((r) => r.json().catch(() => null)).catch(() => null);
     if (gs?.ok) {
       setGettingStarted(gs);
@@ -1966,6 +2776,8 @@ export default function Page() {
       if (xpAwarded > 0 || banked > 0) {
         const refreshed = await fetchUserState();
         if (!refreshed.error) {
+          setHasCredentials(Boolean(refreshed.data?.has_credentials));
+          setHasProfileUsername(!!resolveProfileUsername(refreshed));
           setFlame(refreshed.data?.flame || null);
           setProgress({
             xp: refreshed.data?.progress?.xp || 0,
@@ -2074,11 +2886,14 @@ export default function Page() {
 
   async function handleVote(matchId: string, catId: string): Promise<boolean> {
     if (votingMatch || votedMatches[matchId]) return false;
+    const matchedArenaType = arenas.find((a) =>
+      (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
+    )?.type as 'main' | 'rookie' | undefined;
     setVotingMatch(matchId);
     setError(null);
     setVotedMatches((prev) => {
       const next = upsertVotedMatch(prev, matchId, catId);
-      writeVotedMatchesToStorage(next);
+      writeVotedMatchesToStorage(next, voteStateScope);
       const arenaType = arenas.find((a) =>
         (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
       )?.type as 'main' | 'rookie' | undefined;
@@ -2095,19 +2910,22 @@ export default function Page() {
       const data = await r.json().catch(() => null);
       if (!r.ok || !data?.ok) {
         const msg = data?.error || "Vote failed";
-                if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("duplicate")) {
+        if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("duplicate")) {
           statusBurstUntilRef.current = Date.now() + 20_000;
           setVotedMatches((prev) => {
             const next = upsertVotedMatch(prev, matchId, catId);
-            writeVotedMatchesToStorage(next);
+            writeVotedMatchesToStorage(next, voteStateScope);
             return next;
           });
+          if (data?.page_complete && (matchedArenaType === 'main' || matchedArenaType === 'rookie')) {
+            void handleArenaStackRefill(matchedArenaType);
+          }
           showToast("Vote registered ✅");
           return true;
         }
         setVotedMatches((prev) => {
           const next = removeVotedMatch(prev, matchId);
-          writeVotedMatchesToStorage(next);
+          writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
         showToast("Vote failed — try again");
@@ -2129,7 +2947,7 @@ export default function Page() {
           return next;
         });
         setLastVoteAtMs(nowMs);
-        if (!hasCredentials) {
+        if (hasCredentials && !hasProfileUsername) {
           try {
             const k = 'guest_vote_count';
             const current = Number(localStorage.getItem(k) || 0);
@@ -2148,27 +2966,43 @@ export default function Page() {
         }
         setVotedMatches((prev) => {
           const next = upsertVotedMatch(prev, matchId, catId);
-          writeVotedMatchesToStorage(next);
-          const arenaType = arenas.find((a) =>
-            (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
-          )?.type as 'main' | 'rookie' | undefined;
-          if (arenaType === 'main' || arenaType === 'rookie') {
-            persistCurrentArenaProgress(arenaType, next);
+          writeVotedMatchesToStorage(next, voteStateScope);
+          if (matchedArenaType === 'main' || matchedArenaType === 'rookie') {
+            persistCurrentArenaProgress(matchedArenaType, next);
           }
           return next;
         });
+        if (data?.page_complete && (matchedArenaType === 'main' || matchedArenaType === 'rookie')) {
+          void handleArenaStackRefill(matchedArenaType);
+        }
         showToast("Vote registered ✅");
-        setProgress((prev) => prev ? {
-          ...prev,
-          xp: prev.xp + Number(data?.xp_earned || 5),
-          catXpPool: prev.catXpPool + Number(data?.cat_xp_banked || 0),
-        } : null);
+        if (!data?.rewards_locked) {
+          setProgress((prev) => prev ? {
+            ...prev,
+            xp: prev.xp + Number(data?.xp_earned || 5),
+            catXpPool: prev.catXpPool + Number(data?.cat_xp_banked || 0),
+          } : null);
+        } else if (!guestRewardsHintShownRef.current) {
+          guestRewardsHintShownRef.current = true;
+          showToast("Create account to earn streak/XP/rewards");
+        }
         // Keep voting flow stable: avoid full arena refetch on every vote.
         // Arena data refreshes when the current stack is exhausted.
+        statusBurstUntilRef.current = Date.now() + 20_000;
         refreshGettingStarted();
+        return true;
       }
-    } catch { showToast("Vote failed — try again"); }
-    setVotingMatch(null);
+    } catch {
+      setVotedMatches((prev) => {
+        const next = removeVotedMatch(prev, matchId);
+        writeVotedMatchesToStorage(next, voteStateScope);
+        return next;
+      });
+      showToast("Vote failed — try again");
+      return false;
+    } finally {
+      setVotingMatch(null);
+    }
   }
 
   function showToast(msg: string) { showGlobalToast(msg, 5000); }
@@ -2179,45 +3013,72 @@ export default function Page() {
 
     const poll = async () => {
       if (cancelled) return;
-      const activeArena = arenaTypeTab;
-      const info = globalPageInfo[activeArena];
       const isHidden = typeof document !== 'undefined' && document.hidden;
       const busy = !!(votingMatch || predictBusyMatch);
-      const delay = isHidden || busy ? 6000 : 2000;
+      const now = Date.now();
+      const burst = now < Number(statusBurstUntilRef.current || 0);
+      const baseDelay = isHidden ? 60_000 : (burst ? 6_000 : 12_000);
+      const delay = busy ? Math.max(baseDelay, 12_000) : baseDelay;
 
-      if (!isHidden && info.dayKey) {
-        const since = Math.max(0, Number(pollSinceRef.current[activeArena] || Date.now() - 3000));
-        try {
-          const res = await fetch(`/api/arena/updates?arena=${activeArena}&tab=voting&page=${info.pageIndex}&since=${since}`, { cache: 'no-store' });
-          const data = await res.json().catch(() => null);
-          if (data?.ok && Array.isArray(data.updates)) {
-            const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number }>;
-            if (updates.length > 0) {
-              const updateMap = new Map(updates.map((u) => [u.matchId, u]));
-              setArenas((prev) => prev.map((arena) => {
-                if (arena.type !== activeArena) return arena;
-                return {
-                  ...arena,
-                  rounds: (arena.rounds || []).map((round) => ({
-                    ...round,
-                    matches: (round.matches || []).map((match) => {
-                      const u = updateMap.get(match.match_id);
-                      if (!u) return match;
-                      return { ...match, votes_a: Number(u.votesA || 0), votes_b: Number(u.votesB || 0) };
-                    }),
-                  })),
-                };
-              }));
-              setGlobalPageInfo((prev) => ({
-                ...prev,
-                [activeArena]: { ...prev[activeArena], livePulseAt: Date.now() },
-              }));
+      try {
+        const status = await fetch('/api/home/status', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
+        if (status?.ok) {
+          const versions = {
+            main: String(status.arenaVersionMain || ''),
+            rookie: String(status.arenaVersionRookie || ''),
+          };
+          const activeArena = arenaTypeTab;
+          const info = globalPageInfo[activeArena];
+          if (!isHidden && info.dayKey && versions[activeArena] && versions[activeArena] !== arenaVersionRef.current[activeArena]) {
+            const since = Math.max(0, Number(pollSinceRef.current[activeArena] || Date.now() - 5000));
+            const res = await fetch(`/api/arena/updates?arena=${activeArena}&tab=voting&page=${info.pageIndex}&since=${since}`, { cache: 'no-store' });
+            const data = await res.json().catch(() => null);
+            if (data?.ok && Array.isArray(data.updates)) {
+              const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number }>;
+              if (updates.length > 0) {
+                const updateMap = new Map(updates.map((u) => [u.matchId, u]));
+                setArenas((prev) => prev.map((arena) => {
+                  if (arena.type !== activeArena) return arena;
+                  return {
+                    ...arena,
+                    rounds: (arena.rounds || []).map((round) => ({
+                      ...round,
+                      matches: (round.matches || []).map((match) => {
+                        const u = updateMap.get(match.match_id);
+                        if (!u) return match;
+                        return { ...match, votes_a: Number(u.votesA || 0), votes_b: Number(u.votesB || 0) };
+                      }),
+                    })),
+                  };
+                }));
+                setGlobalPageInfo((prev) => ({
+                  ...prev,
+                  [activeArena]: { ...prev[activeArena], livePulseAt: Date.now() },
+                }));
+              }
+              pollSinceRef.current[activeArena] = Number(data.serverTime || Date.now());
             }
-            pollSinceRef.current[activeArena] = Number(data.serverTime || Date.now());
+            arenaVersionRef.current[activeArena] = versions[activeArena];
           }
-        } catch {
-          // ignore transient polling errors
+          if (!isHidden && !lowEgressMode && duelSectionInView) {
+            const duelVersion = String(status.duelVersion || '');
+            if (duelVersion && duelVersion !== duelVersionRef.current) {
+              const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
+              if (duel?.ok) {
+                const open = Array.isArray(duel.open) ? duel.open : [];
+                const top = open
+                  .filter((d: DuelRow) => !!d?.challenger_cat?.id && !!d?.challenged_cat?.id)
+                  .sort((a: DuelRow, b: DuelRow) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
+                  .slice(0, 5);
+                setLiveDuels(top);
+                setLiveDuelVotes2m(Number(duel?.recent_votes_2m || 0));
+                duelVersionRef.current = duelVersion;
+              }
+            }
+          }
         }
+      } catch {
+        // ignore transient status polling errors
       }
       if (!cancelled) timer = window.setTimeout(poll, delay);
     };
@@ -2233,31 +3094,11 @@ export default function Page() {
     globalPageInfo.main.pageIndex,
     globalPageInfo.rookie.dayKey,
     globalPageInfo.rookie.pageIndex,
+    duelSectionInView,
+    lowEgressMode,
     predictBusyMatch,
     votingMatch,
   ]);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    const timer = window.setTimeout(() => {
-      const imgs = Array.from(document.querySelectorAll("img"));
-      for (const img of imgs) {
-        const src = String((img as HTMLImageElement).currentSrc || (img as HTMLImageElement).src || "").trim();
-        if (!src) continue;
-        const lower = src.toLowerCase();
-        if (lower.includes("/thumb.webp")) continue;
-        if (lower.includes("/cat-placeholder")) continue;
-        if (lower.startsWith("data:") || lower.startsWith("blob:")) continue;
-        warnOnce(`non-thumb-image:${src}`, `[DEV WARNING] Non-thumb image detected: ${src}`);
-      }
-    }, 260);
-    return () => window.clearTimeout(timer);
-  }, [arenas, arenaTypeTab, liveDuels, loading]);
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    const timer = window.setTimeout(() => scanDuplicateTestIds("home"), 140);
-    return () => window.clearTimeout(timer);
-  }, [arenas, arenaTypeTab, showClaimNamePrompt]);
 
   function handleClutchSignal(label: string) {
     if (!clutchSharePromptEnabled) return;
@@ -2275,40 +3116,81 @@ export default function Page() {
 
   async function handleArenaStackRefill(arenaType?: 'main' | 'rookie'): Promise<ArenaRefreshResult> {
     const type = arenaType || arenaTypeTab;
-    const current = globalPageInfo[type];
-    const totalPages = Math.max(1, Number(current.totalPages || 1));
-    const nextPage = (Math.max(0, Number(current.pageIndex || 0)) + 1) % totalPages;
+    if (arenaRefillInFlightRef.current[type]) {
+      return { ok: true, count: 0, status: 'skipped_inflight' };
+    }
+    const now = Date.now();
+    if (now - Number(arenaRefillLastAtRef.current[type] || 0) < 1200) {
+      return { ok: true, count: 0, status: 'skipped_cooldown' };
+    }
+    arenaRefillInFlightRef.current[type] = true;
+    arenaRefillLastAtRef.current[type] = now;
     fetch('/api/telemetry/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event: 'arena_fetch_start', payload: { arena: type, page: nextPage, tab: 'voting' } }),
+      body: JSON.stringify({ event: 'arena_fetch_start', payload: { arena: type, source: 'pool-refetch' } }),
     }).catch(() => null);
-    const loaded = await loadGlobalPage(type, nextPage, { persist: true });
-    if (!loaded) {
-      fetch('/api/telemetry/event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'arena_refill_failed', payload: { arena: type, page: nextPage, tab: 'voting', reason: 'load_failed' } }),
-      }).catch(() => null);
-      return { ok: false, count: 0, status: 'failed' };
+    try {
+      const prevPageIndex = Number(arenaQueueInfo[type]?.pageIndex || 0);
+      const prevMatches =
+        arenas.find((a) => a.type === type)?.rounds?.flatMap((r) => r.matches || []) || [];
+      const prevSignature = prevMatches.map((m) => String(m.match_id || '')).filter(Boolean).join('|');
+
+      const data = await fetchArenaQueuePage(type);
+      if (!data?.ok) {
+        return { ok: false, count: 0, status: 'fetch_failed' };
+      }
+      const matches = Array.isArray(data.matches) ? (data.matches as ArenaMatch[]) : [];
+      const nextPageIndex = Math.max(0, Number(data.page_index || prevPageIndex));
+      const nextSignature = matches.map((m) => String(m.match_id || '')).filter(Boolean).join('|');
+      const renderableMatches = matches.filter((m) => isArenaVotingStatus(m.status) && !votedMatches[m.match_id]);
+      const renderableCount = renderableMatches.length;
+      const advanced = nextPageIndex > prevPageIndex || (!!nextSignature && nextSignature !== prevSignature);
+
+      if (matches.length === 0) {
+        fetch('/api/telemetry/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: 'arena_fetch_empty', payload: { arena: type, source: 'pool-refetch' } }),
+        }).catch(() => null);
+        return { ok: true, count: 0, status: 'empty', pageIndex: nextPageIndex, renderableCount: 0, advanced: false };
+      }
+
+      // Keep current snapshot if server did not advance and returned no votable cards for this user.
+      if (!advanced && renderableCount === 0) {
+        return { ok: true, count: 0, status: 'stale_nonrenderable', pageIndex: nextPageIndex, renderableCount, advanced: false };
+      }
+
+      if (renderableCount <= 0) {
+        return { ok: true, count: 0, status: 'nonrenderable', pageIndex: nextPageIndex, renderableCount, advanced };
+      }
+
+      setArenas((prev) => applyPageMatchesToArenas(prev, type, matches));
+      setArenaQueueInfo((prev) => ({
+        ...prev,
+        [type]: {
+          pageIndex: nextPageIndex,
+          pageSize: Math.max(1, Number(data.page_size || 6)),
+          totalSize: Math.max(1, Number(data.total_size || 36)),
+          votedCount: Math.max(0, Number(data.voted_count || 0)),
+        },
+      }));
+
+      if (renderableCount > 0) {
+        fetch('/api/telemetry/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'arena_fetch_success',
+            payload: { arena: type, source: 'pool-refetch', count: renderableCount, page_index: nextPageIndex },
+          }),
+        }).catch(() => null);
+        return { ok: true, count: renderableCount, status: 'ok', pageIndex: nextPageIndex, renderableCount, advanced };
+      }
+      return { ok: true, count: 0, status: 'nonrenderable', pageIndex: nextPageIndex, renderableCount, advanced };
+    } finally {
+      arenaRefillInFlightRef.current[type] = false;
     }
-    const count = Number(pageMatchIdsRef.current[type]?.length || 0);
-    const votedIds = pageMatchIdsRef.current[type].filter((id) => !!votedMatches[id]);
-    persistArenaProgress(type, nextPage, votedIds).catch(() => null);
-    if (count > 0) {
-      fetch('/api/telemetry/event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event: 'arena_fetch_success', payload: { arena: type, page: nextPage, tab: 'voting', count } }),
-      }).catch(() => null);
-      return { ok: true, count, status: 'ok' };
-    }
-    fetch('/api/telemetry/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event: 'arena_fetch_empty', payload: { arena: type, page: nextPage, tab: 'voting' } }),
-    }).catch(() => null);
-    return { ok: true, count: 0, status: 'refilling' };
   }
 
   useEffect(() => {
@@ -2342,8 +3224,25 @@ export default function Page() {
         setProgress((p) => p ? { ...p, sigils: Number(data.sigils_after ?? p.sigils), predictionStreak: Number(data.current_streak ?? p.predictionStreak) } : p);
         showToast(`Prediction locked (-${bet})`);
         const updated = await fetchArenas();
-        setArenas(updated.arenas);
-        setVotedMatches((prev) => ({ ...prev, ...updated.votedMatches }));
+        const poolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
+          main: Array.isArray(updated.mainPool) ? updated.mainPool : [],
+          rookie: Array.isArray(updated.rookiePool) ? updated.rookiePool : [],
+        };
+        const arenasWithPools = (updated.arenas || []).map((a) => {
+          const t = a.type === 'main' || a.type === 'rookie' ? a.type : null;
+          if (!t) return a;
+          const currentRound = Number(a.current_round || 1);
+          const poolMatches = poolMap[t];
+          if (!poolMatches.length) return a;
+          return { ...a, rounds: [{ round: currentRound, matches: poolMatches }] };
+        });
+        setArenas(arenasWithPools);
+        setVotedMatches((prev) => {
+          const next = mergeVotedMaps(prev, updated.votedMatches);
+          writeVotedMatchesToStorage(next, voteStateScope);
+          return next;
+        });
+        statusBurstUntilRef.current = Date.now() + 20_000;
         refreshGettingStarted();
         return true;
       }
@@ -2504,13 +3403,13 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-black text-white">
       {showBookmarkMissionBanner && (
-        <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-300/35 backdrop-blur text-cyan-100 text-xs font-semibold popup-linger">
-          Mission: Add CatClash to your Home Screen. Reward: 50 Sigils.
+        <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-300/35 backdrop-blur text-cyan-100 text-xs font-semibold popup-linger pointer-events-none">
+          <span className="pointer-events-auto">Mission: Add CatClash to your Home Screen. Reward: 50 Sigils.</span>
         </div>
       )}
       {dailyRewardSplash && (
-        <div className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="w-full max-w-md rounded-2xl border border-yellow-300/35 bg-gradient-to-b from-yellow-500/20 to-orange-500/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+        <div className="pointer-events-none fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-yellow-300/35 bg-gradient-to-b from-yellow-500/20 to-orange-500/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
             <p className="text-xs uppercase tracking-wider text-yellow-100/80 mb-2">Daily Chest</p>
             <div className="crate-hero mb-3">
               <div className="crate-visual opening">
@@ -2563,15 +3462,23 @@ export default function Page() {
           </div>
         </div>
       )}
-      {showClaimNamePrompt && !hasCredentials && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[92vw] max-w-md rounded-2xl border border-emerald-300/35 bg-emerald-500/20 backdrop-blur p-3 shadow-[0_12px_35px_rgba(16,185,129,0.25)] popup-linger">
+      {showClaimNamePrompt && hasCredentials && !hasProfileUsername && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[100] w-[92vw] max-w-md rounded-2xl border border-emerald-300/35 bg-emerald-500/20 backdrop-blur p-3 shadow-[0_12px_35px_rgba(16,185,129,0.25)] popup-linger pointer-events-auto">
           <p className="text-sm font-bold text-emerald-100">Claim your Vuxsolian name</p>
           <p className="text-[11px] text-emerald-100/85 mt-0.5">Lock in rewards and keep your streak across devices.</p>
-          <div className="mt-2 flex items-center gap-2">
-            <Link href="/login?next=/" className="h-9 px-3 rounded-lg bg-emerald-300 text-black text-xs font-bold inline-flex items-center justify-center">
+          <div className="mt-2 flex items-stretch gap-2">
+            <Link
+              href="/login?next=/"
+              data-testid="claim-name-cta"
+              className="h-9 w-full flex-1 rounded-lg bg-emerald-300 text-black text-xs font-bold inline-flex items-center justify-center touch-manipulation"
+            >
               Claim Name
             </Link>
-            <button onClick={() => setShowClaimNamePrompt(false)} className="h-9 px-3 rounded-lg bg-white/10 border border-white/20 text-white/85 text-xs font-semibold">
+            <button
+              onClick={() => setShowClaimNamePrompt(false)}
+              data-testid="claim-name-later"
+              className="h-9 w-full flex-1 rounded-lg bg-white/10 border border-white/20 text-white/85 text-xs font-semibold touch-manipulation"
+            >
               Later
             </button>
           </div>
@@ -2641,8 +3548,8 @@ export default function Page() {
       </div>
 
       {/* Hero */}
-      <section className="pt-18 pb-2">
-        <div className="max-w-2xl mx-auto px-3.5">
+      <section className="pt-5 sm:pt-7 lg:pt-8 pb-2 sm:pb-3">
+        <div className="max-w-5xl mx-auto px-3.5 sm:px-4">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/25 bg-yellow-500/8 text-[10px]">
             <Sparkles className="w-3 h-3 text-yellow-400" />
             <span className="text-yellow-200/95">Unbox. Battle. Evolve.</span>
@@ -2678,8 +3585,8 @@ export default function Page() {
         </section>
       )}
 
-      <section className="px-3.5 mb-3">
-        <div className="max-w-2xl mx-auto space-y-1.5">
+      <section className="px-3.5 mb-3 sm:hidden">
+        <div className="max-w-5xl mx-auto space-y-1.5">
           <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
               <Flame className="w-3 h-3 text-orange-300" /> {displayStats.streak}
@@ -2705,7 +3612,7 @@ export default function Page() {
             {spotlights.hall_of_fame?.cat && (
               <Link href={`/cat/${spotlights.hall_of_fame.cat.id}`} className="rounded-2xl border border-yellow-300/25 bg-yellow-500/10 p-3 block">
                 <p className="text-xs text-yellow-200/90 mb-2">Hall of Fame</p>
-                <img src={spotlights.hall_of_fame.cat.image_url || '/cat-placeholder.svg'} alt={spotlights.hall_of_fame.cat.name} className="w-full h-28 rounded-lg object-cover mb-2" />
+                <img src={canonicalThumbForCat({ id: spotlights.hall_of_fame.cat.id, image_url: spotlights.hall_of_fame.cat.image_url || null })} alt={spotlights.hall_of_fame.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
                 <p className="font-bold text-sm">{spotlights.hall_of_fame.cat.name}</p>
                 <p className="text-xs text-white/70">by {spotlights.hall_of_fame.cat.owner_username || 'Unknown'} · {spotlights.hall_of_fame.cat.rarity}</p>
                 {(spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || spotlights.hall_of_fame.expires_in_hours != null) && (
@@ -2718,7 +3625,7 @@ export default function Page() {
             {spotlights.cat_of_week?.cat && (
               <Link href={`/cat/${spotlights.cat_of_week.cat.id}`} className="rounded-2xl border border-rose-300/25 bg-rose-500/10 p-3 block">
                 <p className="text-xs text-rose-200/90 mb-2">Cat of the Week</p>
-                <img src={spotlights.cat_of_week.cat.image_url || '/cat-placeholder.svg'} alt={spotlights.cat_of_week.cat.name} className="w-full h-28 rounded-lg object-cover mb-2" />
+                <img src={canonicalThumbForCat({ id: spotlights.cat_of_week.cat.id, image_url: spotlights.cat_of_week.cat.image_url || null })} alt={spotlights.cat_of_week.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
                 <p className="font-bold text-sm">{spotlights.cat_of_week.cat.name}</p>
                 <p className="text-xs text-white/70">by {spotlights.cat_of_week.cat.owner_username || 'Unknown'} · {spotlights.cat_of_week.cat.rarity}</p>
                 {(spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || spotlights.cat_of_week.expires_in_hours != null) && (
@@ -2873,7 +3780,6 @@ export default function Page() {
         <div className="max-w-md mx-auto">
           <div className="mb-1.5 flex items-center justify-between">
             <h2 className="text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
-            <Link href="/crate" className="text-[11px] text-yellow-200/90 hover:text-yellow-100">View Crates</Link>
           </div>
         </div>
         <div className="max-w-md mx-auto grid grid-cols-2 gap-2">
@@ -2885,45 +3791,67 @@ export default function Page() {
             compact
             className="h-full"
           />
-          <div className="glass rounded-2xl p-3 text-center min-h-[210px] h-full">
-            <div className="flex items-center justify-center gap-2 mb-2">
+          <div className="glass rounded-2xl p-3 min-h-[210px] h-full flex flex-col">
+            <div className="flex items-center justify-center gap-2 mb-1.5">
               <SigilIcon className="w-4 h-4" glow />
               <h3 className="font-bold text-sm">Crate</h3>
             </div>
-            <div className="crate-hero mb-1.5">
-              <div className={`crate-visual ${claimingCrate ? 'opening' : ''}`}>
-                <div className="crate-lid" />
-                <div className="crate-box" />
-                <div className="crate-glow" />
+
+            <div className="flex-1 flex flex-col items-center justify-center text-center">
+              <div className="crate-hero mb-1.5">
+                <div className={`crate-visual ${claimingCrate ? 'opening' : ''}`}>
+                  <div className="crate-lid" />
+                  <div className="crate-box" />
+                  <div className="crate-glow" />
+                </div>
+              </div>
+              <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
+                <button
+                  onClick={handleClaimCrate}
+                  disabled={claimingCrate}
+                  className="h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                >
+                  {claimingCrate ? <Loader2 className="w-3 h-3 animate-spin" /> : "Open"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/crate')}
+                  className="h-8 w-full px-3 rounded-lg border border-yellow-300/35 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-100 text-[11px] font-semibold"
+                >
+                  View Crates
+                </button>
               </div>
             </div>
-            <button onClick={handleClaimCrate} disabled={claimingCrate}
-              className="h-9 px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1 mx-auto">
-              {claimingCrate ? <Loader2 className="w-3 h-3 animate-spin" /> : "Open"}
-            </button>
-            <p className="text-[10px] text-white/50 mt-1">Resets in {crateCountdown}</p>
-            <div className="mt-2 flex items-center justify-center gap-1 text-[9px]">
-              <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
-            </div>
-            {crateMeta?.pity_status && (
-              <div className="mt-2 text-[10px] text-white/60">
-                <p>Pity: {Math.max(0, 10 - Number(crateMeta.pity_status.streak_without_epic_plus || 0))} to Epic+</p>
+
+            <div className="mt-2 pt-2 border-t border-white/10 text-center space-y-1">
+              <p className="text-[10px] text-white/55">Daily resets in {crateCountdown}</p>
+              <div className="flex items-center justify-center gap-1 text-[9px]">
+                <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
               </div>
-            )}
+              <p className="text-[10px] text-white/60 min-h-[14px]">
+                {crateMeta?.pity_status
+                  ? `Pity: ${Math.max(0, 10 - Number(crateMeta.pity_status.streak_without_epic_plus || 0))} to Epic+`
+                  : 'Every open builds pity toward Epic+'}
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Arenas */}
       <section id="home-arenas" className="px-2.5 sm:px-4 pb-8">
-        <div className="mx-auto w-full max-w-none sm:max-w-2xl">
-          <div className="mb-2 flex justify-end">
-            <Link href="/duel" className="text-[11px] text-cyan-200 inline-flex items-center gap-1">
+        <div className="mx-auto w-full max-w-none sm:max-w-5xl">
+          <div className="mb-2 sm:mb-3 flex justify-end">
+            <Link
+              href="/duel"
+              data-testid="open-duel-arena-cta-arenas"
+              className="relative z-20 pointer-events-auto text-[11px] text-cyan-200 inline-flex items-center gap-1 tap-target"
+            >
               Open Duel Arena <ArrowRight className="w-3 h-3" />
               {pendingDuelCount > 0 ? (
                 <span className="px-1 py-0.5 rounded-full bg-red-500/20 border border-red-300/35 text-[9px] text-red-100 font-semibold">
@@ -2933,38 +3861,26 @@ export default function Page() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <Button
-              onClick={() => setArenaTypeTab('main')}
-              size="md"
-              variant={arenaTypeTab === 'main' ? 'primary' : 'secondary'}
-              className={arenaTypeTab === 'main' ? 'bg-white text-black border-white' : ''}
-            >
-              Main Arena
-            </Button>
-            <Button
-              onClick={() => setArenaTypeTab('rookie')}
-              size="md"
-              variant={arenaTypeTab === 'rookie' ? 'primary' : 'secondary'}
-              className={arenaTypeTab === 'rookie' ? 'bg-emerald-300 text-black border-emerald-200/80' : 'border-emerald-300/25 bg-emerald-500/10 text-emerald-200'}
-            >
-              Rookie Arena
-            </Button>
-          </div>
-
-          <Card className="mb-3 p-2.5 border-cyan-300/25 bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,0.2),transparent_42%),linear-gradient(145deg,rgba(8,47,73,0.45),rgba(8,145,178,0.18))]">
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="text-cyan-50 inline-flex items-center gap-1.5 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                Next Pulse {pulseCountdown}
-              </span>
-              <div className="inline-flex items-center gap-2">
-                {activeVotersNow > 0 ? <span className="text-cyan-100/80">{activeVotersNow} online</span> : null}
-                <Link href="/tournament" className="h-7 px-2 rounded-md border border-cyan-200/35 bg-cyan-400/15 text-cyan-100 inline-flex items-center">Full Bracket</Link>
-              </div>
+          <div className="mb-4">
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => setArenaTypeTab('main')}
+                size="md"
+                variant={arenaTypeTab === 'main' ? 'primary' : 'secondary'}
+                className={arenaTypeTab === 'main' ? 'bg-white text-black border-white' : ''}
+              >
+                Main Arena
+              </Button>
+              <Button
+                onClick={() => setArenaTypeTab('rookie')}
+                size="md"
+                variant={arenaTypeTab === 'rookie' ? 'primary' : 'secondary'}
+                className={arenaTypeTab === 'rookie' ? 'bg-emerald-300 text-black border-emerald-200/80' : 'border-emerald-300/25 bg-emerald-500/10 text-emerald-200'}
+              >
+                Rookie Arena
+              </Button>
             </div>
-            {pulseRecap && <p className="mt-1 text-[10px] text-cyan-100/85">{pulseRecap}</p>}
-          </Card>
+          </div>
 
           {arenas.filter((a) => a.type === arenaTypeTab).length === 0 ? (
             <div className="text-center py-12 glass rounded-2xl">
@@ -2995,6 +3911,7 @@ export default function Page() {
                   hotMatchBiasEnabled={hotMatchBiasEnabled}
                   globalPageInfo={null}
                   debugInfo={null}
+                  queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}
                   pulseCountdown={pulseCountdown}
                   onSwitchArena={setArenaTypeTab}
                   onRequestMore={() => handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
