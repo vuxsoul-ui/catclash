@@ -104,6 +104,22 @@ async function assertDuelLiveTabVisible(page, failures, contextLabel) {
   softAssert(visible, `duel-tab-live is not visible after duel navigation (${contextLabel})`, failures);
 }
 
+async function diagnoseDuelRoute(page, failures, contextLabel) {
+  let status = null;
+  try {
+    const response = await page.goto(`${baseUrl}/duel`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    status = response?.status?.() ?? null;
+  } catch {
+    status = null;
+  }
+  if (!(status && status >= 200 && status < 400)) {
+    failures.push(`Direct /duel navigation failed (${contextLabel}, status=${status ?? 'no-response'})`);
+    return false;
+  }
+  await assertDuelLiveTabVisible(page, failures, `${contextLabel}:direct-goto`);
+  return true;
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -161,14 +177,21 @@ async function main() {
           if (clickResult.dump) debugDumps.push(clickResult.dump);
           break;
         }
-        await page.waitForTimeout(450);
+        await page.waitForLoadState('domcontentloaded').catch(() => null);
       }
       if (expected === '/profile') {
         const ok = await page.waitForURL((url) => url.pathname.startsWith('/profile') || url.pathname.startsWith('/login'), { timeout: 8000 }).then(() => true).catch(() => false);
         softAssert(ok, `Nav ${testId} did not navigate to profile/login (url=${page.url()})`, failures);
       } else {
         const ok = await page.waitForURL((url) => url.pathname.startsWith(expected), { timeout: 8000 }).then(() => true).catch(() => false);
-        softAssert(ok, `Nav ${testId} did not navigate (url=${page.url()})`, failures);
+        if (!ok) {
+          failures.push(`Nav ${testId} did not navigate (url=${page.url()})`);
+          const dump = await dumpClickFailure(page, item, `nav-${testId}-no-nav`);
+          debugDumps.push(dump);
+          if (testId === 'nav-duel') {
+            await diagnoseDuelRoute(page, failures, 'nav-duel-failure');
+          }
+        }
       }
     }
 
@@ -187,11 +210,21 @@ async function main() {
           failures.push('open-duel-arena-cta-live click failed');
           if (clickResult.dump) debugDumps.push(clickResult.dump);
         } else {
-          await page.waitForURL('**/duel**', { timeout: 6000 });
-          await assertDuelLiveTabVisible(page, failures, 'live-cta');
+          const ok = await page.waitForURL('**/duel**', { timeout: 6000 }).then(() => true).catch(() => false);
+          if (!ok) {
+            failures.push('open-duel-arena-cta-live did not navigate to /duel');
+            const dump = await dumpClickFailure(page, openDuelLive, 'open-duel-arena-live-no-nav');
+            debugDumps.push(dump);
+            await diagnoseDuelRoute(page, failures, 'open-duel-arena-live-failure');
+          } else {
+            await assertDuelLiveTabVisible(page, failures, 'live-cta');
+          }
         }
       } catch {
         failures.push('open-duel-arena-cta-live did not navigate to /duel');
+        const dump = await dumpClickFailure(page, openDuelLive, 'open-duel-arena-live-exception');
+        debugDumps.push(dump);
+        await diagnoseDuelRoute(page, failures, 'open-duel-arena-live-exception');
       }
     } else if (arenasVisible) {
       await scrollToCenter(openDuelArenas);
@@ -201,11 +234,21 @@ async function main() {
           failures.push('open-duel-arena-cta-arenas click failed');
           if (clickResult.dump) debugDumps.push(clickResult.dump);
         } else {
-          await page.waitForURL('**/duel**', { timeout: 6000 });
-          await assertDuelLiveTabVisible(page, failures, 'arenas-cta');
+          const ok = await page.waitForURL('**/duel**', { timeout: 6000 }).then(() => true).catch(() => false);
+          if (!ok) {
+            failures.push('open-duel-arena-cta-arenas did not navigate to /duel');
+            const dump = await dumpClickFailure(page, openDuelArenas, 'open-duel-arena-arenas-no-nav');
+            debugDumps.push(dump);
+            await diagnoseDuelRoute(page, failures, 'open-duel-arena-arenas-failure');
+          } else {
+            await assertDuelLiveTabVisible(page, failures, 'arenas-cta');
+          }
         }
       } catch {
         failures.push('open-duel-arena-cta-arenas did not navigate to /duel');
+        const dump = await dumpClickFailure(page, openDuelArenas, 'open-duel-arena-arenas-exception');
+        debugDumps.push(dump);
+        await diagnoseDuelRoute(page, failures, 'open-duel-arena-arenas-exception');
       }
     } else {
       const fallbackCta = page.getByText(/Open Duel Arena/i).first();
@@ -266,38 +309,57 @@ async function main() {
     }
 
     // Rematch smoke (best effort; requires at least one completed duel where current actor is a participant).
-    try {
-      await page.goto(`${baseUrl}/duel`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      const resultsTab = page.getByTestId('duel-tab-results').first();
-      if ((await resultsTab.count()) > 0) {
-        await resultsTab.scrollIntoViewIfNeeded();
-        await resultsTab.click({ force: true });
-        await page.waitForTimeout(700);
+    await page.goto(`${baseUrl}/duel`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await assertDuelLiveTabVisible(page, failures, 'rematch-entry');
+
+    const resultsTab = page.getByTestId('duel-tab-results').first();
+    if ((await resultsTab.count()) === 0) {
+      failures.push('Missing duel-tab-results on /duel');
+    } else {
+      await resultsTab.scrollIntoViewIfNeeded();
+      const tabClick = await clickWithRetry(page, resultsTab, 'duel-tab-results');
+      if (!tabClick.ok) {
+        failures.push('duel-tab-results click failed');
+        if (tabClick.dump) debugDumps.push(tabClick.dump);
+      } else {
+        await page.waitForURL((url) => url.pathname.startsWith('/duel') && url.searchParams.get('tab') === 'results', { timeout: 7000 }).catch(() => {
+          failures.push(`duel-tab-results did not activate (url=${page.url()})`);
+        });
       }
-      const openDuelAny = page.locator('[data-testid^="open-duel-link-"]').first();
-      if ((await openDuelAny.count()) > 0) {
-        await openDuelAny.scrollIntoViewIfNeeded();
-        const clickResult = await clickWithRetry(page, openDuelAny, 'open-duel-link');
-        if (!clickResult.ok) {
-          failures.push('Open Duel link click failed');
-          if (clickResult.dump) debugDumps.push(clickResult.dump);
-        }
-        await page.waitForTimeout(700);
-        softAssert(page.url().includes('/duel?duel=') || page.url().includes('/duel?tab=') || page.url().includes('/d/'), `Open Duel link did not navigate (url=${page.url()})`, failures);
+    }
+
+    const openDuelAny = page.locator('[data-testid^="open-duel-link-"]').first();
+    if ((await openDuelAny.count()) > 0) {
+      await openDuelAny.scrollIntoViewIfNeeded();
+      const clickResult = await clickWithRetry(page, openDuelAny, 'open-duel-link');
+      if (!clickResult.ok) {
+        failures.push('Open Duel link click failed');
+        if (clickResult.dump) debugDumps.push(clickResult.dump);
+      } else {
+        await page.waitForURL((url) => {
+          if (!url.pathname.startsWith('/duel') && !url.pathname.startsWith('/d/')) return false;
+          const tab = url.searchParams.get('tab');
+          const duelId = url.searchParams.get('duel');
+          return !!duelId || tab === 'live' || tab === 'pending' || tab === 'results' || url.pathname.startsWith('/d/');
+        }, { timeout: 7000 }).catch(() => {
+          failures.push(`Open Duel link did not navigate (url=${page.url()})`);
+        });
       }
-      const rematchButton = page.getByRole('button', { name: /^Rematch$/i }).first();
-      if ((await rematchButton.count()) > 0) {
-        const clickResult = await clickWithRetry(page, rematchButton, 'rematch-button');
-        if (!clickResult.ok) {
-          failures.push('Rematch click failed');
-          if (clickResult.dump) debugDumps.push(clickResult.dump);
-        }
-        await page.waitForTimeout(900);
-        const rematchSignal = page.getByText(/Rematch sent|Challenge sent|pending/i).first();
-        softAssert((await rematchSignal.count()) > 0, 'Rematch click did not produce a success signal', failures);
+    } else {
+      console.log('SKIP: no completed duels available for rematch test');
+    }
+
+    const rematchButton = page.getByRole('button', { name: /^Rematch$/i }).first();
+    if ((await rematchButton.count()) > 0) {
+      const clickResult = await clickWithRetry(page, rematchButton, 'rematch-button');
+      if (!clickResult.ok) {
+        failures.push('Rematch click failed');
+        if (clickResult.dump) debugDumps.push(clickResult.dump);
       }
-    } catch {
-      failures.push('Could not open duel results route for rematch smoke');
+      const rematchSignal = page.getByText(/Rematch sent|Challenge sent|pending/i).first();
+      softAssert((await rematchSignal.count()) > 0, 'Rematch click did not produce a success signal', failures);
+    } else {
+      console.log('SKIP: no completed duels available for rematch test');
     }
 
     // Claim prompt (optional): verify CTA and Later are clickable when present.
