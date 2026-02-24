@@ -139,8 +139,7 @@ async function main() {
       ['nav-home', '/'],
       ['nav-duel', '/duel'],
       ['nav-submit', '/submit'],
-      ['nav-social', '/social'],
-      ['nav-shop', '/shop'],
+      ['nav-gallery', '/gallery'],
       ['nav-profile', '/profile'],
     ];
 
