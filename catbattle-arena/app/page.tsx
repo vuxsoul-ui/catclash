@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Sparkles, Flame, Target, Zap, Loader2, Check, Crosshair,
-  ArrowRight, Crown, Swords, Star, MessageCircle, Send,
+  ArrowRight, Crown, Swords, MessageCircle, Send,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -163,13 +163,6 @@ const ARENA_CONFIG: Record<string, { label: string; icon: React.ReactNode; color
     color: "border-yellow-500/30 bg-yellow-500/5",
     accent: "text-yellow-400",
     description: "The premier daily tournament. 8 cats enter, 1 champion emerges.",
-  },
-  rookie: {
-    label: "Rookie Arena",
-    icon: <Star className="w-4 h-4" />,
-    color: "border-green-500/30 bg-green-500/5",
-    accent: "text-green-400",
-    description: "Fresh faces battle for glory. Every champion starts here.",
   },
 };
 
@@ -369,7 +362,7 @@ function LiveDuelsModule({
 function LoadingNextFightsCard({ text = "Loading next fights..." }: { text?: string }) {
   return (
     <div className="min-h-[140px] rounded-2xl border border-cyan-300/25 bg-cyan-500/8 p-4 pointer-events-none">
-      <div className="h-full w-full flex items-center justify-between gap-3 pointer-events-auto">
+      <div className="h-full w-full flex items-center justify-between gap-3 pointer-events-none">
         <div>
           <p className="text-sm font-semibold text-cyan-100">{text}</p>
           <p className="text-[11px] text-cyan-100/70 mt-1">Keeping your current queue stable while we refill.</p>
@@ -383,7 +376,7 @@ function LoadingNextFightsCard({ text = "Loading next fights..." }: { text?: str
 // ── Match Card ── Images link to profile, vote buttons below
 export const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
-  voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null,
+  voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -398,6 +391,7 @@ export const MatchCard = React.memo(function MatchCard({
   onVoteAccepted?: (matchId: string, side: "a" | "b") => void;
   slotPhase?: "idle" | "voted" | "exiting";
   slotChosenSide?: "a" | "b" | null;
+  enterPhase?: "idle" | "entering";
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
@@ -431,6 +425,13 @@ export const MatchCard = React.memo(function MatchCard({
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [displayPct, setDisplayPct] = useState<{ a: number; b: number }>({ a: pctA, b: pctB });
+  const [dragging, setDragging] = useState(false);
+  const [dragIntent, setDragIntent] = useState<"a" | "b" | null>(null);
+  const [swipeCommitting, setSwipeCommitting] = useState(false);
+  const [voteFxSide, setVoteFxSide] = useState<"a" | "b" | null>(null);
+  const [plusOneFxSide, setPlusOneFxSide] = useState<"a" | "b" | null>(null);
+  const [impactSide, setImpactSide] = useState<"a" | "b" | null>(null);
+  const [animTick, setAnimTick] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [predictOpen, setPredictOpen] = useState(false);
   const [predictConfirmed, setPredictConfirmed] = useState(false);
@@ -439,6 +440,13 @@ export const MatchCard = React.memo(function MatchCard({
   const [flipB, setFlipB] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const voteInFlightRef = useRef(false);
+  const motionRef = useRef<HTMLDivElement | null>(null);
+  const dragXRef = useRef(0);
+  const dragIntentRef = useRef<"a" | "b" | null>(null);
+  const draggingRef = useRef(false);
+  const swipeCommittingRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+  const swipeReleaseCleanupRef = useRef<number | null>(null);
   const renderCountRef = useRef(0);
   renderCountRef.current += 1;
   const swipeRef = useRef<{
@@ -446,15 +454,17 @@ export const MatchCard = React.memo(function MatchCard({
     startX: number;
     startY: number;
     startTs: number;
+    lastDx: number;
+    lastDy: number;
     active: boolean;
-    triggered: boolean;
   }>({
     pointerId: null,
     startX: 0,
     startY: 0,
     startTs: 0,
+    lastDx: 0,
+    lastDy: 0,
     active: false,
-    triggered: false,
   });
   const guildA = guildBadge(match.cat_a.owner_guild || null);
   const guildB = guildBadge(match.cat_b.owner_guild || null);
@@ -488,6 +498,7 @@ export const MatchCard = React.memo(function MatchCard({
   const SWIPE_X_FAST = 34;
   const SWIPE_Y_CANCEL = 44;
   const SWIPE_MIN_VELOCITY = 0.24; // px/ms
+  const SWIPE_EXIT_MS = reduceMotion ? 80 : 180;
 
   const applyVoteBias = useCallback((prev: { a: number; b: number }, side: "a" | "b") => {
     const delta = 12;
@@ -499,10 +510,71 @@ export const MatchCard = React.memo(function MatchCard({
     return { a: 100 - nextB, b: nextB };
   }, []);
 
-  const commitVote = async (catId: string) => {
-    if (!canVote || voteInFlightRef.current) return;
+  const applyMotionTransform = useCallback((rawDx: number, opts?: { released?: boolean }) => {
+    const el = motionRef.current;
+    if (!el) return;
+    const sign = rawDx < 0 ? -1 : 1;
+    if (opts?.released) {
+      const offscreen = (typeof window !== 'undefined' ? window.innerWidth : 420) * 1.2 * sign;
+      const rotate = reduceMotion ? 0 : 18 * sign;
+      const scale = reduceMotion ? 1 : 0.985;
+      el.style.transform = `translate3d(${offscreen}px,0,0) rotate(${rotate}deg) scale(${scale})`;
+      return;
+    }
+    if (reduceMotion) {
+      el.style.transform = `translate3d(${rawDx}px,0,0) rotate(0deg) scale(1)`;
+      return;
+    }
+    const abs = Math.abs(rawDx);
+    const effectiveX = abs < SWIPE_X_THRESHOLD
+      ? rawDx * 0.85
+      : (SWIPE_X_THRESHOLD * sign) + ((rawDx - (SWIPE_X_THRESHOLD * sign)) * 0.35);
+    const rotate = Math.max(-14, Math.min(14, effectiveX / 12));
+    const scale = 1 - Math.min(Math.abs(effectiveX) / 1000, 0.04);
+    el.style.transform = `translate3d(${effectiveX}px,0,0) rotate(${rotate}deg) scale(${scale})`;
+  }, [SWIPE_X_THRESHOLD, reduceMotion]);
+
+  const scheduleMotionFrame = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null;
+      applyMotionTransform(dragXRef.current);
+    });
+  }, [applyMotionTransform]);
+
+  const commitVote = async (
+    source: "tap" | "swipe_up" | "swipe_move" | "swipe_cancel" | "other",
+    catId: string,
+    meta?: { dx?: number; dy?: number }
+  ) => {
+    if (source === "swipe_move") {
+      if (process.env.NODE_ENV !== 'production') {
+        warnOnce(`swipe-move-commit-blocked:${match.match_id}`, `[DEV] blocked swipe_move commit path for ${match.match_id}`);
+      }
+      return;
+    }
+    if (source === "swipe_cancel") {
+      if (process.env.NODE_ENV !== 'production') {
+        warnOnce(`swipe-cancel-commit-blocked:${match.match_id}`, `[DEV] blocked swipe_cancel commit path for ${match.match_id}`);
+      }
+      return;
+    }
+    if (!canVote || voteInFlightRef.current || swipeCommitting) {
+      if (process.env.NODE_ENV !== 'production' && swipeCommittingRef.current) {
+        warnOnce(`vote-while-committing:${match.match_id}`, `[DEV] vote blocked while swipeCommittingRef=true for ${match.match_id}`);
+      }
+      return;
+    }
     voteInFlightRef.current = true;
     const side: "a" | "b" = catId === match.cat_a.id ? "a" : "b";
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[DEV][vote-trigger] source=${source} matchId=${match.match_id} dx=${Number(meta?.dx || 0)} dy=${Number(meta?.dy || 0)} dragging=${dragging} intent=${dragIntent || 'none'}`
+      );
+      // eslint-disable-next-line no-console
+      console.log(new Error().stack);
+    }
     setChosenSide(side);
     setVotePending(true);
     setVoteSubmitted(false);
@@ -514,6 +586,13 @@ export const MatchCard = React.memo(function MatchCard({
         if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
           navigator.vibrate(10);
         }
+        setAnimTick((n) => n + 1);
+        setVoteFxSide(side);
+        setPlusOneFxSide(side);
+        if (!reduceMotion) setImpactSide(side);
+        window.setTimeout(() => setVoteFxSide(null), 210);
+        window.setTimeout(() => setPlusOneFxSide(null), 420);
+        window.setTimeout(() => setImpactSide(null), 160);
         setVoteSubmitted(true);
         setVoteConfirm(true);
         onVoteAccepted?.(match.match_id, side);
@@ -525,6 +604,8 @@ export const MatchCard = React.memo(function MatchCard({
       }
     } finally {
       voteInFlightRef.current = false;
+      setSwipeCommitting(false);
+      swipeCommittingRef.current = false;
     }
   };
 
@@ -536,55 +617,136 @@ export const MatchCard = React.memo(function MatchCard({
   }
 
   const handlePointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
-    if (isSwipeBlockedTarget(e.target) || !canVote || voteInFlightRef.current) return;
+    if (isSwipeBlockedTarget(e.target) || !canVote || voteInFlightRef.current || swipeCommitting) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     swipeRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       startTs: performance.now(),
+      lastDx: 0,
+      lastDy: 0,
       active: true,
-      triggered: false,
     };
+    draggingRef.current = true;
+    dragXRef.current = 0;
+    const el = motionRef.current;
+    if (el) {
+      el.style.transition = 'none';
+      el.style.willChange = 'transform';
+    }
+    if (swipeReleaseCleanupRef.current !== null) {
+      window.clearTimeout(swipeReleaseCleanupRef.current);
+      swipeReleaseCleanupRef.current = null;
+    }
+    setDragging(true);
   };
 
-  const maybeTriggerSwipeVote = (dx: number, dy: number, elapsedMs: number): boolean => {
-    if (!canVote || voteInFlightRef.current) return false;
+  const shouldCommitSwipe = useCallback((dx: number, dy: number, elapsedMs: number): boolean => {
+    if (!canVote || voteInFlightRef.current || swipeCommittingRef.current) return false;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
-    if (absDy > SWIPE_Y_CANCEL || absDx <= absDy + 8) return false;
+    if (absDy >= SWIPE_Y_CANCEL || absDx <= absDy + 8) return false;
     const velocity = absDx / Math.max(1, elapsedMs);
-    const passesThreshold = absDx >= SWIPE_X_THRESHOLD || (absDx >= SWIPE_X_FAST && velocity >= SWIPE_MIN_VELOCITY);
-    if (!passesThreshold) return false;
-    void commitVote(dx > 0 ? match.cat_a.id : match.cat_b.id);
-    return true;
-  };
+    return absDx >= SWIPE_X_THRESHOLD || (absDx >= SWIPE_X_FAST && velocity >= SWIPE_MIN_VELOCITY);
+  }, [canVote, swipeCommitting]);
 
   const handlePointerMove: React.PointerEventHandler<HTMLDivElement> = (e) => {
     const s = swipeRef.current;
-    if (!s.active || s.pointerId !== e.pointerId || s.triggered) return;
+    if (!s.active || s.pointerId !== e.pointerId) return;
     const dx = e.clientX - s.startX;
     const dy = e.clientY - s.startY;
+    s.lastDx = dx;
+    s.lastDy = dy;
     if (Math.abs(dy) > SWIPE_Y_CANCEL) {
       s.active = false;
+      draggingRef.current = false;
+      dragXRef.current = 0;
+      setDragging(false);
+      setDragIntent(null);
+      dragIntentRef.current = null;
+      const el = motionRef.current;
+      if (el) {
+        el.style.transition = `transform ${reduceMotion ? 120 : 180}ms cubic-bezier(.2,.8,.2,1)`;
+        el.style.willChange = 'auto';
+      }
+      scheduleMotionFrame();
       return;
     }
-    const triggered = maybeTriggerSwipeVote(dx, dy, performance.now() - s.startTs);
-    if (!triggered) return;
-    s.triggered = true;
-    s.active = false;
+    dragXRef.current = dx;
+    const nextIntent: "a" | "b" | null = Math.abs(dx) >= 8 ? (dx > 0 ? "a" : "b") : null;
+    if (nextIntent !== dragIntentRef.current) {
+      dragIntentRef.current = nextIntent;
+      setDragIntent(nextIntent);
+    }
+    scheduleMotionFrame();
+    if (process.env.NODE_ENV !== 'production') {
+      const elapsedMs = Math.max(1, performance.now() - s.startTs);
+      if (shouldCommitSwipe(dx, dy, elapsedMs)) {
+        warnOnce(`swipe-move-pass-threshold:${match.match_id}`, `[DEV] swipe move reached threshold (will commit on pointerup only) for ${match.match_id}`);
+      }
+    }
   };
 
   const handlePointerEnd: React.PointerEventHandler<HTMLDivElement> = (e) => {
     const s = swipeRef.current;
     if (s.pointerId !== e.pointerId) return;
-    if (s.active && !s.triggered) {
-      const dx = e.clientX - s.startX;
-      const dy = e.clientY - s.startY;
-      s.triggered = maybeTriggerSwipeVote(dx, dy, performance.now() - s.startTs);
+    const isCancel = e.type === 'pointercancel';
+    const dx = isCancel ? s.lastDx : (e.clientX - s.startX);
+    const dy = isCancel ? s.lastDy : (e.clientY - s.startY);
+    const elapsedMs = Math.max(1, performance.now() - s.startTs);
+    const pass = !isCancel && shouldCommitSwipe(dx, dy, elapsedMs);
+    if (pass && !voteInFlightRef.current && !swipeCommittingRef.current) {
+      const side: "a" | "b" = dx > 0 ? "a" : "b";
+      const el = motionRef.current;
+      dragXRef.current = dx;
+      dragIntentRef.current = side;
+      setDragIntent(side);
+      setSwipeCommitting(true);
+      swipeCommittingRef.current = true;
+      setDragging(false);
+      draggingRef.current = false;
+      if (el) {
+        el.style.transition = 'none';
+        applyMotionTransform(dragXRef.current);
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            const target = motionRef.current;
+            if (!target) return;
+            target.style.transition = `transform ${SWIPE_EXIT_MS}ms ease-out`;
+            applyMotionTransform(dx, { released: true });
+          });
+        });
+        if (swipeReleaseCleanupRef.current !== null) {
+          window.clearTimeout(swipeReleaseCleanupRef.current);
+        }
+        swipeReleaseCleanupRef.current = window.setTimeout(() => {
+          const target = motionRef.current;
+          if (target) target.style.willChange = 'auto';
+          swipeReleaseCleanupRef.current = null;
+        }, SWIPE_EXIT_MS + 40);
+      }
+      void commitVote("swipe_up", side === "a" ? match.cat_a.id : match.cat_b.id, { dx, dy }).finally(() => {
+        setSwipeCommitting(false);
+        swipeCommittingRef.current = false;
+      });
+    } else {
+      dragXRef.current = 0;
+      setDragIntent(null);
+      dragIntentRef.current = null;
+      const el = motionRef.current;
+      if (el) {
+        el.style.transition = `transform ${reduceMotion ? 120 : 180}ms cubic-bezier(.2,.8,.2,1)`;
+        el.style.willChange = 'auto';
+      }
+      setSwipeCommitting(false);
+      swipeCommittingRef.current = false;
+      scheduleMotionFrame();
     }
     s.active = false;
     s.pointerId = null;
+    draggingRef.current = false;
+    setDragging(false);
   };
 
   useEffect(() => {
@@ -610,10 +772,48 @@ export const MatchCard = React.memo(function MatchCard({
     setChosenSide(null);
     setVoteSubmitted(false);
     setVoteConfirm(false);
+    dragXRef.current = 0;
+    setDragging(false);
+    setDragIntent(null);
+    dragIntentRef.current = null;
+    setSwipeCommitting(false);
+    swipeCommittingRef.current = false;
+    draggingRef.current = false;
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const el = motionRef.current;
+    if (el) {
+      el.style.transition = 'none';
+      el.style.transform = 'translate3d(0,0,0) rotate(0deg) scale(1)';
+      el.style.willChange = 'auto';
+    }
+    if (swipeReleaseCleanupRef.current !== null) {
+      window.clearTimeout(swipeReleaseCleanupRef.current);
+      swipeReleaseCleanupRef.current = null;
+    }
+    setVoteFxSide(null);
+    setPlusOneFxSide(null);
+    setImpactSide(null);
+    setAnimTick(0);
     setFlipA(false);
     setFlipB(false);
     voteInFlightRef.current = false;
   }, [match.match_id]);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (swipeReleaseCleanupRef.current !== null) {
+        window.clearTimeout(swipeReleaseCleanupRef.current);
+        swipeReleaseCleanupRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!voteConfirm) return;
@@ -731,16 +931,65 @@ export const MatchCard = React.memo(function MatchCard({
 
   return (
     <div
-      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-all ${reduceMotion ? 'duration-0' : 'duration-300'} ease-out touch-pan-y ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? 'opacity-0 -translate-y-3 pointer-events-none' : 'opacity-100 translate-y-0'}`}
+      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-transform transition-opacity ${reduceMotion ? 'duration-150' : 'duration-300'} ease-out touch-pan-y ${dragging ? 'is-dragging' : ''} ${impactSide && !reduceMotion ? 'impact' : ''} ${match.is_close_match && !dragging && !exitingVisual && !reduceMotion ? 'close-glow' : ''} ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
     >
+      <div className={`${!dragging && !exitingVisual && !reduceMotion ? 'deck-float' : ''}`}>
+        {voteFxSide && (
+          <div key={`flash-${animTick}`} className={`vote-flash ${voteFxSide === 'a' ? 'vote-flash-a' : 'vote-flash-b'}`} />
+        )}
+        {plusOneFxSide && (
+          <div key={`plus-${animTick}`} className={`pointer-events-none absolute z-30 top-1/2 -translate-y-1/2 ${plusOneFxSide === 'a' ? 'left-[16%]' : 'right-[16%]'} anim-float-up`}>
+            <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] ${plusOneFxSide === 'a' ? 'border-emerald-300/45 bg-emerald-500/20 text-emerald-100' : 'border-cyan-300/45 bg-cyan-500/20 text-cyan-100'}`}>+1</span>
+          </div>
+        )}
+        {impactSide && !reduceMotion && (
+          <div key={`impact-${animTick}`} className={`pointer-events-none absolute z-30 top-[42%] ${impactSide === 'a' ? 'left-[18%]' : 'right-[18%]'}`}>
+            {[
+              { dx: '-18px', dy: '-12px' },
+              { dx: '-8px', dy: '-20px' },
+              { dx: '8px', dy: '-18px' },
+              { dx: '18px', dy: '-10px' },
+              { dx: '-10px', dy: '10px' },
+              { dx: '12px', dy: '12px' },
+            ].map((v, idx) => (
+              <span
+                key={`${impactSide}-${idx}`}
+                className={`burst-dot ${impactSide === 'a' ? 'burst-dot-a' : 'burst-dot-b'}`}
+                style={{ ['--dx' as any]: v.dx, ['--dy' as any]: v.dy }}
+              />
+            ))}
+          </div>
+        )}
+        {match.is_close_match && (
+          <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 close-badge-pulse">
+            <span className="inline-flex rounded-full border border-amber-300/40 bg-amber-500/14 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
+              🔥 Close Battle
+            </span>
+          </div>
+        )}
+        <div
+          ref={motionRef}
+          className={`${dragging ? 'transition-none touch-none' : 'transition-transform transition-opacity ease-out touch-pan-y'} transform-gpu ${!dragging && enterPhase === 'entering' ? 'opacity-95 translate-y-[6px] scale-[0.99]' : 'opacity-100 translate-y-0 scale-100'}`}
+          style={!dragging ? { transitionDuration: reduceMotion ? '120ms' : '160ms' } : undefined}
+        >
       {process.env.NODE_ENV !== 'production' && (
         <div className="pointer-events-none absolute left-2 top-2 z-30 rounded-full border border-fuchsia-300/40 bg-fuchsia-500/15 px-2 py-0.5 text-[9px] text-fuchsia-100">
           R{renderCountRef.current}
         </div>
+      )}
+      {dragIntent && canVote && (
+        <>
+          <div className={`pointer-events-none absolute left-2 top-9 z-30 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-opacity ${dragIntent === 'a' ? 'border-blue-300/45 bg-blue-500/20 text-blue-100' : 'border-white/20 bg-black/30 text-white/40'}`} style={{ opacity: dragIntent === 'a' ? 0.92 : 0.38 }}>
+            VOTE A
+          </div>
+          <div className={`pointer-events-none absolute right-2 top-9 z-30 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-opacity ${dragIntent === 'b' ? 'border-rose-300/45 bg-rose-500/20 text-rose-100' : 'border-white/20 bg-black/30 text-white/40'}`} style={{ opacity: dragIntent === 'b' ? 0.92 : 0.38 }}>
+            VOTE B
+          </div>
+        </>
       )}
       {previewToast && (
         <div className="pointer-events-none absolute right-2 top-2 z-20 rounded-full border border-cyan-300/35 bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-100">
@@ -755,9 +1004,9 @@ export const MatchCard = React.memo(function MatchCard({
 
       <div className="grid grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)] items-start gap-2">
         <div className="min-w-0">
-          <div className="arena-flip-scene h-[174px]">
+          <div className="arena-flip-scene h-[220px] md:h-[300px]">
             <div className={`arena-flip-card ${flipA ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'b' ? 'opacity-75' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'b' ? 'opacity-75' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : dragIntent === 'b' ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
                     {match.cat_a.rarity}
@@ -811,9 +1060,9 @@ export const MatchCard = React.memo(function MatchCard({
         </div>
 
         <div className="min-w-0">
-          <div className="arena-flip-scene h-[174px]">
+          <div className="arena-flip-scene h-[220px] md:h-[300px]">
             <div className={`arena-flip-card ${flipB ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-all ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'a' ? 'opacity-75' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'a' ? 'opacity-75' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : dragIntent === 'a' ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
                     {match.cat_b.rarity}
@@ -863,22 +1112,22 @@ export const MatchCard = React.memo(function MatchCard({
 
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
-          onClick={() => void commitVote(match.cat_a.id)}
+          onClick={() => void commitVote("tap", match.cat_a.id)}
           aria-label={`Vote for ${catAName}`}
           disabled={!canVote}
           className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
-          {voteStage === 'pending' && selectedSide === 'a' ? 'Submitting…' : voted === match.cat_a.id ? 'Voted A' : (isVoting ? "Voting..." : "Vote A")}
+          {voteStage === 'pending' && liveSide === 'a' ? 'Submitting…' : voted === match.cat_a.id ? 'Voted A' : (isVoting ? "Voting..." : "Vote A")}
         </button>
         <button
-          onClick={() => void commitVote(match.cat_b.id)}
+          onClick={() => void commitVote("tap", match.cat_b.id)}
           aria-label={`Vote for ${catBName}`}
           disabled={!canVote}
           className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
-          {voteStage === 'pending' && selectedSide === 'b' ? 'Submitting…' : voted === match.cat_b.id ? 'Voted B' : (isVoting ? "Voting..." : "Vote B")}
+          {voteStage === 'pending' && liveSide === 'b' ? 'Submitting…' : voted === match.cat_b.id ? 'Voted B' : (isVoting ? "Voting..." : "Vote B")}
         </button>
       </div>
 
@@ -893,15 +1142,16 @@ export const MatchCard = React.memo(function MatchCard({
         <span className="tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
       </div>
 
-      <div className="mt-1 h-1 rounded-full overflow-hidden flex bg-white/5">
+      <div className="mt-1 relative h-1.5 rounded-full overflow-hidden bg-white/8 border border-white/10">
         <div
-          className={`h-full w-full bg-blue-500 transition-transform ${reduceMotion ? 'duration-0' : 'duration-500'} origin-left ${liveSide === 'a' ? 'shadow-[0_0_10px_rgba(59,130,246,0.55)]' : ''}`}
-          style={{ transform: `scaleX(${Math.max(0, Math.min(1, displayPct.a / 100))})` }}
+          className={`absolute left-0 top-0 h-full bg-blue-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'a' ? 'shadow-[0_0_12px_rgba(59,130,246,0.55)]' : ''}`}
+          style={{ width: `${Math.max(0, Math.min(100, displayPct.a))}%` }}
         />
         <div
-          className={`h-full w-full -ml-full bg-red-500 transition-transform ${reduceMotion ? 'duration-0' : 'duration-500'} origin-right ${liveSide === 'b' ? 'shadow-[0_0_10px_rgba(239,68,68,0.55)]' : ''}`}
-          style={{ transform: `scaleX(${Math.max(0, Math.min(1, displayPct.b / 100))})` }}
+          className={`absolute right-0 top-0 h-full bg-red-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'b' ? 'shadow-[0_0_12px_rgba(239,68,68,0.55)]' : ''}`}
+          style={{ width: `${Math.max(0, Math.min(100, displayPct.b))}%` }}
         />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -1175,6 +1425,8 @@ export const MatchCard = React.memo(function MatchCard({
       {exitingVisual && (
         <div className="mt-1 text-[10px] text-cyan-200/90 animate-pulse">Next matchup loading...</div>
       )}
+      </div>
+      </div>
     </div>
   );
 }, (prev, next) => {
@@ -1192,6 +1444,7 @@ export const MatchCard = React.memo(function MatchCard({
     prev.showNextUp === next.showNextUp &&
     prev.slotPhase === next.slotPhase &&
     prev.slotChosenSide === next.slotChosenSide &&
+    prev.enterPhase === next.enterPhase &&
     prev.onVote === next.onVote &&
     prev.onPredict === next.onPredict &&
     prev.onCreateCallout === next.onCreateCallout &&
@@ -1236,9 +1489,15 @@ function ArenaSection({
   const mountedRef = useRef(true);
   const presentMatchIdsRef = useRef<Set<string>>(new Set());
   const transitionTimeoutsRef = useRef<Map<string, number[]>>(new Map());
+  const keepUntilTimersRef = useRef<Map<string, number>>(new Map());
   const autoTopupBusyRef = useRef(false);
   const lastAutoTopupAtRef = useRef(0);
   const lowInventoryRetryKeyRef = useRef('');
+  const suppressVotedPruneUntilRef = useRef(0);
+  const keepVisibleVoteMatchIdsRef = useRef<Set<string>>(new Set());
+  const votedRenderDebugSeenRef = useRef<Set<string>>(new Set());
+  const stackIdsRef = useRef<string[]>([]);
+  const keepUntilByMatchIdRef = useRef<Record<string, number>>({});
   const onVoteRef = useRef(onVote);
   const onPredictRef = useRef(onPredict);
   const onCreateCalloutRef = useRef(onCreateCallout);
@@ -1246,6 +1505,10 @@ function ArenaSection({
   const preserveSnapshotOnEmptyRef = useRef(false);
   const refillSettleTimerRef = useRef<number | null>(null);
   const lastRefillCallAtRef = useRef(0);
+  const deckEnterTimerRef = useRef<number | null>(null);
+  const hotStreakTimerRef = useRef<number | null>(null);
+  const prevTopMatchIdRef = useRef<string | null>(null);
+  const prevVoteStreakRef = useRef(0);
   const [snapshotOrder, setSnapshotOrder] = useState<string[]>([]);
   const [snapshotById, setSnapshotById] = useState<Record<string, ArenaMatch>>({});
   const [snapshotVersion, setSnapshotVersion] = useState(0);
@@ -1253,7 +1516,13 @@ function ArenaSection({
   const [feedError, setFeedError] = useState<string | null>(null);
   const [refillRetryAttempt, setRefillRetryAttempt] = useState(0);
   const [showManualRefresh, setShowManualRefresh] = useState(false);
+  const [deckEnterPhase, setDeckEnterPhase] = useState<"idle" | "entering">("idle");
+  const [showHotStreakBanner, setShowHotStreakBanner] = useState(false);
+  const [hotStreakTick, setHotStreakTick] = useState(0);
+  const [keepUntilByMatchId, setKeepUntilByMatchId] = useState<Record<string, number>>({});
   const MAX_VISIBLE = 6;
+  const EXIT_MS = 180;
+  const SWAP_DELAY_MS = 80;
   const currentRound = arena.rounds.find((r) => r.round === arena.current_round);
   const allArenaMatches = [...arena.rounds].reverse().flatMap((r) => r.matches || []).filter((m) => !isByeMatch(m));
   const voting = (currentRound?.matches || []).filter((m) => !isByeMatch(m) && isArenaVotingStatus(m.status));
@@ -1286,15 +1555,10 @@ function ArenaSection({
     });
 
     // Main arena favors tension-heavy close matches at the top.
-    if ((arena.type === 'main' || hotMatchBiasEnabled) && arena.type !== 'rookie') {
+    if (arena.type === 'main' || hotMatchBiasEnabled) {
       const tense = scored.filter((x) => x.tension).sort((a, b) => (b.energy - a.energy) || (a.margin - b.margin));
       const rest = scored.filter((x) => !x.tension).sort((a, b) => (b.energy - a.energy) || (a.margin - b.margin));
       return [...tense, ...rest].map((x) => x.m);
-    }
-
-    // Rookie arena leans lower tension/wider margins so it feels distinct.
-    if (arena.type === 'rookie') {
-      return scored.sort((a, b) => (b.margin - a.margin) || (a.energy - b.energy)).map((x) => x.m);
     }
 
     return scored.sort((a, b) => (b.energy - a.energy) || (a.margin - b.margin)).map((x) => x.m);
@@ -1343,6 +1607,17 @@ function ArenaSection({
   }, [orderedVoting]);
 
   const votingById = useMemo(() => new Map(visiblePageOrder.map((m) => [m.match_id, m])), [visiblePageOrder]);
+  const shouldKeepInUI = useCallback((matchId: string): boolean => {
+    if (!matchId) return false;
+    const keepUntil = Number(keepUntilByMatchId[matchId] || 0);
+    if (keepUntil > Date.now()) return true;
+    if (keepVisibleVoteMatchIdsRef.current.has(matchId)) return true;
+    const slotUi = slotUiByMatchId[matchId];
+    if (slotUi && slotUi.phase !== "idle") return true;
+    if (votingMatch === matchId) return true;
+    if (queuedVotes[matchId]) return true;
+    return false;
+  }, [keepUntilByMatchId, queuedVotes, slotUiByMatchId, votingMatch]);
   const resultsList = useMemo(() => results.slice(0, MAX_VISIBLE), [results]);
   const activeVoting = useMemo(
     () =>
@@ -1350,12 +1625,10 @@ function ArenaSection({
         .map((id) => votingById.get(id))
         .filter((m): m is ArenaMatch => !!m)
         .filter((m) => {
-          if (votingMatch === m.match_id) return true;
-          const slotUi = slotUiByMatchId[m.match_id];
-          if (slotUi && slotUi.phase !== "idle") return true;
-          return !votedMatches[m.match_id] || !!queuedVotes[m.match_id];
+          if (shouldKeepInUI(m.match_id)) return true;
+          return !votedMatches[m.match_id];
         }),
-    [queuedVotes, stackIds, slotUiByMatchId, votingById, votedMatches, votingMatch]
+    [shouldKeepInUI, stackIds, votingById, votedMatches]
   );
   const activeList = segment === "voting" ? activeVoting : resultsList;
   const totalVotableCount = useMemo(() => visiblePageOrder.length, [visiblePageOrder]);
@@ -1368,6 +1641,29 @@ function ArenaSection({
     () => Object.values(slotUiByMatchId).some((state) => state.phase !== "idle"),
     [slotUiByMatchId]
   );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const debugEnabled =
+      process.env.NODE_ENV !== 'production' || new URLSearchParams(window.location.search).has('debug');
+    if (!debugEnabled) return;
+    const renderableAfterExclusion = activeVoting.length;
+    for (const match of activeVoting) {
+      const id = String(match.match_id || '');
+      if (!id) continue;
+      if (!votedMatches[id]) continue;
+      const dedupeKey = `${id}:${votedMatches[id]}:${queuedVotes[id] ? '1' : '0'}:${Number(keepUntilByMatchId[id] || 0)}`;
+      if (votedRenderDebugSeenRef.current.has(dedupeKey)) continue;
+      votedRenderDebugSeenRef.current.add(dedupeKey);
+      // eslint-disable-next-line no-console
+      console.warn('[VOTE_DECK_DEBUG] already-voted rendered', {
+        match_id: id,
+        votedMatch: votedMatches[id] || null,
+        queuedVote: !!queuedVotes[id],
+        keepUntil: Number(keepUntilByMatchId[id] || 0),
+        renderableAfterExclusion,
+      });
+    }
+  }, [activeVoting, keepUntilByMatchId, queuedVotes, votedMatches]);
 
   const clearTransitionTimeoutsFor = useCallback((matchId: string) => {
     const bucket = transitionTimeoutsRef.current.get(matchId);
@@ -1381,6 +1677,14 @@ function ArenaSection({
       for (const tid of ids) window.clearTimeout(tid);
     }
     transitionTimeoutsRef.current.clear();
+  }, []);
+
+  const clearKeepUntilTimer = useCallback((matchId: string) => {
+    const tid = keepUntilTimersRef.current.get(matchId);
+    if (typeof tid === 'number') {
+      window.clearTimeout(tid);
+      keepUntilTimersRef.current.delete(matchId);
+    }
   }, []);
 
   const queueTransitionTimeout = useCallback((matchId: string, ms: number, fn: () => void) => {
@@ -1422,6 +1726,16 @@ function ArenaSection({
       mountedRef.current = false;
       clearAllTransitionTimeouts();
       clearRefillSettleTimer();
+      if (deckEnterTimerRef.current !== null) {
+        window.clearTimeout(deckEnterTimerRef.current);
+        deckEnterTimerRef.current = null;
+      }
+      if (hotStreakTimerRef.current !== null) {
+        window.clearTimeout(hotStreakTimerRef.current);
+        hotStreakTimerRef.current = null;
+      }
+      for (const tid of keepUntilTimersRef.current.values()) window.clearTimeout(tid);
+      keepUntilTimersRef.current.clear();
     };
   }, [clearAllTransitionTimeouts, clearRefillSettleTimer]);
 
@@ -1434,6 +1748,7 @@ function ArenaSection({
     }
     if (!staleIds.length) return;
     for (const matchId of staleIds) clearTransitionTimeoutsFor(matchId);
+    for (const matchId of staleIds) clearKeepUntilTimer(matchId);
     setSlotUiByMatchId((prev) => {
       let changed = false;
       const next: Record<string, SlotUiState> = {};
@@ -1458,13 +1773,26 @@ function ArenaSection({
       }
       return changed ? next : prev;
     });
-  }, [clearTransitionTimeoutsFor, visiblePageOrder]);
+    setKeepUntilByMatchId((prev) => {
+      let changed = false;
+      const next: Record<string, number> = {};
+      for (const [id, ts] of Object.entries(prev)) {
+        if (!present.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = ts;
+      }
+      return changed ? next : prev;
+    });
+  }, [clearKeepUntilTimer, clearTransitionTimeoutsFor, visiblePageOrder]);
 
   function pullNextMatchId(excluded: Set<string>): string | null {
     for (let i = cursorRef.current; i < visiblePageOrder.length; i += 1) {
       const id = visiblePageOrder[i]?.match_id;
       if (!id) continue;
       if (excluded.has(id)) continue;
+      if (queuedVotes[id]) continue;
       if (votedMatches[id]) continue;
       cursorRef.current = i + 1;
       setCursor(i + 1);
@@ -1477,6 +1805,7 @@ function ArenaSection({
     const next = [...seed];
     const excluded = new Set(next);
     Object.keys(votedMatches).forEach((id) => excluded.add(id));
+    Object.keys(queuedVotes).forEach((id) => excluded.add(id));
     while (next.length < MAX_VISIBLE) {
       const id = pullNextMatchId(excluded);
       if (!id) break;
@@ -1509,6 +1838,14 @@ function ArenaSection({
   }, [cursor]);
 
   useEffect(() => {
+    stackIdsRef.current = stackIds;
+  }, [stackIds]);
+
+  useEffect(() => {
+    keepUntilByMatchIdRef.current = keepUntilByMatchId;
+  }, [keepUntilByMatchId]);
+
+  useEffect(() => {
     if (segment !== 'voting') {
       setStackReady(false);
       return;
@@ -1517,6 +1854,7 @@ function ArenaSection({
 
   useEffect(() => {
     if (segment !== 'voting') return;
+    if (Object.keys(keepUntilByMatchId).some((id) => shouldKeepInUI(id))) return;
     clearAllTransitionTimeouts();
     const votedSet = new Set(Object.keys(votedMatches));
     const initial: string[] = [];
@@ -1531,9 +1869,10 @@ function ArenaSection({
     setSlotUiByMatchId({});
     setStackIds(initial);
     setQueuedVotes({});
+    setKeepUntilByMatchId({});
     setNextUpId(null);
     setStackReady(true);
-  }, [arena.tournament_id, clearAllTransitionTimeouts, segment, visiblePageOrder]);
+  }, [arena.tournament_id, clearAllTransitionTimeouts, keepUntilByMatchId, segment, shouldKeepInUI, visiblePageOrder, votedMatches]);
 
   useEffect(() => {
     if (!globalPageInfo) return;
@@ -1559,11 +1898,13 @@ function ArenaSection({
 
   useEffect(() => {
     if (segment !== 'voting') return;
+    if (Date.now() < suppressVotedPruneUntilRef.current) return;
     if (hasSlotTransition) return;
+    if (votingMatch) return;
     const hasVotedCardsInStack = stackIds.some((id) => !!votedMatches[id]);
     if (!hasVotedCardsInStack) return;
-    setStackIds((prev) => fillStackToFour(prev.filter((id) => !votedMatches[id] || !!queuedVotes[id])));
-  }, [hasSlotTransition, queuedVotes, segment, stackIds, votedMatches]);
+    setStackIds((prev) => fillStackToFour(prev.filter((id) => shouldKeepInUI(id) || !votedMatches[id])));
+  }, [hasSlotTransition, segment, shouldKeepInUI, stackIds, votedMatches, votingMatch]);
 
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -1694,6 +2035,61 @@ function ArenaSection({
       match: snapshotById[id] || null,
     }));
   }, [segment, snapshotById, snapshotOrder]);
+  const topVotingSlot = segment === 'voting' ? (votingSlots[0] || null) : null;
+  const nextVotingSlot = segment === 'voting' ? (votingSlots[1] || null) : null;
+  useEffect(() => {
+    if (segment !== 'voting') return;
+    const topId = topVotingSlot?.match?.match_id || null;
+    if (!topId) return;
+    if (prevTopMatchIdRef.current === topId) return;
+    prevTopMatchIdRef.current = topId;
+    if (hotStreakTimerRef.current !== null) {
+      window.clearTimeout(hotStreakTimerRef.current);
+      hotStreakTimerRef.current = null;
+    }
+    setShowHotStreakBanner(false);
+    setDeckEnterPhase("entering");
+    if (deckEnterTimerRef.current !== null) {
+      window.clearTimeout(deckEnterTimerRef.current);
+    }
+    deckEnterTimerRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      setDeckEnterPhase("idle");
+      deckEnterTimerRef.current = null;
+    }, 160);
+  }, [segment, topVotingSlot?.match?.match_id]);
+  useEffect(() => {
+    if (segment !== 'voting') return;
+    const prev = prevVoteStreakRef.current;
+    prevVoteStreakRef.current = voteStreak;
+    if (voteStreak < 10 || voteStreak <= prev) return;
+    setHotStreakTick((n) => n + 1);
+    setShowHotStreakBanner(true);
+    if (hotStreakTimerRef.current !== null) {
+      window.clearTimeout(hotStreakTimerRef.current);
+    }
+    hotStreakTimerRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      setShowHotStreakBanner(false);
+      hotStreakTimerRef.current = null;
+    }, 600);
+  }, [segment, voteStreak]);
+  const predecodedMatchIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const nextMatch = nextVotingSlot?.match;
+    if (!nextMatch?.match_id) return;
+    if (predecodedMatchIdsRef.current.has(nextMatch.match_id)) return;
+    predecodedMatchIdsRef.current.add(nextMatch.match_id);
+    const urls = [nextMatch.cat_a?.image_url, nextMatch.cat_b?.image_url].filter(Boolean) as string[];
+    for (const url of urls) {
+      const img = new Image();
+      img.src = url;
+      if (typeof img.decode === 'function') {
+        void img.decode().catch(() => {});
+      }
+    }
+  }, [nextVotingSlot?.match?.match_id, nextVotingSlot?.match?.cat_a?.image_url, nextVotingSlot?.match?.cat_b?.image_url]);
   const queueDebug = useMemo(() => {
     if (process.env.NODE_ENV === 'production') return null;
     const pendingSnapshot =
@@ -1761,8 +2157,10 @@ function ArenaSection({
     if (process.env.NODE_ENV === 'production') return;
     if (!(feedStatus === 'refilling' || feedStatus === 'transitioning')) return;
     const id = window.setTimeout(() => {
-      const x = Math.floor(window.innerWidth * 0.5);
-      const y = Math.max(0, window.innerHeight - 8);
+      const navTarget = document.querySelector('[data-testid="nav-duel"]') as HTMLElement | null;
+      const rect = navTarget?.getBoundingClientRect();
+      const x = rect ? Math.floor(rect.left + rect.width * 0.5) : Math.floor(window.innerWidth * 0.5);
+      const y = rect ? Math.floor(rect.top + rect.height * 0.5) : Math.max(0, window.innerHeight - 8);
       const top = document.elementFromPoint(x, y) as HTMLElement | null;
       const style = top ? getComputedStyle(top) : null;
       const fixedAncestors: Array<Record<string, string | null>> = [];
@@ -1786,8 +2184,10 @@ function ArenaSection({
         arena: arena.type,
         phase: feedStatus,
         point: { x, y },
+        expectedNav: !!navTarget,
         topTag: top?.tagName || null,
         topClass: top?.className || null,
+        topHref: top?.closest?.('a')?.getAttribute?.('href') || null,
         topZ: style?.zIndex || null,
         topPointerEvents: style?.pointerEvents || null,
         fixedAncestors,
@@ -1808,9 +2208,44 @@ function ArenaSection({
     onCreateCalloutRef.current = onCreateCallout;
   }, [onCreateCallout]);
 
-  const stableVote = useCallback((matchId: string, catId: string) => {
-    return onVoteRef.current(matchId, catId);
-  }, []);
+  const stableVote = useCallback(async (matchId: string, catId: string) => {
+    const keepMs = 900;
+    const keepUntil = Date.now() + keepMs;
+    suppressVotedPruneUntilRef.current = Date.now() + (reduceMotion ? 450 : 1400);
+    keepVisibleVoteMatchIdsRef.current.add(matchId);
+    clearKeepUntilTimer(matchId);
+    setKeepUntilByMatchId((prev) => ({ ...prev, [matchId]: keepUntil }));
+    const cleanupTid = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      setKeepUntilByMatchId((prev) => {
+        if (!prev[matchId]) return prev;
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+      keepUntilTimersRef.current.delete(matchId);
+    }, keepMs + 500);
+    keepUntilTimersRef.current.set(matchId, cleanupTid);
+    setQueuedVotes((prev) => (prev[matchId] ? prev : { ...prev, [matchId]: true }));
+    const ok = await onVoteRef.current(matchId, catId);
+    if (!ok) {
+      keepVisibleVoteMatchIdsRef.current.delete(matchId);
+      clearKeepUntilTimer(matchId);
+      setKeepUntilByMatchId((prev) => {
+        if (!prev[matchId]) return prev;
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+      setQueuedVotes((prev) => {
+        if (!prev[matchId]) return prev;
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+    }
+    return ok;
+  }, [clearKeepUntilTimer, reduceMotion]);
 
   const stablePredict = useCallback((matchId: string, catId: string, bet: number) => {
     return onPredictRef.current(matchId, catId, bet);
@@ -1821,22 +2256,57 @@ function ArenaSection({
   }, []);
 
   const handleRefreshQueued = useCallback((matchId: string) => {
+    keepVisibleVoteMatchIdsRef.current.delete(matchId);
+    clearKeepUntilTimer(matchId);
     setQueuedVotes((prev) => {
       const next = { ...prev };
       delete next[matchId];
       return next;
     });
+    setKeepUntilByMatchId((prev) => {
+      if (!prev[matchId]) return prev;
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
     void refillArena('queued');
-  }, [refillArena]);
+  }, [clearKeepUntilTimer, refillArena]);
 
   const handleVoteAccepted = useCallback((matchId: string, side: "a" | "b") => {
     if (segment !== 'voting') return;
     if (!presentMatchIdsRef.current.has(matchId)) return;
-    const CONFIRMED_HOLD_MS = reduceMotion ? 220 : 820;
-    const EXIT_ANIMATION_MS = reduceMotion ? 0 : 320;
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.log('[DEV][vote-lifecycle] accepted', {
+        arena: arena.type,
+        matchId,
+        side,
+        hasPresent: presentMatchIdsRef.current.has(matchId),
+        queued: !!queuedVotes[matchId],
+        voted: !!votedMatches[matchId],
+      });
+    }
+    const CONFIRMED_HOLD_MS = reduceMotion ? 900 : 920;
+    const EXIT_ANIMATION_MS = reduceMotion ? 140 : EXIT_MS;
+    const SWAP_PAUSE_MS = reduceMotion ? 0 : SWAP_DELAY_MS;
     clearTransitionTimeoutsFor(matchId);
     setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
     setSlotUiByMatchId((prev) => ({ ...prev, [matchId]: { phase: "voted", chosenSide: side } }));
+    if (process.env.NODE_ENV !== 'production') {
+      window.setTimeout(() => {
+        const keepUntil = Number(keepUntilByMatchIdRef.current[matchId] || 0);
+        if (keepUntil > Date.now() && !stackIdsRef.current.includes(matchId)) {
+          // eslint-disable-next-line no-console
+          console.warn('[KEEP VIOLATION]', {
+            arena: arena.type,
+            matchId,
+            keepUntil,
+            now: Date.now(),
+            stackIds: [...stackIdsRef.current],
+          });
+        }
+      }, 200);
+    }
     queueTransitionTimeout(matchId, CONFIRMED_HOLD_MS, () => {
       setSlotUiByMatchId((prev) => {
         const current = prev[matchId];
@@ -1844,31 +2314,57 @@ function ArenaSection({
         return { ...prev, [matchId]: { ...current, phase: "exiting" } };
       });
       const finalize = () => {
+        const keepUntil = Number(keepUntilByMatchIdRef.current[matchId] || 0);
+        const now = Date.now();
+        if (keepUntil > now) {
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.warn('[KEEP VIOLATION]', { arena: arena.type, matchId, keepUntil, now, note: 'deferred removal until keep window ends' });
+          }
+          const wait = Math.max(16, keepUntil - now);
+          queueTransitionTimeout(matchId, wait, finalize);
+          return;
+        }
         if (!presentMatchIdsRef.current.has(matchId)) return;
-        replaceCard(matchId, (result) => {
-          clearTransitionTimeoutsFor(matchId);
-          setQueuedVotes((prev) => {
-            const next = { ...prev };
-            delete next[matchId];
-            return next;
+        const advanceToNextMatch = () => {
+          replaceCard(matchId, (result) => {
+            clearTransitionTimeoutsFor(matchId);
+            keepVisibleVoteMatchIdsRef.current.delete(matchId);
+            clearKeepUntilTimer(matchId);
+            setQueuedVotes((prev) => {
+              const next = { ...prev };
+              delete next[matchId];
+              return next;
+            });
+            setKeepUntilByMatchId((prev) => {
+              if (!prev[matchId]) return prev;
+              const next = { ...prev };
+              delete next[matchId];
+              return next;
+            });
+            setSlotUiByMatchId((prev) => {
+              if (!prev[matchId]) return prev;
+              const next = { ...prev };
+              delete next[matchId];
+              return next;
+            });
+            if (!result.replaced) {
+              setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
+              return;
+            }
+            if (result.insertedId) {
+              setNextUpId(result.insertedId);
+              queueTransitionTimeout(matchId, 800, () =>
+                setNextUpId((id) => (id === result.insertedId ? null : id))
+              );
+            }
           });
-          setSlotUiByMatchId((prev) => {
-            if (!prev[matchId]) return prev;
-            const next = { ...prev };
-            delete next[matchId];
-            return next;
-          });
-          if (!result.replaced) {
-            setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
-            return;
-          }
-          if (result.insertedId) {
-            setNextUpId(result.insertedId);
-            queueTransitionTimeout(matchId, 800, () =>
-              setNextUpId((id) => (id === result.insertedId ? null : id))
-            );
-          }
-        });
+        };
+        if (SWAP_PAUSE_MS > 0) {
+          queueTransitionTimeout(matchId, SWAP_PAUSE_MS, advanceToNextMatch);
+        } else {
+          advanceToNextMatch();
+        }
       };
       if (EXIT_ANIMATION_MS > 0) {
         queueTransitionTimeout(matchId, EXIT_ANIMATION_MS, finalize);
@@ -1876,7 +2372,21 @@ function ArenaSection({
         finalize();
       }
     });
-  }, [clearTransitionTimeoutsFor, queueTransitionTimeout, reduceMotion, replaceCard, segment]);
+  }, [EXIT_MS, SWAP_DELAY_MS, clearKeepUntilTimer, clearTransitionTimeoutsFor, queueTransitionTimeout, reduceMotion, replaceCard, segment]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const rows = stackIds.map((id, idx) => ({
+      idx,
+      id,
+      queued: !!queuedVotes[id],
+      voted: !!votedMatches[id],
+      phase: slotUiByMatchId[id]?.phase || 'idle',
+      keepVisible: keepVisibleVoteMatchIdsRef.current.has(id),
+    }));
+    // eslint-disable-next-line no-console
+    console.log('[DEV][vote-lifecycle] stack', { arena: arena.type, feedStatus, rows });
+  }, [arena.type, feedStatus, queuedVotes, slotUiByMatchId, stackIds, votedMatches]);
 
   return (
     <div className="rounded-3xl bg-white/[0.03] shadow-[0_10px_25px_rgba(0,0,0,0.25)] p-4">
@@ -1920,6 +2430,19 @@ function ArenaSection({
           </button>
         ))}
       </div>
+      {segment === 'voting' && voteStreak >= 2 && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className={`streak-badge relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${voteStreak >= 3 ? 'badge-glow border-orange-200/55 bg-orange-500/18 text-orange-50' : 'border-orange-300/35 bg-orange-500/12 text-orange-100'}`}>
+            {voteStreak >= 5 && !reduceMotion ? <span className="ring-pulse" /> : null}
+            🔥 {voteStreak} Vote Streak
+          </span>
+          {voteStreak % 5 === 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-300/35 bg-emerald-500/15 text-[10px] font-semibold text-emerald-100 animate-pulse">
+              +1 XP
+            </span>
+          )}
+        </div>
+      )}
       {queueDebug && (
         <div className="mb-2 rounded-lg border border-white/15 bg-black/35 p-2 text-[10px] text-white/70">
           <div>
@@ -1941,7 +2464,7 @@ function ArenaSection({
         </p>
       ) : null}
       {segment === 'voting' && feedError && (
-        <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-[11px] text-amber-100 flex items-center justify-between gap-2 pointer-events-none">
+        <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-[11px] text-amber-100 flex items-center justify-between gap-2">
           <span>{feedError}</span>
           {showManualRefresh && (
             <button
@@ -1949,7 +2472,7 @@ function ArenaSection({
                 setQueuedVotes({});
                 void refillArena('manual');
               }}
-              className="h-9 min-h-[36px] px-3 rounded-lg border border-amber-300/45 bg-amber-500/15 text-[11px] font-semibold text-amber-100 touch-manipulation pointer-events-auto"
+              className="h-9 min-h-[36px] px-3 rounded-lg border border-amber-300/45 bg-amber-500/15 text-[11px] font-semibold text-amber-100 touch-manipulation"
             >
               Retry
             </button>
@@ -1960,6 +2483,11 @@ function ArenaSection({
         <p className="text-[10px] text-amber-200/90 mb-2">
           {voteStreak >= 10 ? '⚡ Chaos Agent unlocked' : `🔥 You're on a roll (${voteStreak} votes)`}
         </p>
+      )}
+      {segment === 'voting' && showHotStreakBanner && voteStreak >= 10 && (
+        <div key={`hot-${hotStreakTick}`} className={`mb-2 inline-flex items-center rounded-full border border-fuchsia-300/45 bg-fuchsia-500/18 px-3 py-1 text-[11px] font-semibold text-fuchsia-100 ${reduceMotion ? '' : 'hot-streak'}`}>
+          🔥 HOT STREAK x{voteStreak}
+        </div>
       )}
 
       {(segment === 'voting' ? votingSlots.length === 0 && feedStatus === 'ready' : activeList.length === 0) ? (
@@ -1987,14 +2515,6 @@ function ArenaSection({
                 >
                   Refresh
                 </button>
-                {arena.type === 'main' && onSwitchArena && (
-                  <button
-                    onClick={() => onSwitchArena('rookie')}
-                    className="h-11 min-h-[44px] px-3 rounded-lg border border-emerald-300/35 bg-emerald-500/10 text-[11px] font-semibold text-emerald-100 touch-manipulation"
-                  >
-                    Switch to Rookie
-                  </button>
-                )}
               </div>
             </>
           ) : (
@@ -2008,23 +2528,24 @@ function ArenaSection({
         <div className="space-y-3">
           {segment === 'voting' ? (
             <>
-              {votingSlots.map((slot) => (
-                <div key={slot.key} className={slot.match ? "min-h-[420px]" : "min-h-[140px]"}>
-                {slot.match ? (
+              <div className={topVotingSlot?.match ? "min-h-[420px]" : "min-h-[140px]"}>
+                {topVotingSlot?.match ? (
                   <MatchCard
-                    match={slot.match}
-                    voted={votedMatches[slot.match.match_id] || null}
-                    isVoting={votingMatch === slot.match.match_id}
-                    predictBusy={predictBusyMatch === slot.match.match_id}
-                    calloutBusy={calloutBusyMatch === slot.match.match_id}
+                    key={topVotingSlot.match.match_id}
+                    match={topVotingSlot.match}
+                    voted={votedMatches[topVotingSlot.match.match_id] || null}
+                    isVoting={votingMatch === topVotingSlot.match.match_id}
+                    predictBusy={predictBusyMatch === topVotingSlot.match.match_id}
+                    calloutBusy={calloutBusyMatch === topVotingSlot.match.match_id}
                     socialEnabled={socialEnabled}
                     availableSigils={availableSigils}
                     voteStreak={voteStreak}
-                    isExiting={slotUiByMatchId[slot.match.match_id]?.phase === 'exiting'}
-                    slotPhase={slotUiByMatchId[slot.match.match_id]?.phase || 'idle'}
-                    slotChosenSide={slotUiByMatchId[slot.match.match_id]?.chosenSide || null}
-                    voteQueued={!!queuedVotes[slot.match.match_id]}
-                    showNextUp={nextUpId === slot.match.match_id}
+                    isExiting={slotUiByMatchId[topVotingSlot.match.match_id]?.phase === 'exiting'}
+                    slotPhase={slotUiByMatchId[topVotingSlot.match.match_id]?.phase || 'idle'}
+                    slotChosenSide={slotUiByMatchId[topVotingSlot.match.match_id]?.chosenSide || null}
+                    enterPhase={deckEnterPhase}
+                    voteQueued={!!queuedVotes[topVotingSlot.match.match_id]}
+                    showNextUp={nextUpId === topVotingSlot.match.match_id}
                     onRefreshQueued={handleRefreshQueued}
                     onVote={stableVote}
                     onVoteAccepted={handleVoteAccepted}
@@ -2034,8 +2555,7 @@ function ArenaSection({
                 ) : (
                   <LoadingNextFightsCard />
                 )}
-                </div>
-              ))}
+              </div>
               {(feedStatus === 'refilling' || feedStatus === 'transitioning') && (
                 <LoadingNextFightsCard
                   text={
@@ -2270,7 +2790,7 @@ export default function Page() {
   } | null>(null);
   const [missionBoardOpen, setMissionBoardOpen] = useState(false);
   const [openMissionKey, setOpenMissionKey] = useState<string | null>(null);
-  const [arenaTypeTab, setArenaTypeTab] = useState<'main' | 'rookie'>('main');
+  const [arenaTypeTab] = useState<'main' | 'rookie'>('main');
   const [pendingDuelCount, setPendingDuelCount] = useState(0);
   const [liveDuels, setLiveDuels] = useState<DuelRow[]>([]);
   const [liveDuelVotes2m, setLiveDuelVotes2m] = useState(0);
@@ -2321,6 +2841,10 @@ export default function Page() {
     main: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0 },
     rookie: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0 },
   });
+  const [arenaPoolsByType, setArenaPoolsByType] = useState<Record<'main' | 'rookie', ArenaMatch[]>>({
+    main: [],
+    rookie: [],
+  });
   const [arenaDebugInfo, setArenaDebugInfo] = useState<Record<'main' | 'rookie', ArenaInventoryDebug | null>>({
     main: null,
     rookie: null,
@@ -2341,6 +2865,27 @@ export default function Page() {
   const arenaRefillInFlightRef = useRef<Record<'main' | 'rookie', boolean>>({ main: false, rookie: false });
   const arenaRefillLastAtRef = useRef<Record<'main' | 'rookie', number>>({ main: 0, rookie: 0 });
   const voteStateScope = useMemo(() => voteScopeFromArenas(arenas), [arenas]);
+  const displayedArenas = useMemo(() => {
+    const typed = arenas.filter((a) => a.type === arenaTypeTab);
+    if (typed.length > 0) return typed;
+    const fallbackMatches = (arenaPoolsByType[arenaTypeTab] || []).filter((m) => !!m?.match_id);
+    if (fallbackMatches.length === 0) return [];
+    const anchor = arenas[0];
+    const round = Number(anchor?.current_round || 1);
+    const synthetic: Arena = {
+      tournament_id: String(anchor?.tournament_id || `synthetic-${arenaTypeTab}-${new Date().toISOString().slice(0, 10)}`),
+      type: arenaTypeTab,
+      date: String(anchor?.date || new Date().toISOString().slice(0, 10)),
+      current_round: round,
+      status: String(anchor?.status || 'active'),
+      champion: null,
+      rounds: [{ round, matches: fallbackMatches }],
+    };
+    return [synthetic];
+  }, [arenas, arenaPoolsByType, arenaTypeTab]);
+  const hasMatchesForActiveTab = displayedArenas.some((arena) =>
+    (arena.rounds || []).some((round) => (round.matches || []).length > 0)
+  );
 
   useEffect(() => { loadAll(); }, []);
   useEffect(() => {
@@ -2610,14 +3155,28 @@ export default function Page() {
   const activeVotersNow = Math.max(0, Number(globalPageInfo[arenaTypeTab]?.activeVoters10m || 0));
 
   function applyPageMatchesToArenas(current: Arena[], arenaType: 'main' | 'rookie', matches: ArenaMatch[]): Arena[] {
-    return current.map((a) => {
+    let found = false;
+    const next = current.map((a) => {
       if (a.type !== arenaType) return a;
+      found = true;
       const round = Number(a.current_round || 1);
       return {
         ...a,
         rounds: [{ round, matches }],
       };
     });
+    if (found || matches.length === 0) return next;
+    const anchor = current[0];
+    const synthetic: Arena = {
+      tournament_id: String(anchor?.tournament_id || `synthetic-${arenaType}-${new Date().toISOString().slice(0, 10)}`),
+      type: arenaType,
+      date: String(anchor?.date || new Date().toISOString().slice(0, 10)),
+      current_round: 1,
+      status: "active",
+      champion: null,
+      rounds: [{ round: 1, matches }],
+    };
+    return [...next, synthetic];
   }
 
   async function loadArenaQueuePage(arenaType: 'main' | 'rookie', options?: { preserveExistingOnEmpty?: boolean }): Promise<{ ok: boolean; count: number }> {
@@ -2626,6 +3185,7 @@ export default function Page() {
     const matches = Array.isArray(data.matches) ? (data.matches as ArenaMatch[]) : [];
     if (options?.preserveExistingOnEmpty && matches.length === 0) return { ok: true, count: 0 };
     setArenas((prev) => applyPageMatchesToArenas(prev, arenaType, matches));
+    setArenaPoolsByType((prev) => ({ ...prev, [arenaType]: matches }));
     setArenaQueueInfo((prev) => ({
       ...prev,
       [arenaType]: {
@@ -2654,6 +3214,7 @@ export default function Page() {
       return false;
     }
     setArenas((prev) => applyPageMatchesToArenas(prev, arenaType, matches));
+    setArenaPoolsByType((prev) => ({ ...prev, [arenaType]: matches }));
     pageMatchIdsRef.current[arenaType] = matches.map((m) => m.match_id);
     pollSinceRef.current[arenaType] = Date.now();
     setGlobalPageInfo((prev) => ({
@@ -2683,7 +3244,7 @@ export default function Page() {
 
   async function initializeGlobalPages() {
     const dayKey = new Date().toISOString().slice(0, 10);
-    const arenaTypes: Array<'main' | 'rookie'> = ['main', 'rookie'];
+    const arenaTypes: Array<'main' | 'rookie'> = ['main'];
     for (const arenaType of arenaTypes) {
       let startPage = 0;
       try {
@@ -2744,7 +3305,7 @@ export default function Page() {
     }
     const poolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
       main: Array.isArray(arenaData.mainPool) ? arenaData.mainPool : [],
-      rookie: Array.isArray(arenaData.rookiePool) ? arenaData.rookiePool : [],
+      rookie: [],
     };
     const arenasWithPools = (arenaData.arenas || []).map((a) => {
       const t = a.type === 'main' || a.type === 'rookie' ? a.type : null;
@@ -2757,10 +3318,10 @@ export default function Page() {
         rounds: [{ round: currentRound, matches: poolMatches }],
       };
     });
+    setArenaPoolsByType(poolMap);
     setArenas(arenasWithPools);
     await Promise.all([
       loadArenaQueuePage('main').catch(() => ({ ok: false, count: 0 })),
-      loadArenaQueuePage('rookie').catch(() => ({ ok: false, count: 0 })),
     ]);
     const nextVoteScope = voteScopeFromArenas(arenasWithPools as Arena[]);
     const mergedVotes = mergeVotedMaps(arenaData.votedMatches, readVotedMatchesFromStorage(nextVoteScope));
@@ -2885,7 +3446,10 @@ export default function Page() {
   }
 
   async function handleVote(matchId: string, catId: string): Promise<boolean> {
-    if (votingMatch || votedMatches[matchId]) return false;
+    if (votingMatch) return false;
+    const matchedMatch = arenas
+      .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
+      .find((m) => m.match_id === matchId);
     const matchedArenaType = arenas.find((a) =>
       (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
     )?.type as 'main' | 'rookie' | undefined;
@@ -2908,21 +3472,29 @@ export default function Page() {
         body: JSON.stringify({ match_id: matchId, voted_for: catId }),
       });
       const data = await r.json().catch(() => null);
+      const msg = String(data?.error || "");
+      const alreadyVotedConflict =
+        r.status === 409 ||
+        !!data?.alreadyVoted ||
+        msg.toLowerCase().includes("already") ||
+        msg.toLowerCase().includes("duplicate");
+      if (alreadyVotedConflict) {
+        statusBurstUntilRef.current = Date.now() + 20_000;
+        const incomingChoice = String(data?.choice || '').trim();
+        const resolvedChoice =
+          incomingChoice === 'a' ? String(matchedMatch?.cat_a?.id || catId)
+          : incomingChoice === 'b' ? String(matchedMatch?.cat_b?.id || catId)
+          : String(catId || incomingChoice || '');
+        setVotedMatches((prev) => {
+          const next = upsertVotedMatch(prev, matchId, resolvedChoice);
+          writeVotedMatchesToStorage(next, voteStateScope);
+          return next;
+        });
+        showToast("Already voted ✅");
+        return true;
+      }
       if (!r.ok || !data?.ok) {
-        const msg = data?.error || "Vote failed";
-        if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("duplicate")) {
-          statusBurstUntilRef.current = Date.now() + 20_000;
-          setVotedMatches((prev) => {
-            const next = upsertVotedMatch(prev, matchId, catId);
-            writeVotedMatchesToStorage(next, voteStateScope);
-            return next;
-          });
-          if (data?.page_complete && (matchedArenaType === 'main' || matchedArenaType === 'rookie')) {
-            void handleArenaStackRefill(matchedArenaType);
-          }
-          showToast("Vote registered ✅");
-          return true;
-        }
+        setVoteStreak(0);
         setVotedMatches((prev) => {
           const next = removeVotedMatch(prev, matchId);
           writeVotedMatchesToStorage(next, voteStateScope);
@@ -2972,9 +3544,6 @@ export default function Page() {
           }
           return next;
         });
-        if (data?.page_complete && (matchedArenaType === 'main' || matchedArenaType === 'rookie')) {
-          void handleArenaStackRefill(matchedArenaType);
-        }
         showToast("Vote registered ✅");
         if (!data?.rewards_locked) {
           setProgress((prev) => prev ? {
@@ -2993,6 +3562,7 @@ export default function Page() {
         return true;
       }
     } catch {
+      setVoteStreak(0);
       setVotedMatches((prev) => {
         const next = removeVotedMatch(prev, matchId);
         writeVotedMatchesToStorage(next, voteStateScope);
@@ -3143,7 +3713,9 @@ export default function Page() {
       const matches = Array.isArray(data.matches) ? (data.matches as ArenaMatch[]) : [];
       const nextPageIndex = Math.max(0, Number(data.page_index || prevPageIndex));
       const nextSignature = matches.map((m) => String(m.match_id || '')).filter(Boolean).join('|');
-      const renderableMatches = matches.filter((m) => isArenaVotingStatus(m.status) && !votedMatches[m.match_id]);
+      const renderableMatches = matches.filter((m) =>
+        isArenaVotingStatus(m.status) && (!votedMatches[m.match_id] || String(votingMatch || '') === String(m.match_id || ''))
+      );
       const renderableCount = renderableMatches.length;
       const advanced = nextPageIndex > prevPageIndex || (!!nextSignature && nextSignature !== prevSignature);
 
@@ -3166,6 +3738,7 @@ export default function Page() {
       }
 
       setArenas((prev) => applyPageMatchesToArenas(prev, type, matches));
+      setArenaPoolsByType((prev) => ({ ...prev, [type]: matches }));
       setArenaQueueInfo((prev) => ({
         ...prev,
         [type]: {
@@ -3226,7 +3799,7 @@ export default function Page() {
         const updated = await fetchArenas();
         const poolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
           main: Array.isArray(updated.mainPool) ? updated.mainPool : [],
-          rookie: Array.isArray(updated.rookiePool) ? updated.rookiePool : [],
+          rookie: [],
         };
         const arenasWithPools = (updated.arenas || []).map((a) => {
           const t = a.type === 'main' || a.type === 'rookie' ? a.type : null;
@@ -3862,27 +4435,14 @@ export default function Page() {
           </div>
 
           <div className="mb-4">
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                onClick={() => setArenaTypeTab('main')}
-                size="md"
-                variant={arenaTypeTab === 'main' ? 'primary' : 'secondary'}
-                className={arenaTypeTab === 'main' ? 'bg-white text-black border-white' : ''}
-              >
-                Main Arena
-              </Button>
-              <Button
-                onClick={() => setArenaTypeTab('rookie')}
-                size="md"
-                variant={arenaTypeTab === 'rookie' ? 'primary' : 'secondary'}
-                className={arenaTypeTab === 'rookie' ? 'bg-emerald-300 text-black border-emerald-200/80' : 'border-emerald-300/25 bg-emerald-500/10 text-emerald-200'}
-              >
-                Rookie Arena
+            <div className="grid grid-cols-1 gap-2">
+              <Button size="md" variant="primary" className="bg-white text-black border-white">
+                Arena
               </Button>
             </div>
           </div>
 
-          {arenas.filter((a) => a.type === arenaTypeTab).length === 0 ? (
+          {!hasMatchesForActiveTab ? (
             <div className="text-center py-12 glass rounded-2xl">
               {(hasSeenArenaByType[arenaTypeTab] || Object.keys(votedMatches).length > 0) ? (
                 <>
@@ -3891,7 +4451,7 @@ export default function Page() {
                 </>
               ) : (
                 <>
-                  <p className="text-white/50 mb-4">No active {arenaTypeTab} arena today.</p>
+                  <p className="text-white/50 mb-4">No active arena today.</p>
                   <Link href="/submit" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:scale-105 transition-transform">
                     Submit a Cat
                   </Link>
@@ -3900,7 +4460,7 @@ export default function Page() {
             </div>
           ) : (
             <div className="space-y-4">
-              {arenas.filter((arena) => arena.type === arenaTypeTab).map((arena) => (
+              {displayedArenas.map((arena) => (
                 <ArenaSection key={arena.tournament_id} arena={arena} votedMatches={votedMatches}
                   votingMatch={votingMatch}
                   predictBusyMatch={predictBusyMatch}
@@ -3913,7 +4473,7 @@ export default function Page() {
                   debugInfo={null}
                   queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}
                   pulseCountdown={pulseCountdown}
-                  onSwitchArena={setArenaTypeTab}
+                  onSwitchArena={undefined}
                   onRequestMore={() => handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
                   onVote={handleVote}
                   onPredict={handlePredict}
