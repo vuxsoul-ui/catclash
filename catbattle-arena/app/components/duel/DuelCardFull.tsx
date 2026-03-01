@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Share2 } from 'lucide-react';
 import type { DuelRowData } from './types';
 
@@ -8,6 +8,24 @@ function percent(a: number, b: number): [number, number] {
   const total = a + b;
   if (!total) return [50, 50];
   return [Math.round((a / total) * 100), Math.round((b / total) * 100)];
+}
+
+const DUEL_XP_KEY = 'cc_duel_xp_v1';
+
+function xpNeededForLevel(level: number): number {
+  return 100 + level * 25;
+}
+
+function deriveLevelProgress(totalXp: number): { level: number; current: number; needed: number } {
+  let xp = Math.max(0, totalXp);
+  let level = 1;
+  let needed = xpNeededForLevel(level);
+  while (xp >= needed) {
+    xp -= needed;
+    level += 1;
+    needed = xpNeededForLevel(level);
+  }
+  return { level, current: xp, needed };
 }
 
 export default function DuelCardFull({
@@ -27,6 +45,15 @@ export default function DuelCardFull({
   const [pendingVote, setPendingVote] = useState<'A' | 'B' | null>(null);
   const [voteSubmitted, setVoteSubmitted] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
+  const [duelShownAt, setDuelShownAt] = useState<number>(Date.now());
+  const [voteStreak, setVoteStreak] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [xpTotal, setXpTotal] = useState(0);
+  const [xpGainPop, setXpGainPop] = useState<number | null>(null);
+  const [streakPulse, setStreakPulse] = useState(false);
+  const [comboPulse, setComboPulse] = useState(false);
+  const voteInFlightRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
   const votesA = Number(duel.votes?.cat_a || 0);
   const votesB = Number(duel.votes?.cat_b || 0);
   const [pctA, pctB] = useMemo(() => percent(votesA, votesB), [votesA, votesB]);
@@ -38,26 +65,96 @@ export default function DuelCardFull({
     meId !== duel.challenger_user_id &&
     meId !== duel.challenged_user_id;
   const voteLocked = !!pendingVote || busy;
+  const levelProgress = useMemo(() => deriveLevelProgress(xpTotal), [xpTotal]);
 
   useEffect(() => {
     setPendingVote(null);
     setVoteSubmitted(false);
     setVoteError(null);
+    setDuelShownAt(Date.now());
   }, [duel.id, duel.votes?.user_vote_cat_id, duel.status]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(DUEL_XP_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      setVoteStreak(Math.max(0, Number(parsed.streak || 0)));
+      setCombo(Math.max(0, Number(parsed.combo || 0)));
+      setXpTotal(Math.max(0, Number(parsed.xp || 0)));
+    } catch {
+      // ignore localStorage parse errors
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        DUEL_XP_KEY,
+        JSON.stringify({ streak: voteStreak, combo, xp: xpTotal })
+      );
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [combo, voteStreak, xpTotal]);
+
+  useEffect(() => {
+    if (!xpGainPop) return;
+    const id = window.setTimeout(() => setXpGainPop(null), 1300);
+    timersRef.current.push(Number(id));
+    return () => window.clearTimeout(id);
+  }, [xpGainPop]);
+
+  useEffect(() => {
+    if (combo <= 0) return;
+    const id = window.setTimeout(() => setCombo((prev) => Math.max(0, prev - 1)), 2000);
+    timersRef.current.push(Number(id));
+    return () => window.clearTimeout(id);
+  }, [combo]);
+
+  useEffect(() => {
+    return () => {
+      voteInFlightRef.current = false;
+      for (const timer of timersRef.current) window.clearTimeout(timer);
+      timersRef.current = [];
+    };
+  }, []);
+
   async function handleVote(side: 'A' | 'B', catId: string | null | undefined) {
-    if (!catId || !canVote || voteLocked) return;
+    if (!catId || !canVote || voteLocked || voteInFlightRef.current) return;
+    voteInFlightRef.current = true;
     setPendingVote(side);
     setVoteSubmitted(false);
     setVoteError(null);
-    const ok = await onVote(duel.id, catId);
-    if (ok) {
-      setVoteSubmitted(true);
-      return;
+    try {
+      const ok = await onVote(duel.id, catId);
+      if (ok) {
+        const elapsedMs = Math.max(0, Date.now() - duelShownAt);
+        const comboGain = elapsedMs < 3000 ? 2 : elapsedMs < 6000 ? 1 : 0;
+        const nextCombo = comboGain > 0 ? combo + comboGain : Math.max(0, combo - 1);
+        const nextStreak = voteStreak + 1;
+        const xpGain = 5 + nextCombo + Math.min(nextStreak, 10);
+        setCombo(nextCombo);
+        setVoteStreak(nextStreak);
+        setXpTotal((prev) => prev + xpGain);
+        setXpGainPop(xpGain);
+        setStreakPulse(true);
+        setComboPulse(comboGain > 0);
+        const streakTimer = window.setTimeout(() => setStreakPulse(false), 240);
+        const comboTimer = window.setTimeout(() => setComboPulse(false), 240);
+        timersRef.current.push(Number(streakTimer), Number(comboTimer));
+        setVoteSubmitted(true);
+        return;
+      }
+      setPendingVote(null);
+      setVoteSubmitted(false);
+      setVoteError('Vote failed — try again');
+    } finally {
+      voteInFlightRef.current = false;
     }
-    setPendingVote(null);
-    setVoteSubmitted(false);
-    setVoteError('Vote failed — try again');
   }
 
   return (
@@ -73,6 +170,7 @@ export default function DuelCardFull({
                 height={40}
                 className="h-10 w-10 rounded-lg object-cover border border-white/20"
                 loading="lazy"
+                decoding="async"
               />
               <div className="min-w-0">
                 <p className="text-[12px] font-bold text-white truncate">{cat?.name || 'Unknown'}</p>
@@ -85,6 +183,22 @@ export default function DuelCardFull({
       </div>
 
       <div className="mt-3 rounded-lg border border-white/10 bg-black/25 p-2.5">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${streakPulse ? 'scale-105' : 'scale-100'} transition-transform duration-200 border-orange-300/35 bg-orange-500/15 text-orange-100`}
+          >
+            🔥 Streak: {voteStreak}
+          </span>
+          {combo >= 2 ? (
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] ${comboPulse ? 'scale-105' : 'scale-100'} transition-transform duration-200 border-cyan-300/35 bg-cyan-500/15 text-cyan-100`}
+            >
+              ⚡ Combo x{combo}
+            </span>
+          ) : (
+            <span className="text-[10px] text-white/45">Lv {levelProgress.level}</span>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => void handleVote('A', duel.challenger_cat?.id)}
@@ -118,6 +232,9 @@ export default function DuelCardFull({
         </div>
         {voteSubmitted && (
           <p className="mt-1 text-[10px] text-emerald-200">Voted ✅</p>
+        )}
+        {xpGainPop != null && (
+          <p className="mt-1 text-[10px] text-emerald-200 animate-pulse">+{xpGainPop} XP</p>
         )}
         {voteError && (
           <p className="mt-1 text-[10px] text-red-300">{voteError}</p>

@@ -2,12 +2,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Loader2, Swords, Shield, Zap,
   Wind, Sparkles, Skull, Heart, Star,
 } from 'lucide-react';
 import Link from 'next/link';
+import CatShareButton from '../../components/CatShareButton';
 
 interface CatProfile {
   id: string;
@@ -25,7 +26,12 @@ interface CatProfile {
   losses: number;
   battles_fought: number;
   win_rate: number;
+  stance?: string | null;
+  fan_count?: number;
+  rivalries?: Array<{ cat_id: string; cat_name: string; battles: number }>;
+  owner_title?: string | null;
   owner_id: string | null;
+  owner_username?: string | null;
   created_at: string;
   battle_history: {
     match_id: string;
@@ -83,10 +89,31 @@ function StatRow({ stat, value }: { stat: string; value: number }) {
 
 export default function CatProfilePage() {
   const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const catId = params?.id as string;
+  const ref = String(searchParams?.get('ref') || '').trim();
+  const guildFromRef = String(searchParams?.get('guild') || '').trim().toLowerCase();
+  const targetParam = String(searchParams?.get('target') || '').trim();
+  const pitchParam = String(searchParams?.get('pitch') || '').trim();
   const [cat, setCat] = useState<CatProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [settingStance, setSettingStance] = useState<string | null>(null);
+  const [mintingCard, setMintingCard] = useState(false);
+  const [challengeBanner, setChallengeBanner] = useState<{ active: boolean; ref: string }>({ active: false, ref: '' });
+
+  const challengeTargetCatId = (targetParam && targetParam.length > 10) ? targetParam : catId;
+
+  useEffect(() => {
+    if (!catId) return;
+    if (String(searchParams?.get('new') || '').trim() !== '1') return;
+    const next = new URLSearchParams();
+    next.set('new_cat', '1');
+    if (ref) next.set('ref', ref);
+    router.replace(`/c/${encodeURIComponent(catId)}/share?${next.toString()}`);
+  }, [catId, ref, router, searchParams]);
 
   useEffect(() => {
     if (!catId) return;
@@ -102,6 +129,79 @@ export default function CatProfilePage() {
     }
     loadCat();
   }, [catId]);
+
+  useEffect(() => {
+    fetch('/api/me', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        setViewerId(d?.guest_id || null);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!ref) return;
+    setChallengeBanner({ active: true, ref });
+    try {
+      sessionStorage.setItem('catclash_ref', ref);
+      if (challengeTargetCatId) sessionStorage.setItem('catclash_target_cat', String(challengeTargetCatId));
+      fetch('/api/referral/visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ref,
+          guild: guildFromRef === 'sun' || guildFromRef === 'moon' ? guildFromRef : undefined,
+          pitch: pitchParam || undefined,
+        }),
+      }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, [ref, catId, challengeTargetCatId, guildFromRef, pitchParam]);
+
+  async function setStance(stance: 'aggro' | 'guard' | 'chaos') {
+    if (!cat || settingStance) return;
+    setSettingStance(stance);
+    try {
+      const res = await fetch(`/api/cats/${cat.id}/stance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stance }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setError(data?.error || 'Failed to set stance');
+      } else {
+        setCat((prev) => prev ? { ...prev, stance } : prev);
+      }
+    } catch {
+      setError('Failed to set stance');
+    } finally {
+      setSettingStance(null);
+    }
+  }
+
+  async function openShareScreen() {
+    if (!cat || mintingCard) return;
+    setMintingCard(true);
+    try {
+      const res = await fetch('/api/cards/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cat_id: cat.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data?.card?.publicSlug) {
+        setError(data?.error || 'Failed to mint share card');
+        return;
+      }
+      window.location.href = `/c/${data.card.publicSlug}/share`;
+    } catch {
+      setError('Failed to mint share card');
+    } finally {
+      setMintingCard(false);
+    }
+  }
 
   if (loading) {
     return <div className="min-h-screen bg-black text-white flex items-center justify-center"><Loader2 className="w-12 h-12 animate-spin text-white/50" /></div>;
@@ -121,15 +221,54 @@ export default function CatProfilePage() {
   const r = getRarity(cat.rarity);
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
       <div className={`fixed inset-0 pointer-events-none opacity-20 bg-gradient-to-br ${r.gradient}`} style={{ filter: 'blur(120px)' }} />
 
       <div className="relative z-10 max-w-lg mx-auto px-4 py-6">
         <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm mb-6">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
+        <div className="mb-4">
+          {challengeBanner.active && (
+            <div className="mb-3 rounded-xl border border-rose-300/30 bg-rose-500/10 p-3">
+              <p className="text-[11px] uppercase tracking-wider text-rose-200 font-bold">You Were Challenged</p>
+              <p className="text-xs text-white/75 mt-1">
+                This fighter was shared to challenge you.
+              </p>
+              {(guildFromRef === 'sun' || guildFromRef === 'moon') && (
+                <p className="text-[11px] text-cyan-200 mt-1">
+                  Your friend is a Commander in {guildFromRef === 'sun' ? 'Solar Claw' : 'Lunar Paw'}. Join them for a +10% guild-start XP push.
+                </p>
+              )}
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Link href={`/submit?ref=${encodeURIComponent(challengeBanner.ref)}`} className="h-9 rounded-lg bg-white text-black text-xs font-bold inline-flex items-center justify-center">
+                  Submit a Cat to Fight
+                </Link>
+                <Link href="/" className="h-9 rounded-lg bg-white/10 border border-white/15 text-xs font-bold inline-flex items-center justify-center">
+                  Vote in Main Arena
+                </Link>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <CatShareButton
+              catName={cat.name}
+              path={`/cat/${cat.id}`}
+              catId={cat.id}
+              captureSelector="#cat-profile-share-card"
+            />
+            <button
+              onClick={openShareScreen}
+              disabled={mintingCard}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-100 disabled:opacity-50"
+              type="button"
+            >
+              {mintingCard ? 'Minting...' : 'Fighter Card'}
+            </button>
+          </div>
+        </div>
 
-        <div className={`relative rounded-2xl overflow-hidden border ${r.border} ${r.glow} bg-black/60 backdrop-blur-sm`}>
+        <div id="cat-profile-share-card" className={`relative rounded-2xl overflow-hidden border ${r.border} ${r.glow} bg-black/60 backdrop-blur-sm`}>
           {r.tier >= 4 && (
             <div className="absolute inset-0 z-10 pointer-events-none opacity-10"
               style={{ background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.4) 45%, transparent 50%)', backgroundSize: '200% 100%', animation: 'shimmer 3s ease-in-out infinite' }} />
@@ -137,9 +276,9 @@ export default function CatProfilePage() {
 
           {/* Cat Image */}
           <div className="relative h-72 sm:h-80">
-            <img src={cat.image_url || 'https://placekitten.com/500/500'} alt={cat.name}
+            <img src={cat.image_url || '/cat-placeholder.svg'} alt={cat.name}
               className="w-full h-full object-cover object-center"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://placekitten.com/500/500'; }} />
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
             <div className="absolute top-3 left-3 flex gap-2">
               <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${r.border} ${r.bg} ${r.text}`}>
@@ -198,6 +337,34 @@ export default function CatProfilePage() {
               <span className={`text-lg font-black ${r.text}`}>{cat.total_power}</span>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-white/[0.03] p-3">
+                <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Stance</div>
+                <div className="text-sm font-bold uppercase">{cat.stance || 'none'}</div>
+              </div>
+              <div className="rounded-xl bg-white/[0.03] p-3">
+                <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Fans</div>
+                <div className="text-sm font-bold">{cat.fan_count || 0}</div>
+              </div>
+            </div>
+            {viewerId && cat.owner_id === viewerId && (
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white/30 mb-2">Set Daily Stance</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['aggro', 'guard', 'chaos'] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setStance(s)}
+                      disabled={!!settingStance}
+                      className={`py-1.5 rounded-lg text-xs uppercase ${cat.stance === s ? 'bg-cyan-500/30 text-cyan-100' : 'bg-white/10 hover:bg-white/20'} disabled:opacity-40`}
+                    >
+                      {settingStance === s ? '...' : s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Stats */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-white/30 mb-3">Combat Stats</h3>
@@ -214,7 +381,16 @@ export default function CatProfilePage() {
             <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-white/30 mb-0.5">Owner</div>
-                <div className="text-sm font-medium text-white/70">{cat.owner_id ? cat.owner_id.slice(0, 8) + '...' : 'Unknown'}</div>
+                <div className="text-sm font-medium text-white/70">
+                  {cat.owner_id ? (
+                    <div className="flex items-center gap-2">
+                      <Link href={`/profile/${cat.owner_id}`} className="hover:text-white underline-offset-2 hover:underline">
+                        {cat.owner_username || cat.owner_id.slice(0, 8)}
+                      </Link>
+                      {cat.owner_title ? <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300">{cat.owner_title}</span> : null}
+                    </div>
+                  ) : 'Unknown'}
+                </div>
               </div>
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-wider text-white/30 mb-0.5">Recruited</div>
@@ -245,6 +421,20 @@ export default function CatProfilePage() {
               <div className="text-center py-6 rounded-xl bg-white/[0.02]">
                 <Swords className="w-6 h-6 mx-auto mb-2 text-white/20" />
                 <p className="text-sm text-white/30">No battles yet. This cat is ready for war.</p>
+              </div>
+            )}
+
+            {cat.rivalries && cat.rivalries.length > 0 && (
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white/30 mb-3">Rivalries</h3>
+                <div className="space-y-1.5">
+                  {cat.rivalries.map((rival) => (
+                    <Link key={rival.cat_id} href={`/cat/${rival.cat_id}`} className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06]">
+                      <span className="text-sm">{rival.cat_name}</span>
+                      <span className="text-xs text-white/40">{rival.battles} battles</span>
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </div>

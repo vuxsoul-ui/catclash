@@ -1,24 +1,34 @@
-// REPLACE: app/api/_lib/guest.ts
 import { cookies } from 'next/headers';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  DEFAULT_GUEST_TTL_SECONDS,
+  GUEST_COOKIE_NAME,
+  mintGuestId,
+  setGuestCookieOnStore,
+  verifyGuestToken,
+} from './guestAuth';
 
-const GUEST_COOKIE_NAME = 'guest_id';
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
-
-export async function getGuestId(): Promise<string> {
+export async function getOrCreateGuestId(): Promise<string> {
   const cookieStore = await cookies();
-  let guestId = cookieStore.get(GUEST_COOKIE_NAME)?.value;
+  const token = cookieStore.get(GUEST_COOKIE_NAME)?.value || '';
+  const verified = verifyGuestToken(token);
+  if (verified?.guestId) return verified.guestId;
 
-  if (!guestId) {
-    guestId = uuidv4();
-    cookieStore.set(GUEST_COOKIE_NAME, guestId, {
-      maxAge: COOKIE_MAX_AGE,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-    });
-  }
-
+  const guestId = mintGuestId();
+  setGuestCookieOnStore(cookieStore, guestId, DEFAULT_GUEST_TTL_SECONDS);
   return guestId;
+}
+
+export async function requireGuestId(): Promise<string> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(GUEST_COOKIE_NAME)?.value || '';
+  const verified = verifyGuestToken(token);
+  if (!verified?.guestId) {
+    throw new Error('Unauthorized guest identity');
+  }
+  return verified.guestId;
+}
+
+// Backward-compatible alias for existing read-first routes.
+export async function getGuestId(): Promise<string> {
+  return getOrCreateGuestId();
 }

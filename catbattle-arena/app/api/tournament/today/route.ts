@@ -2,11 +2,33 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getGuestId } from "../../_lib/guest";
+import { isThumbUrl, thumbUrlForCat } from "../../_lib/images";
 
 export const dynamic = "force-dynamic";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+type StorageClient = {
+  storage: {
+    from: (bucket: string) => {
+      getPublicUrl: (path: string) => { data?: { publicUrl?: string } };
+    };
+  };
+};
+
+function resolveImageUrl(
+  supabase: StorageClient,
+  catId: string | null | undefined,
+  imagePath: string | null
+): string | null {
+  const id = String(catId || '').trim();
+  if (id) return thumbUrlForCat(id);
+  if (!imagePath) return null;
+  if (isThumbUrl(imagePath)) return imagePath;
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return null;
+  return supabase.storage.from('cat-images').getPublicUrl(imagePath).data?.publicUrl || null;
+}
 
 type CatDTO = {
   id: string;
@@ -60,12 +82,8 @@ export async function GET() {
       const pathA = match.cat_a?.image_path ?? null;
       const pathB = match.cat_b?.image_path ?? null;
 
-      const urlA = pathA
-        ? supabase.storage.from("cat-images").getPublicUrl(pathA).data?.publicUrl
-        : null;
-      const urlB = pathB
-        ? supabase.storage.from("cat-images").getPublicUrl(pathB).data?.publicUrl
-        : null;
+      const urlA = resolveImageUrl(supabase, match.cat_a?.id, pathA);
+      const urlB = resolveImageUrl(supabase, match.cat_b?.id, pathB);
 
       return {
         ...match,

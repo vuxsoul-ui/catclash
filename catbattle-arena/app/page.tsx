@@ -7,7 +7,7 @@ import {
   ArrowRight, Crown, Swords, MessageCircle, Send,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SigilIcon from "./components/icons/SigilIcon";
 import ArenaFlameCard, { type ArenaFlame } from "./components/ArenaFlameCard";
 import DuelCardMini from "./components/duel/DuelCardMini";
@@ -117,6 +117,7 @@ interface ArenaQueuePageInfo {
   pageSize: number;
   totalSize: number;
   votedCount: number;
+  pageComplete: boolean;
 }
 
 interface ArenaInventoryDebug {
@@ -153,6 +154,9 @@ type ArenaRefreshResult = {
   pageIndex?: number;
   renderableCount?: number;
   advanced?: boolean;
+  pageComplete?: boolean;
+  votedCount?: number;
+  totalSize?: number;
 };
 
 // Config
@@ -321,17 +325,34 @@ function LiveDuelsModule({
   liveDuelVotes2m: number;
   compact?: boolean;
 }) {
+  const visibleDuels = duels.slice(0, compact ? 6 : 10);
+  const withFallbackNav = (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.defaultPrevented) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const before = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.setTimeout(() => {
+      const after = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (after === before) window.location.assign(href);
+    }, 220);
+  };
   return (
-    <Card className={`border-cyan-300/20 bg-cyan-500/8 ${compact ? 'p-2' : 'p-2.5'}`}>
+    <Card className={`relative overflow-hidden border-cyan-300/25 bg-[linear-gradient(160deg,rgba(14,28,48,0.55),rgba(8,16,28,0.88))] ${compact ? 'p-2' : 'p-2.5'}`}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_-20%,rgba(34,211,238,0.2),transparent_42%),radial-gradient(circle_at_88%_110%,rgba(59,130,246,0.16),transparent_40%)]" />
       <SectionHeader className="mb-1.5">
-        <h3 className="text-[12px] font-semibold text-cyan-100 inline-flex items-center gap-1.5">
+        <h3 className="relative z-10 text-[12px] font-semibold text-cyan-100 inline-flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
           Live Duels
+          {visibleDuels.length > 0 && (
+            <span className="inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/15 px-1.5 py-0.5 text-[9px] font-bold text-cyan-100">
+              {visibleDuels.length}
+            </span>
+          )}
         </h3>
         <Link
           href="/duel"
+          onClick={withFallbackNav('/duel')}
           data-testid="open-duel-arena-cta-live"
-          className="relative z-20 pointer-events-auto text-[10px] text-cyan-200 inline-flex items-center gap-1 tap-target"
+          className="relative z-20 pointer-events-auto rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-1 text-[10px] text-cyan-100 inline-flex items-center gap-1 tap-target hover:bg-cyan-500/22"
         >
           Open Duel Arena <ArrowRight className="w-3 h-3" />
           {pendingDuelCount > 0 && (
@@ -341,19 +362,22 @@ function LiveDuelsModule({
           )}
         </Link>
       </SectionHeader>
-      {duels.length > 0 ? (
-        <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory pb-0.5">
-          {duels.slice(0, compact ? 6 : 10).map((duel) => (
-            <div key={`live-duel-${duel.id}`} className="snap-start w-[38vw] min-w-[140px] max-w-[170px]">
+      {visibleDuels.length > 0 ? (
+        <div className="relative z-10 -mx-0.5 px-0.5 flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {visibleDuels.map((duel) => (
+            <div key={`live-duel-${duel.id}`} className="snap-start w-[44vw] min-w-[156px] max-w-[196px]">
               <DuelCardMini duel={duel} />
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-[11px] text-white/60">No live duels yet.</p>
+        <p className="relative z-10 text-[11px] text-white/65">No live duels yet.</p>
       )}
       {liveDuelVotes2m > 0 && (
-        <p className="text-[10px] text-cyan-100/70 mt-1.5">+{liveDuelVotes2m} duel votes in last 2m</p>
+        <p className="relative z-10 text-[10px] text-cyan-100/75 mt-1.5 inline-flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 animate-pulse" />
+          +{liveDuelVotes2m} duel votes in last 2m
+        </p>
       )}
     </Card>
   );
@@ -373,10 +397,26 @@ function LoadingNextFightsCard({ text = "Loading next fights..." }: { text?: str
   );
 }
 
+function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null | undefined }) {
+  return (
+    <div className="rounded-2xl border border-emerald-300/30 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(6,182,212,0.12),rgba(10,10,12,0.45))] p-6 text-center shadow-[0_14px_36px_rgba(16,185,129,0.2)]">
+      <div className="mx-auto mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-200/40 bg-emerald-300/20">
+        <Sparkles className="h-5 w-5 text-emerald-100" />
+      </div>
+      <p className="text-base font-bold text-emerald-100">All matches voted. You cleared the arena.</p>
+      <p className="mt-1 text-xs text-white/70">New battles will appear on the next pulse.</p>
+      <p className="mt-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] text-white/85">
+        Next Pulse: {pulseCountdown || "--:--:--"}
+      </p>
+    </div>
+  );
+}
+
 // ── Match Card ── Images link to profile, vote buttons below
 export const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
+  debugMode = false,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -392,6 +432,7 @@ export const MatchCard = React.memo(function MatchCard({
   slotPhase?: "idle" | "voted" | "exiting";
   slotChosenSide?: "a" | "b" | null;
   enterPhase?: "idle" | "entering";
+  debugMode?: boolean;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
@@ -937,6 +978,11 @@ export const MatchCard = React.memo(function MatchCard({
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
     >
+      {debugMode && hasVoted && (
+        <div className="pointer-events-none absolute right-3 top-3 z-30 rounded-full border border-amber-300/45 bg-amber-500/18 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
+          DEBUG: voted{selectedSide ? ` ${selectedSide.toUpperCase()}` : ''}
+        </div>
+      )}
       <div className={`${!dragging && !exitingVisual && !reduceMotion ? 'deck-float' : ''}`}>
         {voteFxSide && (
           <div key={`flash-${animTick}`} className={`vote-flash ${voteFxSide === 'a' ? 'vote-flash-a' : 'vote-flash-b'}`} />
@@ -1455,7 +1501,7 @@ export const MatchCard = React.memo(function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo,
+  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   votingMatch: string | null;
@@ -1465,6 +1511,7 @@ function ArenaSection({
   availableSigils: number;
   voteStreak: number;
   hotMatchBiasEnabled?: boolean;
+  testerMode?: boolean;
   globalPageInfo?: GlobalArenaPageInfo | null;
   pulseCountdown?: string;
   onSwitchArena?: (arena: 'main' | 'rookie') => void;
@@ -1482,6 +1529,7 @@ function ArenaSection({
   const [cursor, setCursor] = useState(0);
   const [slotUiByMatchId, setSlotUiByMatchId] = useState<Record<string, SlotUiState>>({});
   const [queuedVotes, setQueuedVotes] = useState<Record<string, boolean>>({});
+  const [prunedMatchIds, setPrunedMatchIds] = useState<Record<string, boolean>>({});
   const [nextUpId, setNextUpId] = useState<string | null>(null);
   const [stackReady, setStackReady] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -1496,6 +1544,7 @@ function ArenaSection({
   const suppressVotedPruneUntilRef = useRef(0);
   const keepVisibleVoteMatchIdsRef = useRef<Set<string>>(new Set());
   const votedRenderDebugSeenRef = useRef<Set<string>>(new Set());
+  const prunedMatchIdsRef = useRef<Record<string, boolean>>({});
   const stackIdsRef = useRef<string[]>([]);
   const keepUntilByMatchIdRef = useRef<Record<string, number>>({});
   const onVoteRef = useRef(onVote);
@@ -1564,7 +1613,7 @@ function ArenaSection({
     return scored.sort((a, b) => (b.energy - a.energy) || (a.margin - b.margin)).map((x) => x.m);
   }, [arena.type, globalPageInfo, hotMatchBiasEnabled, voting]);
 
-  const visiblePageOrder = useMemo(() => {
+  const visiblePageOrderBase = useMemo(() => {
     if (orderedVoting.length <= MAX_VISIBLE) return orderedVoting;
     const out: ArenaMatch[] = [];
     const used = new Set<string>();
@@ -1606,7 +1655,6 @@ function ArenaSection({
     return out;
   }, [orderedVoting]);
 
-  const votingById = useMemo(() => new Map(visiblePageOrder.map((m) => [m.match_id, m])), [visiblePageOrder]);
   const shouldKeepInUI = useCallback((matchId: string): boolean => {
     if (!matchId) return false;
     const keepUntil = Number(keepUntilByMatchId[matchId] || 0);
@@ -1618,33 +1666,68 @@ function ArenaSection({
     if (queuedVotes[matchId]) return true;
     return false;
   }, [keepUntilByMatchId, queuedVotes, slotUiByMatchId, votingMatch]);
+  const searchParams = useSearchParams();
+  const debugMode = searchParams?.get('debug') === '1';
+  const visiblePageOrder = useMemo(
+    () =>
+      visiblePageOrderBase.filter((m) => {
+        const id = String(m.match_id || '');
+        if (!id) return false;
+        if (debugMode) return true;
+        if (queuedVotes[id]) return true;
+        if (shouldKeepInUI(id)) return true;
+        if (prunedMatchIds[id]) return false;
+        return !votedMatches[id];
+      }),
+    [debugMode, prunedMatchIds, queuedVotes, shouldKeepInUI, visiblePageOrderBase, votedMatches]
+  );
+  const votingById = useMemo(() => new Map(visiblePageOrderBase.map((m) => [m.match_id, m])), [visiblePageOrderBase]);
+  const isVotableForUser = useCallback((id: string): boolean => {
+    if (!id) return false;
+    if (debugMode) return true;
+    if (prunedMatchIds[id] && !shouldKeepInUI(id)) return false;
+    if (queuedVotes[id]) return true;
+    if (shouldKeepInUI(id)) return true;
+    return !votedMatches[id];
+  }, [debugMode, prunedMatchIds, queuedVotes, shouldKeepInUI, votedMatches]);
   const resultsList = useMemo(() => results.slice(0, MAX_VISIBLE), [results]);
   const activeVoting = useMemo(
     () =>
       stackIds
         .map((id) => votingById.get(id))
         .filter((m): m is ArenaMatch => !!m)
-        .filter((m) => {
-          if (shouldKeepInUI(m.match_id)) return true;
-          return !votedMatches[m.match_id];
-        }),
-    [shouldKeepInUI, stackIds, votingById, votedMatches]
+        .filter((m) => isVotableForUser(m.match_id)),
+    [isVotableForUser, stackIds, votingById]
   );
   const activeList = segment === "voting" ? activeVoting : resultsList;
   const totalVotableCount = useMemo(() => visiblePageOrder.length, [visiblePageOrder]);
   const remainingForUserCount = useMemo(
-    () => visiblePageOrder.filter((m) => !votedMatches[m.match_id]).length,
-    [visiblePageOrder, votedMatches]
+    () => visiblePageOrder.filter((m) => {
+      const id = String(m.match_id || '');
+      if (!id) return false;
+      if (queuedVotes[id]) return true;
+      return !votedMatches[id];
+    }).length,
+    [queuedVotes, visiblePageOrder, votedMatches]
   );
-  const userCaughtUp = segment === "voting" && totalVotableCount > 0 && remainingForUserCount === 0;
+  const queueSuggestsMore = useMemo(() => {
+    const totalSize = Math.max(0, Number(queueInfo?.totalSize || 0));
+    const votedCount = Math.max(0, Number(queueInfo?.votedCount || 0));
+    const pageComplete = !!queueInfo?.pageComplete;
+    if (totalSize > votedCount) return true;
+    return !pageComplete;
+  }, [queueInfo?.pageComplete, queueInfo?.totalSize, queueInfo?.votedCount]);
+  const hasLocalUnvotedOrQueued = remainingForUserCount > 0;
+  const hasMoreFightsForUser =
+    segment === 'voting' && (hasLocalUnvotedOrQueued || queueSuggestsMore);
+  const userCaughtUp = segment === 'voting' && !hasMoreFightsForUser;
   const hasSlotTransition = useMemo(
     () => Object.values(slotUiByMatchId).some((state) => state.phase !== "idle"),
     [slotUiByMatchId]
   );
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const debugEnabled =
-      process.env.NODE_ENV !== 'production' || new URLSearchParams(window.location.search).has('debug');
+    const debugEnabled = process.env.NODE_ENV !== 'production' || debugMode;
     if (!debugEnabled) return;
     const renderableAfterExclusion = activeVoting.length;
     for (const match of activeVoting) {
@@ -1663,7 +1746,22 @@ function ArenaSection({
         renderableAfterExclusion,
       });
     }
-  }, [activeVoting, keepUntilByMatchId, queuedVotes, votedMatches]);
+  }, [activeVoting, debugMode, keepUntilByMatchId, queuedVotes, votedMatches]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (segment !== 'voting') return;
+    for (const matchId of stackIds) {
+      if (!prunedMatchIds[matchId]) continue;
+      if (shouldKeepInUI(matchId)) continue;
+      // eslint-disable-next-line no-console
+      console.warn('[VOTE_DECK_BUG] voted match still in deck', {
+        match_id: matchId,
+        voted: votedMatches[matchId] || null,
+        stackIdsLength: stackIds.length,
+      });
+    }
+  }, [prunedMatchIds, segment, shouldKeepInUI, stackIds, votedMatches]);
 
   const clearTransitionTimeoutsFor = useCallback((matchId: string) => {
     const bucket = transitionTimeoutsRef.current.get(matchId);
@@ -1785,6 +1883,18 @@ function ArenaSection({
       }
       return changed ? next : prev;
     });
+    setPrunedMatchIds((prev) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [id, state] of Object.entries(prev)) {
+        if (!present.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = state;
+      }
+      return changed ? next : prev;
+    });
   }, [clearKeepUntilTimer, clearTransitionTimeoutsFor, visiblePageOrder]);
 
   function pullNextMatchId(excluded: Set<string>): string | null {
@@ -1792,11 +1902,21 @@ function ArenaSection({
       const id = visiblePageOrder[i]?.match_id;
       if (!id) continue;
       if (excluded.has(id)) continue;
-      if (queuedVotes[id]) continue;
-      if (votedMatches[id]) continue;
+      if (!isVotableForUser(id)) continue;
       cursorRef.current = i + 1;
       setCursor(i + 1);
       return id;
+    }
+    if (testerMode) {
+      for (let i = 0; i < visiblePageOrder.length; i += 1) {
+        const id = visiblePageOrder[i]?.match_id;
+        if (!id) continue;
+        if (excluded.has(id)) continue;
+        if (!isVotableForUser(id)) continue;
+        cursorRef.current = i + 1;
+        setCursor(i + 1);
+        return id;
+      }
     }
     return null;
   }
@@ -1804,8 +1924,13 @@ function ArenaSection({
   function fillStackToFour(seed: string[]): string[] {
     const next = [...seed];
     const excluded = new Set(next);
-    Object.keys(votedMatches).forEach((id) => excluded.add(id));
-    Object.keys(queuedVotes).forEach((id) => excluded.add(id));
+    Object.keys(prunedMatchIdsRef.current || {}).forEach((id) => {
+      if (prunedMatchIdsRef.current[id]) excluded.add(id);
+    });
+    if (!debugMode) {
+      Object.keys(votedMatches).forEach((id) => excluded.add(id));
+      Object.keys(queuedVotes).forEach((id) => excluded.add(id));
+    }
     while (next.length < MAX_VISIBLE) {
       const id = pullNextMatchId(excluded);
       if (!id) break;
@@ -1846,6 +1971,10 @@ function ArenaSection({
   }, [keepUntilByMatchId]);
 
   useEffect(() => {
+    prunedMatchIdsRef.current = prunedMatchIds;
+  }, [prunedMatchIds]);
+
+  useEffect(() => {
     if (segment !== 'voting') {
       setStackReady(false);
       return;
@@ -1869,6 +1998,7 @@ function ArenaSection({
     setSlotUiByMatchId({});
     setStackIds(initial);
     setQueuedVotes({});
+    setPrunedMatchIds({});
     setKeepUntilByMatchId({});
     setNextUpId(null);
     setStackReady(true);
@@ -1903,8 +2033,8 @@ function ArenaSection({
     if (votingMatch) return;
     const hasVotedCardsInStack = stackIds.some((id) => !!votedMatches[id]);
     if (!hasVotedCardsInStack) return;
-    setStackIds((prev) => fillStackToFour(prev.filter((id) => shouldKeepInUI(id) || !votedMatches[id])));
-  }, [hasSlotTransition, segment, shouldKeepInUI, stackIds, votedMatches, votingMatch]);
+    setStackIds((prev) => fillStackToFour(prev.filter((id) => isVotableForUser(id))));
+  }, [hasSlotTransition, isVotableForUser, segment, stackIds, votedMatches, votingMatch]);
 
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -1945,18 +2075,28 @@ function ArenaSection({
         }, settleMs);
         return true;
       }
+      const noAdditionalFights =
+        Number(result?.renderableCount || 0) <= 0 &&
+        (result?.pageComplete || (!hasMoreFightsForUser && reason !== 'manual'));
+      if (noAdditionalFights) {
+        setFeedStatus('ready');
+        setFeedError(null);
+        setShowManualRefresh(false);
+        return false;
+      }
       clearRefillSettleTimer();
       setFeedStatus("error");
       setFeedError("Arena is reloading.");
       setShowManualRefresh(true);
       return false;
     },
-    [clearRefillSettleTimer, feedStatus, onRequestMore, reduceMotion]
+    [clearRefillSettleTimer, feedStatus, hasMoreFightsForUser, onRequestMore, reduceMotion]
   );
 
   useEffect(() => {
     if (segment !== 'voting') return;
     if (!stackReady) return;
+    if (!hasMoreFightsForUser) return;
     if (!onRequestMore) return;
     if (votingMatch || hasSlotTransition) return;
     if (feedStatus !== 'ready') return;
@@ -1976,7 +2116,7 @@ function ArenaSection({
       .finally(() => {
         autoTopupBusyRef.current = false;
       });
-  }, [activeVoting.length, feedStatus, hasSlotTransition, onRequestMore, refillArena, segment, snapshotOrder.length, stackReady, votingMatch]);
+  }, [activeVoting.length, feedStatus, hasMoreFightsForUser, hasSlotTransition, onRequestMore, refillArena, segment, snapshotOrder.length, stackReady, votingMatch]);
 
   const stackLead = activeVoting[0];
   const stackSecond = activeVoting[1];
@@ -1987,6 +2127,7 @@ function ArenaSection({
     return `+${Math.max(0, Math.round(total / 2))} votes in this cycle`;
   }, [stackLead, stackSecond]);
   const lowInventory = segment === 'voting' && activeVoting.length > 0 && activeVoting.length < MAX_VISIBLE;
+  const isRefilling = feedStatus === 'refilling' || feedStatus === 'transitioning';
   const snapshotKey = useMemo(() => activeVoting.map((m) => m.match_id).join('|'), [activeVoting]);
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -2008,7 +2149,7 @@ function ArenaSection({
     }
 
     // Refill returned data but none are vote-renderable. Stop auto cycling and require explicit retry.
-    if (nextOrder.length === 0 && snapshotOrder.length === 0 && feedStatus === 'transitioning') {
+    if (nextOrder.length === 0 && snapshotOrder.length === 0 && feedStatus === 'transitioning' && hasMoreFightsForUser) {
       setFeedStatus('error');
       setFeedError('No new votable matches right now.');
       setShowManualRefresh(true);
@@ -2017,6 +2158,10 @@ function ArenaSection({
 
     // Keep prior snapshot visible while refilling/transitioning/error if the new pull is empty.
     if (nextOrder.length === 0 && (feedStatus === 'refilling' || feedStatus === 'transitioning' || feedStatus === 'error')) {
+      if (userCaughtUp) {
+        setSnapshotOrder((prev) => (prev.length === 0 ? prev : []));
+        setSnapshotById((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      }
       return;
     }
     setSnapshotOrder((prev) => {
@@ -2025,7 +2170,7 @@ function ArenaSection({
       return nextOrder;
     });
     setSnapshotById(nextById);
-  }, [activeVoting, feedStatus, segment, snapshotKey, snapshotOrder.length]);
+  }, [activeVoting, feedStatus, hasMoreFightsForUser, segment, snapshotKey, snapshotOrder.length, userCaughtUp]);
 
   const votingSlots = useMemo(() => {
     if (segment !== 'voting') return [] as Array<{ key: string; match: ArenaMatch | null }>;
@@ -2037,6 +2182,18 @@ function ArenaSection({
   }, [segment, snapshotById, snapshotOrder]);
   const topVotingSlot = segment === 'voting' ? (votingSlots[0] || null) : null;
   const nextVotingSlot = segment === 'voting' ? (votingSlots[1] || null) : null;
+  const showAllVotedState =
+    segment === 'voting' &&
+    activeVoting.length === 0 &&
+    userCaughtUp;
+  useEffect(() => {
+    if (segment !== 'voting') return;
+    if (!userCaughtUp) return;
+    if (feedStatus === 'ready' && !feedError && !showManualRefresh) return;
+    setFeedStatus('ready');
+    setFeedError(null);
+    setShowManualRefresh(false);
+  }, [feedError, feedStatus, segment, showManualRefresh, userCaughtUp]);
   useEffect(() => {
     if (segment !== 'voting') return;
     const topId = topVotingSlot?.match?.match_id || null;
@@ -2143,6 +2300,7 @@ function ArenaSection({
 
   useEffect(() => {
     if (!lowInventory || !onRequestMore || feedStatus !== 'ready' || votingMatch || hasSlotTransition) return;
+    if (!hasMoreFightsForUser) return;
     if (snapshotOrder.length > 0) return;
     const key = `${arena.type}:${globalPageInfo?.pageIndex || 0}:${activeVoting.map((m) => m.match_id).join(',')}`;
     if (lowInventoryRetryKeyRef.current === key) return;
@@ -2151,7 +2309,7 @@ function ArenaSection({
       void refillArena('auto-low');
     }, 900);
     return () => window.clearTimeout(id);
-  }, [activeVoting, arena.type, feedStatus, globalPageInfo?.pageIndex, hasSlotTransition, lowInventory, onRequestMore, refillArena, snapshotOrder.length, votingMatch]);
+  }, [activeVoting, arena.type, feedStatus, globalPageInfo?.pageIndex, hasMoreFightsForUser, hasSlotTransition, lowInventory, onRequestMore, refillArena, snapshotOrder.length, votingMatch]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
@@ -2275,6 +2433,7 @@ function ArenaSection({
   const handleVoteAccepted = useCallback((matchId: string, side: "a" | "b") => {
     if (segment !== 'voting') return;
     if (!presentMatchIdsRef.current.has(matchId)) return;
+    setPrunedMatchIds((prev) => (prev[matchId] ? prev : { ...prev, [matchId]: true }));
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.log('[DEV][vote-lifecycle] accepted', {
@@ -2286,9 +2445,10 @@ function ArenaSection({
         voted: !!votedMatches[matchId],
       });
     }
-    const CONFIRMED_HOLD_MS = reduceMotion ? 900 : 920;
-    const EXIT_ANIMATION_MS = reduceMotion ? 140 : EXIT_MS;
-    const SWAP_PAUSE_MS = reduceMotion ? 0 : SWAP_DELAY_MS;
+    // Give vote FX enough time to render before card exits the deck.
+    const CONFIRMED_HOLD_MS = reduceMotion ? 920 : 1150;
+    const EXIT_ANIMATION_MS = reduceMotion ? 150 : Math.max(EXIT_MS, 220);
+    const SWAP_PAUSE_MS = reduceMotion ? 0 : Math.max(SWAP_DELAY_MS, 110);
     clearTransitionTimeoutsFor(matchId);
     setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
     setSlotUiByMatchId((prev) => ({ ...prev, [matchId]: { phase: "voted", chosenSide: side } }));
@@ -2349,7 +2509,20 @@ function ArenaSection({
               return next;
             });
             if (!result.replaced) {
-              setQueuedVotes((prev) => ({ ...prev, [matchId]: true }));
+              if (testerMode) {
+                setQueuedVotes((prev) => {
+                  const next = { ...prev };
+                  delete next[matchId];
+                  return next;
+                });
+                setSlotUiByMatchId((prev) => {
+                  const current = prev[matchId];
+                  if (!current) return prev;
+                  return { ...prev, [matchId]: { ...current, phase: "idle" } };
+                });
+              } else {
+                void refillArena('auto-empty');
+              }
               return;
             }
             if (result.insertedId) {
@@ -2372,7 +2545,7 @@ function ArenaSection({
         finalize();
       }
     });
-  }, [EXIT_MS, SWAP_DELAY_MS, clearKeepUntilTimer, clearTransitionTimeoutsFor, queueTransitionTimeout, reduceMotion, replaceCard, segment]);
+  }, [EXIT_MS, SWAP_DELAY_MS, clearKeepUntilTimer, clearTransitionTimeoutsFor, queueTransitionTimeout, reduceMotion, refillArena, replaceCard, segment, testerMode]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
@@ -2463,7 +2636,7 @@ function ArenaSection({
           debug: {debugInfo.whyNotFilled.join(', ')} · eligible {Number(debugInfo.eligibleCatsCount || 0)} · open {Number(debugInfo.openMatchesCount || 0)}
         </p>
       ) : null}
-      {segment === 'voting' && feedError && (
+      {segment === 'voting' && feedError && !showAllVotedState && hasMoreFightsForUser && isRefilling && (
         <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-[11px] text-amber-100 flex items-center justify-between gap-2">
           <span>{feedError}</span>
           {showManualRefresh && (
@@ -2490,33 +2663,35 @@ function ArenaSection({
         </div>
       )}
 
-      {(segment === 'voting' ? votingSlots.length === 0 && feedStatus === 'ready' : activeList.length === 0) ? (
+      {(showAllVotedState || (segment === 'voting' ? votingSlots.length === 0 && (feedStatus === 'ready' || !hasMoreFightsForUser) : activeList.length === 0)) ? (
         <div className="rounded-2xl bg-white/[0.02] p-6 text-center">
-          <Target className="w-7 h-7 text-white/40 mx-auto mb-2" />
+          {!showAllVotedState ? <Target className="w-7 h-7 text-white/40 mx-auto mb-2" /> : null}
           {segment === 'voting' ? (
-            <>
-              <p className="text-sm text-cyan-200/85">
-                {userCaughtUp
-                  ? "You've voted on all matches for today. Come back later!"
-                  : feedStatus === 'refilling' || feedStatus === 'transitioning'
+            showAllVotedState ? (
+              <AllMatchesVotedCard pulseCountdown={pulseCountdown} />
+            ) : (
+              <>
+                <p className="text-sm text-cyan-200/85">
+                  {isRefilling
                     ? `${config.label} loading...`
                     : `${config.label} is refilling.`}
-              </p>
-              <p className="text-xs text-white/45 mt-1">
-                {userCaughtUp ? `Next Pulse in ${pulseCountdown || '--:--:--'}.` : `Next Pulse in ${pulseCountdown || '--:--:--'}.`}
-              </p>
-              <div className="mt-2 flex items-center justify-center gap-2">
-                <button
-                  onClick={() => {
-                    setQueuedVotes({});
-                    void refillArena('manual');
-                  }}
-                  className="h-11 min-h-[44px] px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-[11px] font-semibold text-cyan-100 touch-manipulation"
-                >
-                  Refresh
-                </button>
-              </div>
-            </>
+                </p>
+                <p className="text-xs text-white/45 mt-1">Next Pulse in {pulseCountdown || '--:--:--'}.</p>
+                {hasMoreFightsForUser && (
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => {
+                        setQueuedVotes({});
+                        void refillArena('manual');
+                      }}
+                      className="h-11 min-h-[44px] px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-[11px] font-semibold text-cyan-100 touch-manipulation"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                )}
+              </>
+            )
           ) : (
             <>
               <p className="text-sm text-white/70">No results matchups yet.</p>
@@ -2534,6 +2709,7 @@ function ArenaSection({
                     key={topVotingSlot.match.match_id}
                     match={topVotingSlot.match}
                     voted={votedMatches[topVotingSlot.match.match_id] || null}
+                    debugMode={debugMode}
                     isVoting={votingMatch === topVotingSlot.match.match_id}
                     predictBusy={predictBusyMatch === topVotingSlot.match.match_id}
                     calloutBusy={calloutBusyMatch === topVotingSlot.match.match_id}
@@ -2556,7 +2732,7 @@ function ArenaSection({
                   <LoadingNextFightsCard />
                 )}
               </div>
-              {(feedStatus === 'refilling' || feedStatus === 'transitioning') && (
+              {isRefilling && hasMoreFightsForUser && !showAllVotedState && (
                 <LoadingNextFightsCard
                   text={
                     refillRetryAttempt > 0
@@ -2572,6 +2748,7 @@ function ArenaSection({
                 key={match.match_id}
                 match={match}
                 voted={votedMatches[match.match_id] || null}
+                debugMode={debugMode}
                 isVoting={votingMatch === match.match_id}
                 predictBusy={predictBusyMatch === match.match_id}
                 calloutBusy={calloutBusyMatch === match.match_id}
@@ -2758,6 +2935,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = useState(true);
+  const [testerMode, setTesterMode] = useState(false);
   const [hasProfileUsername, setHasProfileUsername] = useState(false);
   const [showClaimNamePrompt, setShowClaimNamePrompt] = useState(false);
   const [guestId, setGuestId] = useState<string>("");
@@ -2823,6 +3001,8 @@ export default function Page() {
   const bookmarkMissionToastRef = useRef<string>('');
   const [voteStreak, setVoteStreak] = useState(0);
   const [lastVoteAtMs, setLastVoteAtMs] = useState<number | null>(null);
+  const voteCooldownUntilRef = useRef(0);
+  const voteCooldownTimerRef = useRef<number | null>(null);
   const [pulseCountdown, setPulseCountdown] = useState('00:00:00');
   const [pulseSecondsRemaining, setPulseSecondsRemaining] = useState(0);
   const [pulseRecap, setPulseRecap] = useState<string | null>(null);
@@ -2838,8 +3018,8 @@ export default function Page() {
     rookie: { dayKey: '', pageIndex: 0, pageSize: 16, totalPages: 1, activeVoters10m: 0, livePulseAt: null },
   });
   const [arenaQueueInfo, setArenaQueueInfo] = useState<Record<'main' | 'rookie', ArenaQueuePageInfo>>({
-    main: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0 },
-    rookie: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0 },
+    main: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0, pageComplete: false },
+    rookie: { pageIndex: 0, pageSize: 6, totalSize: 36, votedCount: 0, pageComplete: false },
   });
   const [arenaPoolsByType, setArenaPoolsByType] = useState<Record<'main' | 'rookie', ArenaMatch[]>>({
     main: [],
@@ -3193,6 +3373,7 @@ export default function Page() {
         pageSize: Math.max(1, Number(data.page_size || 6)),
         totalSize: Math.max(1, Number(data.total_size || 36)),
         votedCount: Math.max(0, Number(data.voted_count || 0)),
+        pageComplete: !!data.page_complete,
       },
     }));
     return { ok: true, count: matches.length };
@@ -3286,6 +3467,7 @@ export default function Page() {
         catXpPool: Number(userData.data?.cat_xp_pool || 0),
       });
       setHasCredentials(Boolean(userData.data?.has_credentials));
+      setTesterMode(!!userData.data?.tester_mode);
       setEquippedCosmetics((userData.data?.equipped_cosmetics || {}) as any);
       const daily = await fetch('/api/rewards/daily-visit', {
         method: 'POST',
@@ -3447,6 +3629,10 @@ export default function Page() {
 
   async function handleVote(matchId: string, catId: string): Promise<boolean> {
     if (votingMatch) return false;
+    if (Date.now() < Number(voteCooldownUntilRef.current || 0)) {
+      showToast("Too fast — take a breath 😼");
+      return false;
+    }
     const matchedMatch = arenas
       .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
       .find((m) => m.match_id === matchId);
@@ -3472,6 +3658,23 @@ export default function Page() {
         body: JSON.stringify({ match_id: matchId, voted_for: catId }),
       });
       const data = await r.json().catch(() => null);
+      if (r.status === 429) {
+        voteCooldownUntilRef.current = Date.now() + 1200;
+        if (voteCooldownTimerRef.current !== null) {
+          window.clearTimeout(voteCooldownTimerRef.current);
+        }
+        voteCooldownTimerRef.current = window.setTimeout(() => {
+          voteCooldownUntilRef.current = 0;
+          voteCooldownTimerRef.current = null;
+        }, 1200);
+        setVotedMatches((prev) => {
+          const next = removeVotedMatch(prev, matchId);
+          writeVotedMatchesToStorage(next, voteStateScope);
+          return next;
+        });
+        showToast("Too fast — take a breath 😼");
+        return false;
+      }
       const msg = String(data?.error || "");
       const alreadyVotedConflict =
         r.status === 409 ||
@@ -3484,9 +3687,9 @@ export default function Page() {
         const resolvedChoice =
           incomingChoice === 'a' ? String(matchedMatch?.cat_a?.id || catId)
           : incomingChoice === 'b' ? String(matchedMatch?.cat_b?.id || catId)
-          : String(catId || incomingChoice || '');
+          : String(catId || incomingChoice || 'already');
         setVotedMatches((prev) => {
-          const next = upsertVotedMatch(prev, matchId, resolvedChoice);
+          const next = upsertVotedMatch(prev, matchId, resolvedChoice || 'already');
           writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
@@ -3578,6 +3781,15 @@ export default function Page() {
   function showToast(msg: string) { showGlobalToast(msg, 5000); }
 
   useEffect(() => {
+    return () => {
+      if (voteCooldownTimerRef.current !== null) {
+        window.clearTimeout(voteCooldownTimerRef.current);
+        voteCooldownTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     let timer: number | null = null;
 
@@ -3599,7 +3811,7 @@ export default function Page() {
           };
           const activeArena = arenaTypeTab;
           const info = globalPageInfo[activeArena];
-          if (!isHidden && info.dayKey && versions[activeArena] && versions[activeArena] !== arenaVersionRef.current[activeArena]) {
+          if (!isHidden && info.dayKey) {
             const since = Math.max(0, Number(pollSinceRef.current[activeArena] || Date.now() - 5000));
             const res = await fetch(`/api/arena/updates?arena=${activeArena}&tab=voting&page=${info.pageIndex}&since=${since}`, { cache: 'no-store' });
             const data = await res.json().catch(() => null);
@@ -3628,8 +3840,8 @@ export default function Page() {
               }
               pollSinceRef.current[activeArena] = Number(data.serverTime || Date.now());
             }
-            arenaVersionRef.current[activeArena] = versions[activeArena];
           }
+          arenaVersionRef.current[activeArena] = versions[activeArena];
           if (!isHidden && !lowEgressMode && duelSectionInView) {
             const duelVersion = String(status.duelVersion || '');
             if (duelVersion && duelVersion !== duelVersionRef.current) {
@@ -3712,6 +3924,9 @@ export default function Page() {
       }
       const matches = Array.isArray(data.matches) ? (data.matches as ArenaMatch[]) : [];
       const nextPageIndex = Math.max(0, Number(data.page_index || prevPageIndex));
+      const pageComplete = !!data.page_complete;
+      const votedCount = Math.max(0, Number(data.voted_count || 0));
+      const totalSize = Math.max(1, Number(data.total_size || 36));
       const nextSignature = matches.map((m) => String(m.match_id || '')).filter(Boolean).join('|');
       const renderableMatches = matches.filter((m) =>
         isArenaVotingStatus(m.status) && (!votedMatches[m.match_id] || String(votingMatch || '') === String(m.match_id || ''))
@@ -3725,16 +3940,46 @@ export default function Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event: 'arena_fetch_empty', payload: { arena: type, source: 'pool-refetch' } }),
         }).catch(() => null);
-        return { ok: true, count: 0, status: 'empty', pageIndex: nextPageIndex, renderableCount: 0, advanced: false };
+        return {
+          ok: true,
+          count: 0,
+          status: 'empty',
+          pageIndex: nextPageIndex,
+          renderableCount: 0,
+          advanced: false,
+          pageComplete,
+          votedCount,
+          totalSize,
+        };
       }
 
       // Keep current snapshot if server did not advance and returned no votable cards for this user.
       if (!advanced && renderableCount === 0) {
-        return { ok: true, count: 0, status: 'stale_nonrenderable', pageIndex: nextPageIndex, renderableCount, advanced: false };
+        return {
+          ok: true,
+          count: 0,
+          status: 'stale_nonrenderable',
+          pageIndex: nextPageIndex,
+          renderableCount,
+          advanced: false,
+          pageComplete,
+          votedCount,
+          totalSize,
+        };
       }
 
       if (renderableCount <= 0) {
-        return { ok: true, count: 0, status: 'nonrenderable', pageIndex: nextPageIndex, renderableCount, advanced };
+        return {
+          ok: true,
+          count: 0,
+          status: 'nonrenderable',
+          pageIndex: nextPageIndex,
+          renderableCount,
+          advanced,
+          pageComplete,
+          votedCount,
+          totalSize,
+        };
       }
 
       setArenas((prev) => applyPageMatchesToArenas(prev, type, matches));
@@ -3744,8 +3989,9 @@ export default function Page() {
         [type]: {
           pageIndex: nextPageIndex,
           pageSize: Math.max(1, Number(data.page_size || 6)),
-          totalSize: Math.max(1, Number(data.total_size || 36)),
-          votedCount: Math.max(0, Number(data.voted_count || 0)),
+          totalSize,
+          votedCount,
+          pageComplete,
         },
       }));
 
@@ -3758,9 +4004,29 @@ export default function Page() {
             payload: { arena: type, source: 'pool-refetch', count: renderableCount, page_index: nextPageIndex },
           }),
         }).catch(() => null);
-        return { ok: true, count: renderableCount, status: 'ok', pageIndex: nextPageIndex, renderableCount, advanced };
+        return {
+          ok: true,
+          count: renderableCount,
+          status: 'ok',
+          pageIndex: nextPageIndex,
+          renderableCount,
+          advanced,
+          pageComplete,
+          votedCount,
+          totalSize,
+        };
       }
-      return { ok: true, count: 0, status: 'nonrenderable', pageIndex: nextPageIndex, renderableCount, advanced };
+      return {
+        ok: true,
+        count: 0,
+        status: 'nonrenderable',
+        pageIndex: nextPageIndex,
+        renderableCount,
+        advanced,
+        pageComplete,
+        votedCount,
+        totalSize,
+      };
     } finally {
       arenaRefillInFlightRef.current[type] = false;
     }
@@ -4422,6 +4688,15 @@ export default function Page() {
           <div className="mb-2 sm:mb-3 flex justify-end">
             <Link
               href="/duel"
+              onClick={(e) => {
+                if (e.defaultPrevented) return;
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                const before = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                window.setTimeout(() => {
+                  const after = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                  if (after === before) window.location.assign('/duel');
+                }, 220);
+              }}
               data-testid="open-duel-arena-cta-arenas"
               className="relative z-20 pointer-events-auto text-[11px] text-cyan-200 inline-flex items-center gap-1 tap-target"
             >
@@ -4469,6 +4744,7 @@ export default function Page() {
                   availableSigils={progress?.sigils || 0}
                   voteStreak={voteStreak}
                   hotMatchBiasEnabled={hotMatchBiasEnabled}
+                  testerMode={testerMode}
                   globalPageInfo={null}
                   debugInfo={null}
                   queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}

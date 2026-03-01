@@ -20,7 +20,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const tick = await runTournamentTick({ includeOldActive: true, resolveRounds: true });
+  const body = await request.json().catch(() => ({}));
+  const resolveRounds = body?.resolveRounds === true;
+  const tick = await runTournamentTick({ includeOldActive: true, resolveRounds });
   if (!tick.ok) {
     return NextResponse.json({ ok: false, error: tick.error || 'Advance failed' }, { status: 500 });
   }
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
   if (createdTournament) notes.push('Created or recycled tournament for today');
   if (seededMain + seededRookie > 0) notes.push(`Seeded/top-upped ${seededMain + seededRookie} matches`);
   if (resolvedRound) notes.push('Resolved and advanced at least one tournament round');
+  if (!resolveRounds) notes.push('Round resolution skipped (safe advance mode)');
   if (notes.length === 0) notes.push('No changes needed; tournament already healthy');
 
   const sb = supabaseAdmin();

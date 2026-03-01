@@ -1,6 +1,7 @@
 // PLACE AT: app/api/cats/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveCatImageUrl } from '../../_lib/images';
 
 export const dynamic = "force-dynamic";
 
@@ -9,33 +10,38 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: cat, error } = await supabase
+    let { data: cat, error } = await supabase
       .from("cats")
       .select(
-        "id, name, image_path, rarity, ability, power, evolution, attack, defense, speed, charisma, chaos, cat_xp, cat_level, xp, level, wins, losses, battles_fought, status, user_id, created_at"
+        "id, name, image_path, image_review_status, rarity, ability, power, evolution, attack, defense, speed, charisma, chaos, cat_xp, cat_level, xp, level, wins, losses, battles_fought, status, user_id, created_at"
       )
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
+
+    if (error?.message?.includes('image_review_status')) {
+      ({ data: cat, error } = await supabase
+        .from("cats")
+        .select(
+          "id, name, image_path, rarity, ability, power, evolution, attack, defense, speed, charisma, chaos, cat_xp, cat_level, xp, level, wins, losses, battles_fought, status, user_id, created_at"
+        )
+        .eq("id", id)
+        .single());
+    }
 
     if (error || !cat) {
       return NextResponse.json({ ok: false, error: "Cat not found" }, { status: 404 });
     }
 
     // Build image URL
-    let image_url = "";
-    if (cat.image_path) {
-      const { data: urlData } = supabase.storage
-        .from("cat-images")
-        .getPublicUrl(cat.image_path);
-      image_url = urlData?.publicUrl || "";
-    }
+    const image_url = (await resolveCatImageUrl(supabase, cat.image_path, cat.image_review_status || null, "original")) || "";
 
     // Get recent battle history
     const { data: recentMatches } = await supabase
@@ -76,13 +82,58 @@ export async function GET(
       };
     });
 
-    const winRate =
-      cat.battles_fought > 0
-        ? Math.round((cat.wins / cat.battles_fought) * 100)
-        : 0;
+    // Use match-derived totals to avoid stale/overcounted counters from legacy resolve flows.
+    const [{ count: winsCount }, { count: lossesCount }] = await Promise.all([
+      supabase
+        .from('tournament_matches')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'complete')
+        .eq('winner_id', cat.id)
+        .or(`cat_a_id.eq.${cat.id},cat_b_id.eq.${cat.id}`),
+      supabase
+        .from('tournament_matches')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'complete')
+        .not('winner_id', 'is', null)
+        .neq('winner_id', cat.id)
+        .or(`cat_a_id.eq.${cat.id},cat_b_id.eq.${cat.id}`),
+    ]);
+
+    const safeWins = Math.max(0, Number(winsCount || 0));
+    const safeLosses = Math.max(0, Number(lossesCount || 0));
+    const safeBattles = safeWins + safeLosses;
+    const winRate = safeBattles > 0 ? Math.round((safeWins / safeBattles) * 100) : 0;
 
     const totalPower =
       (cat.attack || 0) + (cat.defense || 0) + (cat.speed || 0) + (cat.charisma || 0) + (cat.chaos || 0);
+
+    const [{ data: stanceRow }, { data: fanVotes }, { data: cheerRows }, { data: ownerTitleRow }] = await Promise.all([
+      supabase.from('cat_stances').select('stance').eq('cat_id', cat.id).maybeSingle(),
+      supabase.from('votes').select('id').eq('voted_for', cat.id),
+      supabase.from('match_tactics').select('id').eq('cat_id', cat.id).in('action_type', ['cheer', 'guard_break']),
+      supabase
+        .from('equipped_cosmetics')
+        .select('cosmetics(name)')
+        .eq('user_id', cat.user_id)
+        .in('slot', ['title', 'cat_title'])
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const { data: ownerProfile } = cat.user_id
+      ? await supabase.from('profiles').select('username').eq('id', cat.user_id).maybeSingle()
+      : { data: null as { username?: string | null } | null };
+
+    const fanCount = (fanVotes || []).length + (cheerRows || []).length;
+
+    const oppCounter: Record<string, number> = {};
+    for (const m of recentMatches || []) {
+      const opp = m.cat_a_id === cat.id ? m.cat_b_id : m.cat_a_id;
+      oppCounter[opp] = (oppCounter[opp] || 0) + 1;
+    }
+    const rivalries = Object.entries(oppCounter)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id, battles]) => ({ cat_id: id, cat_name: oppMap[id] || 'Unknown', battles }));
 
     return NextResponse.json({
       ok: true,
@@ -104,11 +155,16 @@ export async function GET(
           chaos: cat.chaos || 0,
         },
         total_power: totalPower,
-        wins: cat.wins || 0,
-        losses: cat.losses || 0,
-        battles_fought: cat.battles_fought || 0,
+        wins: safeWins,
+        losses: safeLosses,
+        battles_fought: safeBattles,
         win_rate: winRate,
+        stance: stanceRow?.stance || null,
+        fan_count: fanCount,
+        rivalries,
+        owner_title: (ownerTitleRow?.cosmetics as { name?: string } | null)?.name || null,
         owner_id: cat.user_id,
+        owner_username: ownerProfile?.username || null,
         created_at: cat.created_at,
         battle_history: battleHistory,
       },

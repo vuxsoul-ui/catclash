@@ -43,6 +43,11 @@ interface CrateReward {
   cat_drop_conversion_reward?: { type: string; amount: number };
   duplicate_special_ability_id?: string;
   error?: string;
+  opening?: {
+    id: string;
+    status: 'pending' | 'complete';
+    cat_id?: string | null;
+  };
 }
 
 type OpenStage = 'idle' | 'opening' | 'burst' | 'reveal' | 'settle';
@@ -97,9 +102,10 @@ export default function CratePage() {
   const timersRef = useRef<number[]>([]);
   const sequenceStartRef = useRef<number | null>(null);
   const sequenceTimingRef = useRef<RevealTiming>(getRevealTiming('Common', false));
-  const PAID_CRATE_COST = 140;
+  const PAID_CRATE_COST = 90;
   const EPIC_CRATE_COST = 280;
   const [epicLegendaryBoostIn, setEpicLegendaryBoostIn] = useState<number | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const overlayActive = stage !== 'idle';
   const rarityStyle = reward ? getStyle(reward.rarity) : getStyle('Common');
@@ -134,6 +140,30 @@ export default function CratePage() {
       })
       .catch(() => {});
   }, [refreshSigils]);
+
+  useEffect(() => {
+    fetch('/api/crates/latest', { cache: 'no-store' })
+      .then((r) => r.json().catch(() => null))
+      .then((d) => {
+        if (!d?.ok || !d?.opening || !d?.reward) return;
+        const savedReward = d.reward as CrateReward;
+        setOpeningId(String(d.opening.id || ''));
+        setReward(savedReward);
+        setError(null);
+        clearTimers();
+        setStage('reveal');
+        setSkipReady(true);
+        setCanClaim(false);
+        setCardFace('back');
+        const flipTimer = window.setTimeout(() => setCardFace('front'), 180);
+        const settleTimer = window.setTimeout(() => {
+          setStage('settle');
+          setCanClaim(true);
+        }, 260);
+        timersRef.current.push(flipTimer, settleTimer);
+      })
+      .catch(() => {});
+  }, [clearTimers]);
 
   useEffect(() => {
     fetch('/api/crate/pity?crate_type=epic', { cache: 'no-store' })
@@ -274,12 +304,13 @@ export default function CratePage() {
       mode === 'paid' ? { mode: 'paid', crate_type: 'premium' } :
       mode === 'epic' ? { mode: 'epic', crate_type: 'epic' } :
       undefined;
-    const res = await fetch('/api/crate/claim', {
+    const res = await fetch('/api/crates/open', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payload ? JSON.stringify(payload) : undefined,
     });
-    return res.json();
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, data };
   }
 
   async function openCrate(mode: OpenMode) {
@@ -290,14 +321,19 @@ export default function CratePage() {
     runSequence(getRevealTiming('Common', reducedMotion));
 
     try {
-      const data = await requestReward(mode);
+      const { status, data } = await requestReward(mode);
       if (!data.success && !data.ok) {
         clearTimers();
         setStage('idle');
+        if (status === 409 && data?.pending) {
+          setError('Crate opening is finalizing. Please retry in a moment.');
+          return;
+        }
         setError(data.error || 'Failed to open crate');
         return;
       }
       setReward(data);
+      setOpeningId(String(data?.opening?.id || ''));
       resyncSequenceForRarity(String(data?.rarity || 'Common'));
       if (data?.cat_drop_blocked_reason) {
         setNotice('Cat drop limit reached (resets at UTC midnight).');
@@ -334,10 +370,18 @@ export default function CratePage() {
     }
   }
 
-  function claimAndClose() {
+  async function claimAndClose() {
+    if (openingId) {
+      fetch('/api/crates/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openingId }),
+      }).catch(() => null);
+    }
     clearTimers();
     setStage('idle');
     setReward(null);
+    setOpeningId(null);
     setCanClaim(false);
     setCardFace('back');
     setShakeScreen(false);

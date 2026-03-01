@@ -26,7 +26,7 @@ export async function GET() {
     // Get owned cosmetics
     const { data: inventory } = await sb
       .from("user_inventory")
-      .select("cosmetic_id, acquired_at, cosmetics(id, slug, name, category, rarity, description)")
+      .select("cosmetic_id, acquired_at, cosmetics(id, slug, name, category, rarity, description, metadata)")
       .eq("user_id", guestId)
       .order("acquired_at", { ascending: false });
 

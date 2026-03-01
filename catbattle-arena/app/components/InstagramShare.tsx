@@ -15,7 +15,7 @@ interface InstagramShareProps {
 export default function InstagramShare({ catName, catStats }: InstagramShareProps) {
   const handleShare = () => {
     // Try to open Instagram Stories
-    const text = `Check out ${catName} on CatBattle Arena! ⚔️\n\nAttack: ${catStats.attack}\nDefense: ${catStats.defense}\nSpeed: ${catStats.speed}\nRarity: ${catStats.rarity}\n\nVote for them at catbattle.arena!`
+    const text = `Check out ${catName} on CatClash Arena! ⚔️\n\nAttack: ${catStats.attack}\nDefense: ${catStats.defense}\nSpeed: ${catStats.speed}\nRarity: ${catStats.rarity}\n\nVote for them at catclash.org!`
     
     // Check if mobile
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)

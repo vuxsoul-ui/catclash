@@ -4,6 +4,9 @@ import { getGuestId } from "../../_lib/guest";
 
 export const dynamic = "force-dynamic";
 
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim();
+const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').trim();
+
 export async function POST(req: NextRequest) {
   try {
     const guestId = await getGuestId();
@@ -17,11 +20,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing catId" }, { status: 400 });
     }
 
-    const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    // Use the fixed variables here
+    const sb = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     // Verify cat belongs to user and is in draft status
     const { data: cat, error: fetchErr } = await sb

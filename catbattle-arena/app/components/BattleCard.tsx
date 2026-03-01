@@ -65,11 +65,11 @@ export default function BattleCard({
         isFlashing ? (voteColor.includes('blue') ? 'ring-4 ring-blue-500' : 'ring-4 ring-red-500') : ''
       } ${isWinner ? 'ring-2 ring-yellow-400' : ''} ${isLoser ? 'opacity-60 grayscale' : ''}`}>
         <img
-          src={cat.image_url || `https://placekitten.com/${300 + (cat.id?.charCodeAt(0) || 0) % 100}/300`}
+          src={cat.image_url || '/cat-placeholder.svg'}
           alt={cat.name || ''}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
           onError={(e) => {
-            (e.currentTarget as HTMLImageElement).src = 'https://placekitten.com/300/300';
+            (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
           }}
         />
         

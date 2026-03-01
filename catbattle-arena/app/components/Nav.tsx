@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Swords, Cat, User, Home, PlusSquare, Trophy, Users, Images } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
-import { checkTapTarget, warnOnce } from '../lib/dev-click-guards';
+import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
 import { scanDuplicateTestIds } from '../lib/dev-testid-guard';
 
 export default function Nav() {
@@ -82,6 +82,11 @@ export default function Nav() {
     return () => window.clearTimeout(timer);
   }, [pathname]);
 
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    return installBottomNavInterceptionDiagnostics('[data-nav-root="mobile"]');
+  }, [pathname]);
+
   const mobilePrimaryLinks = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/duel', label: 'Duel', icon: Swords },
@@ -97,14 +102,24 @@ export default function Nav() {
   const quickBtnActive =
     'bg-gradient-to-r from-emerald-300 to-cyan-300 text-black border-emerald-200 shadow-[0_10px_24px_rgba(16,185,129,0.28)]';
 
+  const withNavFallback = (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.defaultPrevented) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const before = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.setTimeout(() => {
+      const after = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (after === before) window.location.assign(href);
+    }, 220);
+  };
+
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-[90] pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
-        <div className="absolute inset-0 border-b border-zinc-200/15 bg-[linear-gradient(180deg,#070707_0%,#131417_62%,#1a1c22_100%)] shadow-[0_10px_30px_rgba(0,0,0,0.45)]" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-200/35 to-transparent" />
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+      <header className="fixed top-0 left-0 right-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
+        <div className="absolute inset-0 pointer-events-none border-b border-zinc-200/15 bg-[linear-gradient(180deg,#070707_0%,#131417_62%,#1a1c22_100%)] shadow-[0_10px_30px_rgba(0,0,0,0.45)]" />
+        <div className="absolute inset-x-0 top-0 h-px pointer-events-none bg-gradient-to-r from-transparent via-zinc-200/35 to-transparent" />
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
           <div className="relative h-[var(--header-h)] grid grid-cols-[auto_1fr_auto] items-center gap-3">
-            <Link href="/" className="inline-flex items-center gap-2">
+            <Link href="/" onClick={withNavFallback('/')} className="inline-flex items-center gap-2">
               <span className="relative w-8 h-8 rounded-xl border border-white/20 bg-gradient-to-br from-slate-800 via-slate-900 to-black overflow-hidden shadow-[0_6px_18px_rgba(0,0,0,0.4)]">
                 <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(56,189,248,0.28),transparent_58%)]" />
                 <Cat className="absolute left-[2px] top-[7px] w-3.5 h-3.5 text-cyan-200/95" />
@@ -121,7 +136,7 @@ export default function Nav() {
                   { href: '/', label: 'Home' },
                   { href: '/duel', label: 'Duel' },
                   { href: '/submit', label: 'Submit' },
-                  { href: '/social', label: 'Social' },
+                  { href: '/gallery', label: 'Gallery' },
                   { href: '/shop', label: 'Shop' },
                 ].map((link) => {
                 const active = pathname === link.href;
@@ -130,6 +145,7 @@ export default function Nav() {
                   <Link
                     key={link.href}
                     href={link.href}
+                    onClick={withNavFallback(link.href)}
                     className={`relative h-9 px-3 rounded-full border text-xs font-semibold inline-flex items-center justify-center transition-all ${active ? 'bg-gradient-to-r from-zinc-200 to-zinc-100 text-black border-zinc-100 shadow-[0_8px_20px_rgba(255,255,255,0.16)]' : 'bg-white/5 border-white/15 text-white/85 hover:bg-white/10'}`}
                   >
                     {link.label}
@@ -147,6 +163,7 @@ export default function Nav() {
             <div className="sm:hidden flex items-center gap-1.5">
               <Link
                 href="/social"
+                onClick={withNavFallback('/social')}
                 aria-label="Social"
                 title="Social"
                 className={`px-2.5 gap-1.5 text-[11px] font-semibold ${quickBtnBase} ${pathname === '/social' ? quickBtnActive : quickBtnIdle}`}
@@ -156,6 +173,7 @@ export default function Nav() {
               </Link>
               <Link
                 href="/leaderboard"
+                onClick={withNavFallback('/leaderboard')}
                 aria-label="Leaderboard"
                 title="Leaderboard"
                 className={`px-2.5 gap-1.5 text-[11px] font-semibold ${quickBtnBase} ${pathname === '/leaderboard' ? quickBtnActive : quickBtnIdle}`}
@@ -167,6 +185,7 @@ export default function Nav() {
             <div className="hidden sm:flex items-center gap-1.5">
               <Link
                 href="/social"
+                onClick={withNavFallback('/social')}
                 aria-label="Social"
                 title="Social"
                 className={`px-2.5 gap-1.5 text-[11px] font-semibold ${quickBtnBase} ${pathname === '/social' ? quickBtnActive : quickBtnIdle}`}
@@ -176,6 +195,7 @@ export default function Nav() {
               </Link>
               <Link
                 href="/leaderboard"
+                onClick={withNavFallback('/leaderboard')}
                 aria-label="Leaderboard"
                 title="Leaderboard"
                 className={`px-2.5 gap-1.5 text-[11px] font-semibold ${quickBtnBase} ${pathname === '/leaderboard' ? quickBtnActive : quickBtnIdle}`}
@@ -186,6 +206,7 @@ export default function Nav() {
             </div>
               <Link
                 href={myProfileHref}
+                onClick={withNavFallback(myProfileHref)}
                 className={`hidden sm:inline-flex h-9 px-3 rounded-full border items-center text-xs font-semibold ${pathname === myProfileHref ? 'bg-white text-black border-white' : 'bg-white/10 border-white/15 text-white/80 hover:bg-white/15'}`}
               >
                 {profileLabel}
@@ -198,7 +219,7 @@ export default function Nav() {
 
       <nav
         data-nav-root="mobile"
-        className="sm:hidden fixed bottom-0 inset-x-1 mx-auto z-[95] w-[calc(100%-0.5rem)] max-w-[500px] h-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+6px)] pb-[env(safe-area-inset-bottom)] rounded-t-[18px] border border-zinc-300/20 border-b-0 bg-zinc-950 shadow-[0_-16px_38px_rgba(0,0,0,0.62)] px-1.5 pt-1.5 opacity-100 pointer-events-auto overflow-visible backdrop-blur-xl isolate"
+        className="sm:hidden fixed bottom-0 inset-x-1 mx-auto z-[1400] w-[calc(100%-0.5rem)] max-w-[500px] h-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+6px)] pb-[env(safe-area-inset-bottom)] rounded-t-[18px] border border-zinc-300/20 border-b-0 bg-zinc-950 shadow-[0_-16px_38px_rgba(0,0,0,0.62)] px-1.5 pt-1.5 opacity-100 pointer-events-auto overflow-visible backdrop-blur-xl isolate"
       >
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,#141518_0%,#1b1d22_54%,#20232a_100%)]" />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-200/40 to-transparent pointer-events-none" />
@@ -221,6 +242,7 @@ export default function Nav() {
               <Link
                 key={link.href}
                 href={link.href}
+                onClick={withNavFallback(link.href)}
                 data-testid={testId}
                 aria-current={active ? 'page' : undefined}
                 className={`relative z-10 h-full flex-1 rounded-xl text-[10px] font-semibold inline-flex flex-col items-center justify-center gap-0.5 transition-all duration-200 active:scale-[0.98] touch-manipulation ${

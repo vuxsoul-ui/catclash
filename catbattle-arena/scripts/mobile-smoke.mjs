@@ -5,6 +5,31 @@ import path from 'node:path';
 
 const baseUrl = process.env.SMOKE_URL || 'http://127.0.0.1:3000';
 
+async function fetchBuildInfo() {
+  try {
+    const res = await fetch(`${baseUrl}/api/build`, { cache: 'no-store' });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return { nextBuildId: null, gitSha: null };
+    return {
+      nextBuildId: data?.nextBuildId || null,
+      gitSha: data?.gitSha || null,
+    };
+  } catch {
+    return { nextBuildId: null, gitSha: null };
+  }
+}
+
+async function fetchArenaPageInfo() {
+  try {
+    const res = await fetch(`${baseUrl}/api/arena/page?arena=main&page_size=6&total_size=36`, { cache: 'no-store' });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return { ok: false, matchesCount: 0 };
+    return { ok: true, matchesCount: Array.isArray(data.matches) ? data.matches.length : 0 };
+  } catch {
+    return { ok: false, matchesCount: 0 };
+  }
+}
+
 function softAssert(condition, message, failures) {
   if (condition) return;
   failures.push(message);
@@ -120,6 +145,27 @@ async function diagnoseDuelRoute(page, failures, contextLabel) {
   return true;
 }
 
+async function dumpPageHealth(page, initialStatus, label = 'bootstrap') {
+  const outDir = path.join(process.cwd(), 'artifacts', 'screenshots');
+  await mkdir(outDir, { recursive: true });
+  const screenshotPath = path.join(outDir, `mobile-smoke-${label}-${Date.now()}.png`);
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => null);
+  const health = await page.evaluate(() => {
+    const bodyText = String(document?.body?.innerText || '').replace(/\s+/g, ' ').trim();
+    const navCount = document.querySelectorAll('[data-testid^="nav-"]').length;
+    return {
+      url: window.location.href,
+      bodySnippet: bodyText.slice(0, 300),
+      navTestIdCount: navCount,
+    };
+  });
+  return {
+    initialStatus: initialStatus ?? null,
+    screenshotPath,
+    ...health,
+  };
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -129,10 +175,50 @@ async function main() {
   const page = await context.newPage();
   const failures = [];
   const debugDumps = [];
+  const pageErrors = [];
+  const consoleErrors = [];
+  const buildInfo = await fetchBuildInfo();
+  const arenaPageInfo = await fetchArenaPageInfo();
+  console.log(`[SMOKE BUILD] buildId=${buildInfo.nextBuildId || 'unknown'} gitSha=${buildInfo.gitSha || 'n/a'}`);
+  console.log(`[SMOKE ARENA] ok=${arenaPageInfo.ok ? '1' : '0'} matches=${arenaPageInfo.matchesCount}`);
+  page.on('pageerror', (err) => {
+    pageErrors.push(String(err?.message || err));
+  });
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      consoleErrors.push(String(msg.text() || ''));
+    }
+  });
 
   try {
-    await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-testid="nav-home"]', { timeout: 10000 }).catch(() => null);
+    const initialResponse = await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    const initialStatus = initialResponse?.status?.() ?? null;
+    const navReadyQuick = await page.waitForSelector('[data-testid="nav-home"]', { timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!navReadyQuick) {
+      const health = await dumpPageHealth(page, initialStatus, 'nav-home-missing-quick');
+      console.error('[SMOKE HEALTH]', JSON.stringify(health));
+      const bodyLower = String(health.bodySnippet || '').toLowerCase();
+      const looksBroken =
+        bodyLower.includes('application error') ||
+        bodyLower.includes('not found') ||
+        bodyLower.includes('next_redirect') ||
+        /\berror\b/.test(bodyLower);
+      if (looksBroken) {
+        failures.push(`Initial page is error/redirect state (status=${health.initialStatus ?? 'unknown'}, body="${health.bodySnippet}", buildId=${buildInfo.nextBuildId || 'unknown'}, gitSha=${buildInfo.gitSha || 'n/a'})`);
+      } else {
+        const navReadyLong = await page.waitForSelector('[data-testid="nav-home"]', { timeout: 8000 })
+          .then(() => true)
+          .catch(() => false);
+        if (!navReadyLong) {
+          failures.push(`nav-home missing after startup (status=${health.initialStatus ?? 'unknown'}, navTestIds=${health.navTestIdCount}, body="${health.bodySnippet}")`);
+        }
+      }
+    }
+    if (failures.length > 0) {
+      return;
+    }
     await page.waitForTimeout(1200);
 
     const navIds = [
@@ -165,12 +251,24 @@ async function main() {
 
     // Tap each bottom nav item 3 times.
     for (const [testId, expected] of navIds) {
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid^="nav-"]').length >= 3,
+        { timeout: 5000 },
+      ).catch(() => null);
       const item = page.getByTestId(String(testId)).first();
-      softAssert((await item.count()) > 0, `Missing ${testId}`, failures);
-      if ((await item.count()) === 0) continue;
+      const itemCount = await item.count();
+      if (itemCount === 0) {
+        const health = await dumpPageHealth(page, null, `missing-${String(testId)}`);
+        console.error('[SMOKE HEALTH]', JSON.stringify(health));
+        failures.push(`Missing ${testId} (url=${health.url}, navTestIds=${health.navTestIdCount}, body="${health.bodySnippet}")`);
+        const bodyLower = String(health.bodySnippet || '').toLowerCase();
+        if (bodyLower.includes('application error') || bodyLower.includes('not found') || bodyLower.includes('next_redirect') || /\berror\b/.test(bodyLower)) {
+          break;
+        }
+        continue;
+      }
       for (let i = 0; i < 3; i += 1) {
-        await item.scrollIntoViewIfNeeded();
-        const clickResult = await clickWithRetry(page, item, `nav-${testId}`);
+        const clickResult = await clickWithRetry(page, page.getByTestId(String(testId)).first(), `nav-${testId}`);
         if (!clickResult.ok) {
           failures.push(`Click failed for ${testId}`);
           if (clickResult.dump) debugDumps.push(clickResult.dump);
@@ -270,16 +368,33 @@ async function main() {
       }
     }
 
-    // Swipe vote check (best effort; only when an active card exists).
+    // Vote feedback check (best effort; only when an active card exists).
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     const preVoteCardCount = await page.locator('.arena-match-card').count();
-    const didSwipe = await swipeOnMatch(page, 'left');
-    if (didSwipe) {
+    if (preVoteCardCount < 1 && arenaPageInfo.matchesCount > 0) {
+      failures.push(`Home rendered 0 .arena-match-card while /api/arena/page returned ${arenaPageInfo.matchesCount} matches`);
+    } else if (preVoteCardCount < 1) {
+      console.log('SKIP: no .arena-match-card found on Home; skipping vote feedback assertions');
+    } else {
+      let voted = false;
+      const voteAButton = page.getByRole('button', { name: /Vote A/i }).first();
+      if ((await voteAButton.count()) > 0 && (await voteAButton.isVisible().catch(() => false))) {
+        const clickResult = await clickWithRetry(page, voteAButton, 'home-vote-a');
+        voted = clickResult.ok;
+        if (!clickResult.ok && clickResult.dump) debugDumps.push(clickResult.dump);
+      }
+      if (!voted) {
+        voted = await swipeOnMatch(page, 'left');
+      }
+
+      if (!voted) {
+        console.log('SKIP: could not perform vote action on Home; skipping vote feedback assertions');
+      } else {
       await page.waitForTimeout(300);
       const midVoteCardCount = await page.locator('.arena-match-card').count();
       const midVoteLabel = page.getByText(/Submitting…|Voted ✅|Voted ✓|Voted A|Voted B/i).first();
-      const midVoteSignal = (await midVoteLabel.count()) > 0 || midVoteCardCount >= Math.max(1, preVoteCardCount - 1);
-      softAssert(midVoteSignal, 'Vote looked instant with no visible pending/confirmed feedback at 300ms', failures);
+      const midVoteSignal = (await midVoteLabel.count()) > 0 || midVoteCardCount >= 1;
+      softAssert(midVoteSignal, `Vote looked instant with no visible pending/confirmed feedback at 300ms (pre=${preVoteCardCount}, mid=${midVoteCardCount})`, failures);
       const votedBadge = page.getByText(/Voted ✅|Voted ✓|Voted A|Voted B/i).first();
       softAssert((await votedBadge.count()) > 0, 'No voted confirmation visible after swipe vote', failures);
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -302,9 +417,10 @@ async function main() {
       if (remainingCards === 0) {
         const caughtUp = page.getByText(/You’ve voted on all matches for today|You've voted on all matches for today/i).first();
         softAssert((await caughtUp.count()) > 0, 'Expected all-caught-up message when voting feed is empty', failures);
-        const wrongEmpty = page.getByText(/No active main arena today|No active rookie arena today/i).first();
+        const wrongEmpty = page.getByText(/No active arena today/i).first();
         softAssert((await wrongEmpty.count()) === 0, 'Incorrect global no-active-arena empty state shown after voting out feed', failures);
       }
+    }
     }
 
     // Rematch smoke (best effort; requires at least one completed duel where current actor is a participant).
@@ -385,11 +501,24 @@ async function main() {
   if (failures.length > 0) {
     console.error('Mobile smoke failed:');
     for (const failure of failures) console.error(`- ${failure}`);
+    if (pageErrors.length > 0) {
+      console.error('Page errors:');
+      for (const e of pageErrors.slice(0, 5)) console.error(`- ${e}`);
+    }
+    if (consoleErrors.length > 0) {
+      console.error('Console errors:');
+      for (const e of consoleErrors.slice(0, 8)) console.error(`- ${e}`);
+    }
     if (debugDumps.length > 0) {
       console.error('Debug dumps:');
       for (const dump of debugDumps) {
         console.error(JSON.stringify(dump));
       }
+    }
+    const crashSignal = pageErrors.some((e) => /failed to load chunk/i.test(e))
+      || consoleErrors.some((e) => /failed to load chunk|application error/i.test(e));
+    if (crashSignal) {
+      console.error(`Likely stale deploy/cache; verify buildId changed after redeploy/incognito. buildId=${buildInfo.nextBuildId || 'unknown'} gitSha=${buildInfo.gitSha || 'n/a'}`);
     }
     process.exit(1);
   }

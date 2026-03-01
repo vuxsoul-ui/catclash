@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Download, Loader2, Share2, Swords, X } from 'lucide-react';
@@ -40,6 +40,7 @@ export default function DuelPage() {
   const [shareSheetDuelId, setShareSheetDuelId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DuelTab>('live');
   const [selectedDuelId, setSelectedDuelId] = useState<string | null>(null);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -53,7 +54,13 @@ export default function DuelPage() {
   }, []);
 
   useEffect(() => {
-    loadAll();
+    void loadAll();
+    return () => {
+      if (loadAbortRef.current) {
+        loadAbortRef.current.abort();
+        loadAbortRef.current = null;
+      }
+    };
   }, []);
 
   const activeCats = useMemo(() => myCats.filter((c) => c.status !== 'rejected'), [myCats]);
@@ -106,27 +113,34 @@ export default function DuelPage() {
   }
 
   async function loadAll() {
+    if (loadAbortRef.current) loadAbortRef.current.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const { signal } = controller;
     setLoading(true);
     try {
-      const meRes = await fetch('/api/me', { cache: 'no-store' });
+      const meRes = await fetch('/api/me', { cache: 'no-store', signal });
       const meData = await meRes.json().catch(() => ({}));
+      if (signal.aborted) return;
       const gid = String(meData?.guest_id || '');
       setMeId(gid);
 
       if (gid) {
-        const profileRes = await fetch(`/api/profile/${gid}?t=${Date.now()}`, { cache: 'no-store' });
+        const profileRes = await fetch(`/api/profile/${gid}?t=${Date.now()}`, { cache: 'no-store', signal });
         const profileData = await profileRes.json().catch(() => ({}));
+        if (signal.aborted) return;
         const cats = Array.isArray(profileData?.submitted_cats) ? profileData.submitted_cats : [];
         setMyCats(cats);
         if (cats[0]?.id) setMyCatId(String(cats[0].id));
       }
 
       const [duelRes, lbRes] = await Promise.all([
-        fetch('/api/duel/challenges', { cache: 'no-store' }),
-        fetch('/api/leaderboard', { cache: 'no-store' }),
+        fetch('/api/duel/challenges', { cache: 'no-store', signal }),
+        fetch('/api/leaderboard', { cache: 'no-store', signal }),
       ]);
       const duelData = await duelRes.json().catch(() => ({}));
       const lbData = await lbRes.json().catch(() => ({}));
+      if (signal.aborted) return;
 
       if (duelData?.disabled) setDisabled(true);
       setIncoming(Array.isArray(duelData?.incoming) ? duelData.incoming : []);
@@ -142,8 +156,11 @@ export default function DuelPage() {
       if (opts[0]?.id) setTargetUserId(opts[0].id);
       else setTargetUserId('');
     } catch {
+      if (signal.aborted) return;
       setMessage('Failed to load Duel Arena');
     } finally {
+      if (loadAbortRef.current !== controller) return;
+      loadAbortRef.current = null;
       setLoading(false);
     }
   }

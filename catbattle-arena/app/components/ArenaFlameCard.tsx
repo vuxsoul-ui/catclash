@@ -179,15 +179,24 @@ export default function ArenaFlameCard({
       </div>
 
       {showChips && (
-        <div className="grid grid-cols-3 gap-2 mt-3">
-          <button onClick={goVote} className="h-9 rounded-lg bg-white/10 border border-white/15 text-[11px] font-semibold text-white/90">
-            Vote ({votesToday}/5)
+        <div className={`grid mt-3 ${compact ? 'grid-cols-1 gap-1.5' : 'grid-cols-3 gap-2'}`}>
+          <button
+            onClick={goVote}
+            className={`min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
+          >
+            <span className={`block ${compact ? '' : 'truncate'}`}>Vote ({votesToday}/5)</span>
           </button>
-          <button onClick={goPredict} className="h-9 rounded-lg bg-white/10 border border-white/15 text-[11px] font-semibold text-white/90">
-            Predict ({predictionsToday}/1)
+          <button
+            onClick={goPredict}
+            className={`min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
+          >
+            <span className={`block ${compact ? '' : 'truncate'}`}>Predict ({predictionsToday}/1)</span>
           </button>
-          <button onClick={goSubmit} className="h-9 rounded-lg bg-white/10 border border-white/15 text-[11px] font-semibold text-white/90">
-            Submit / Adopt ({catsToday}/1)
+          <button
+            onClick={goSubmit}
+            className={`min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
+          >
+            <span className={`block ${compact ? '' : 'truncate'}`}>{compact ? `Submit (${catsToday}/1)` : `Submit (${catsToday}/1)`}</span>
           </button>
         </div>
       )}

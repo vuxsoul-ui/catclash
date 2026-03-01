@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { evaluateAndMaybeQualifyFlame } from '../../_lib/arenaFlame';
+
+export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,26 +10,24 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await request.json();
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
-    }
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    const { data, error } = await supabase.rpc('claim_daily_streak', {
-      p_user_id: userId
+    if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
     });
-    
-    if (error) throw error;
-    
+
+    const flame = await evaluateAndMaybeQualifyFlame(supabase, String(userId), 'status', new Date());
+
     return NextResponse.json({
-      success: data[0].success,
-      newStreak: data[0].new_streak,
-      xpEarned: data[0].xp_earned
+      success: true,
+      deprecated: true,
+      message: 'Legacy streak claim is deprecated. Arena Flame is gameplay-driven.',
+      newStreak: flame.dayCount,
+      flame,
+      xpEarned: 0,
+      cat_xp_banked: 0,
     });
   } catch (err) {
-    console.error('Claim streak error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Server error', details: String(err) }, { status: 500 });
   }
 }

@@ -4,56 +4,58 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Fix env vars - remove newlines and spaces
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim();
+const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').trim();
 
 export async function GET() {
   try {
-    console.log('[DEBUG] Starting pending cats fetch');
     console.log('[DEBUG] URL:', supabaseUrl);
-    console.log('[DEBUG] Service key exists:', !!supabaseServiceKey);
-    console.log('[DEBUG] Service key first 20 chars:', supabaseServiceKey?.substring(0, 20));
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Test 1: Get all cats (no filter)
-    console.log('[DEBUG] Fetching all cats...');
-    const { data: allCats, error: allError } = await supabase
-      .from('cats')
-      .select('id, name, status, created_at')
-      .limit(10);
+    // Fetch ALL cats, filter in JavaScript (bypass .eq() bug)
+    let allCats: Array<Record<string, unknown>> | null = null;
+    let allError: { message?: string } | null = null;
 
-    console.log('[DEBUG] All cats result:', { 
-      count: allCats?.length, 
-      error: allError?.message,
-      sample: allCats?.[0]
-    });
-
-    // Test 2: Get only pending
-    console.log('[DEBUG] Fetching pending cats...');
-    const { data: pendingCats, error: pendingError } = await supabase
+    const primaryQuery = await supabase
       .from('cats')
-      .select('id, name, image_path, rarity, attack, defense, speed, charisma, chaos, ability, created_at')
-      .eq('status', 'pending')
+      .select('id, name, image_path, rarity, attack, defense, speed, charisma, chaos, ability, created_at, status, image_review_status')
       .order('created_at', { ascending: false });
+    allCats = (primaryQuery.data as Array<Record<string, unknown>> | null) || null;
+    allError = primaryQuery.error;
 
-    console.log('[DEBUG] Pending cats result:', { 
-      count: pendingCats?.length, 
-      error: pendingError?.message 
-    });
-
-    if (pendingError) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: pendingError.message,
-        debug: { allCatsCount: allCats?.length }
-      }, { status: 500 });
+    if (allError?.message?.includes('image_review_status')) {
+      const fallbackQuery = await supabase
+        .from('cats')
+        .select('id, name, image_path, rarity, attack, defense, speed, charisma, chaos, ability, created_at, status')
+        .order('created_at', { ascending: false });
+      allCats = (fallbackQuery.data as Array<Record<string, unknown>> | null) || null;
+      allError = fallbackQuery.error;
     }
 
+    if (allError) {
+      console.error('[DEBUG] Query error:', allError);
+      return NextResponse.json({ ok: false, error: allError.message }, { status: 500 });
+    }
+
+    console.log('[DEBUG] All cats count:', allCats?.length);
+    console.log('[DEBUG] Statuses:', allCats?.map(c => c.status));
+
+    // Filter pending in JavaScript
+    const typedCats = (allCats || []) as Array<{ image_review_status?: string; status?: string; image_path?: string | null } & Record<string, unknown>>;
+    const pendingCats = typedCats.filter((c) => {
+      if (c.image_review_status) {
+        return c.image_review_status === 'pending_review';
+      }
+      return c.status === 'pending';
+    });
+    console.log('[DEBUG] Pending count:', pendingCats.length);
+
     // Build URLs
-    const catsWithUrls = (pendingCats || []).map(cat => {
+    const catsWithUrls = pendingCats.map(cat => {
       let image_url = '';
       if (cat.image_path) {
         const { data: urlData } = supabase.storage.from('cat-images').getPublicUrl(cat.image_path);
@@ -81,17 +83,12 @@ export async function GET() {
       cats: catsWithUrls,
       debug: {
         allCatsCount: allCats?.length,
-        pendingCatsCount: pendingCats?.length,
-        url: supabaseUrl,
-        hasServiceKey: !!supabaseServiceKey
+        pendingCatsCount: pendingCats.length,
       }
     });
 
   } catch (e) {
     console.error('[DEBUG] Exception:', e);
-    return NextResponse.json({ 
-      ok: false, 
-      error: String(e) 
-    }, { status: 500 });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

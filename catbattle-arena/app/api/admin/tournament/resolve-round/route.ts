@@ -1,21 +1,16 @@
-// REPLACE: app/api/admin/tournament/resolve-round/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin } from '../../../_lib/adminAuth';
 
 export const dynamic = 'force-dynamic';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'admin-secret-change-me';
-
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('x-admin-secret');
-    const { searchParams } = new URL(request.url);
-    const cronSecret = searchParams.get('cron_secret');
-
-    if (authHeader !== ADMIN_SECRET && cronSecret !== ADMIN_SECRET) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    const adminCheck = requireAdmin(request);
+    if (adminCheck instanceof NextResponse) {
+      return adminCheck;
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {

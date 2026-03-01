@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Sparkles, Check, Eye } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, Check, Eye, UserRound, Shield } from 'lucide-react';
 import SigilIcon from '../components/icons/SigilIcon';
 import SigilBalanceChip from '../components/SigilBalanceChip';
 import CosmeticPreview from '../components/cosmetics/CosmeticPreview';
 import CosmeticPreviewSheet from '../components/cosmetics/CosmeticPreviewSheet';
-import { canPurchaseCosmetic, resolveCosmeticEffect } from '../_lib/cosmetics/effectsRegistry';
+import CosmeticFrame from '../components/cosmetics/CosmeticFrame';
+import CosmeticTitle from '../components/cosmetics/CosmeticTitle';
+import CosmeticThemeProvider from '../components/cosmetics/CosmeticThemeProvider';
+import { canPurchaseCosmetic, resolveCosmeticEffect, cosmeticTextClassFromSlug } from '../_lib/cosmetics/effectsRegistry';
 import { Badge, Button, Card, Chip, SectionHeader } from '../components/ui/primitives';
 
 type ShopItem = {
@@ -29,11 +32,31 @@ type ShopItem = {
 
 type PriceTier = 'entry' | 'identity' | 'prestige' | 'elite' | 'mythic';
 
+type PreviewProfile = {
+  username: string;
+  guild: string | null;
+  equipped: {
+    title?: { slug: string | null; name: string | null } | null;
+    border?: { slug: string | null; name: string | null } | null;
+    color?: { slug: string | null; name: string | null } | null;
+    vote_effect?: { slug: string | null; name: string | null } | null;
+  };
+};
+
 function displayCategory(item: ShopItem): string {
   const cosmeticType = String(item.metadata?.cosmetic_type || '');
   if (item.slug.startsWith('vote-') || cosmeticType === 'vote_effect') return 'vote_effect';
   if (item.slug.startsWith('badge-') || cosmeticType === 'voter_badge') return 'voter_badge';
   return item.category;
+}
+
+function previewSlotForItem(item: ShopItem): 'title' | 'border' | 'color' | 'vote_effect' | null {
+  const cat = displayCategory(item);
+  if (cat === 'cat_title' || cat === 'title') return 'title';
+  if (cat === 'cat_border' || cat === 'border') return 'border';
+  if (cat === 'cat_color' || cat === 'color') return 'color';
+  if (cat === 'vote_effect' || cat === 'effect') return 'vote_effect';
+  return null;
 }
 
 function priceTier(price: number): PriceTier {
@@ -68,20 +91,33 @@ export default function ShopPage() {
   const [sortMode, setSortMode] = useState<'recommended' | 'price_low' | 'price_high' | 'rarity'>('recommended');
   const [previewItem, setPreviewItem] = useState<ShopItem | null>(null);
   const [previewStageItem, setPreviewStageItem] = useState<ShopItem | null>(null);
+  const [previewProfile, setPreviewProfile] = useState<PreviewProfile | null>(null);
 
   async function load() {
     setLoading(true);
     try {
-      const [catalogRes, featuredRes] = await Promise.all([
+      const [catalogRes, featuredRes, meRes] = await Promise.all([
         fetch('/api/shop/catalog', { cache: 'no-store' }),
         fetch('/api/shop/featured', { cache: 'no-store' }),
+        fetch('/api/me', { cache: 'no-store' }),
       ]);
       const catalogData = await catalogRes.json();
       const featuredData = await featuredRes.json().catch(() => ({ ok: false }));
+      const meData = await meRes.json().catch(() => ({}));
 
       if (catalogRes.ok && catalogData.ok) {
         setSigils(catalogData.sigils || 0);
         setItems(catalogData.cosmetics || []);
+        setPreviewProfile({
+          username: String(meData?.data?.profile?.username || 'Player').trim() || 'Player',
+          guild: String(meData?.data?.profile?.guild || '').trim() || null,
+          equipped: {
+            title: meData?.data?.equipped_cosmetics?.title || null,
+            border: meData?.data?.equipped_cosmetics?.border || null,
+            color: meData?.data?.equipped_cosmetics?.color || null,
+            vote_effect: meData?.data?.equipped_cosmetics?.vote_effect || null,
+          },
+        });
 
         if (featuredRes.ok && featuredData.ok) {
           setFeaturedItems(featuredData.items || []);
@@ -219,6 +255,35 @@ export default function ShopPage() {
     for (const k of Object.keys(seed)) seed[k] = sortItems(seed[k]);
     return seed;
   }, [items, sortMode]);
+
+  const stageLook = useMemo(() => {
+    const base = previewProfile?.equipped || {};
+    const resolved = {
+      titleSlug: base.title?.slug || null,
+      titleName: base.title?.name || 'Rookie Challenger',
+      borderSlug: base.border?.slug || null,
+      colorSlug: base.color?.slug || null,
+      voteEffectSlug: base.vote_effect?.slug || null,
+      voteEffectName: base.vote_effect?.name || 'Vote Pulse',
+    };
+    if (previewStageItem) {
+      const slot = previewSlotForItem(previewStageItem);
+      if (slot === 'title') {
+        resolved.titleSlug = previewStageItem.slug;
+        resolved.titleName = previewStageItem.name;
+      } else if (slot === 'border') {
+        resolved.borderSlug = previewStageItem.slug;
+      } else if (slot === 'color') {
+        resolved.colorSlug = previewStageItem.slug;
+      } else if (slot === 'vote_effect') {
+        resolved.voteEffectSlug = previewStageItem.slug;
+        resolved.voteEffectName = previewStageItem.name;
+      }
+    }
+    return resolved;
+  }, [previewProfile?.equipped, previewStageItem]);
+
+  const stageAccentClass = cosmeticTextClassFromSlug(stageLook.colorSlug);
 
   function categoryLabel(category: string): string {
     if (category === 'cat_title' || category === 'title') return 'Cat Titles';
@@ -374,18 +439,44 @@ export default function ShopPage() {
           <SectionHeader>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-cyan-200/80">Preview Stage</p>
-              <p className="text-sm font-bold text-white">Try any cosmetic before buying</p>
+              <p className="text-sm font-bold text-white">See your real profile look before buying</p>
             </div>
             {previewStageItem ? <Badge>Live Preview</Badge> : <Chip>Tap Preview on any item</Chip>}
           </SectionHeader>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="rounded-xl border border-white/15 bg-black/35 p-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-white/55 mb-1">Fighter Card</p>
-              <CosmeticPreview cosmetic={previewStageItem || ({ name: 'Sample Fighter', rarity: 'Common', slug: 'title-rookie', category: 'cat_title' } as ShopItem)} />
+              <p className="text-[10px] uppercase tracking-wide text-white/55 mb-1">My Profile Look</p>
+              <CosmeticThemeProvider colorSlug={stageLook.colorSlug}>
+                <CosmeticFrame borderSlug={stageLook.borderSlug} className="rounded-xl border-white/12 bg-black/45 p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-full border border-white/20 bg-white/10 inline-flex items-center justify-center">
+                      <UserRound className="w-6 h-6 text-white/70" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-black truncate ${stageAccentClass}`}>
+                        {previewProfile?.username || 'Player'}
+                      </p>
+                      <p className="text-[11px] uppercase tracking-wide truncate">
+                        <CosmeticTitle title={String(stageLook.titleName || 'Rookie Challenger')} titleSlug={stageLook.titleSlug} />
+                      </p>
+                      <p className="text-[10px] text-white/60 inline-flex items-center gap-1">
+                        <Shield className="w-3 h-3" />
+                        {previewProfile?.guild ? `Guild: ${previewProfile.guild}` : 'No guild pledged'}
+                      </p>
+                    </div>
+                  </div>
+                </CosmeticFrame>
+              </CosmeticThemeProvider>
             </div>
             <div className="rounded-xl border border-white/15 bg-black/35 p-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-white/55 mb-1">Duel Card Accent</p>
-              <CosmeticPreview cosmetic={previewStageItem || ({ name: 'Sample Duel FX', rarity: 'Rare', slug: 'vote-comet-trail', category: 'vote_effect' } as ShopItem)} />
+              <p className="text-[10px] uppercase tracking-wide text-white/55 mb-1">Vote FX Tester</p>
+              <CosmeticPreview
+                cosmetic={{
+                  name: String(stageLook.voteEffectName || 'Vote Pulse'),
+                  slug: stageLook.voteEffectSlug || 'vote-comet-trail',
+                  category: 'vote_effect',
+                }}
+              />
             </div>
           </div>
         </Card>

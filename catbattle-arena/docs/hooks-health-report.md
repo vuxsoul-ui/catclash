@@ -37,3 +37,6 @@ Source: `/api/admin/launch-metrics` (local)
   - `arena_fetch_empty` to `arena_fetch_success` conversion rate
   - `arena_refill_failed` frequency per landing cohort
   - `visitor_to_vote_pct` movement toward target 30
+
+## Follow-up Note (Desktop Top)
+- Reduced top-of-page clutter on desktop should improve first-action clarity by keeping arena toggle + pulse controls in one scan line and eliminating duplicate stat chips.

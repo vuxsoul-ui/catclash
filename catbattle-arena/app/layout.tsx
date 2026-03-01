@@ -3,6 +3,8 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import Nav from "./components/Nav";
 import GlobalToastHost from "./components/GlobalToastHost";
+import BuildStamp from "./components/BuildStamp";
+import { canonicalSiteOrigin } from "./lib/site-origin";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -17,7 +19,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://catclash.org"),
+  metadataBase: new URL(canonicalSiteOrigin()),
   title: "CatClash Arena | Rate the Ultimate Cat",
   description: "Vote on the cutest, funniest, and most chaotic cats. The ultimate feline showdown.",
   icons: {
@@ -46,6 +48,7 @@ export default function RootLayout({
         <Nav />
         <div className="pt-[calc(var(--header-h)+env(safe-area-inset-top))] safe-bottom-pad sm:pb-0">{children}</div>
         <GlobalToastHost />
+        <BuildStamp />
         <div className="vuxsolia-watermark" aria-hidden="true">Property of Vuxsolia.</div>
       </body>
     </html>

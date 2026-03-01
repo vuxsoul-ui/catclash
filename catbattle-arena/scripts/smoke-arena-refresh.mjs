@@ -16,7 +16,7 @@ const out = {
 };
 
 try {
-  await page.goto(`${base}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto(`${base}/?fixture=1`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
   await page.waitForTimeout(1800);
   const continueBtn = page.getByRole('button', { name: 'Continue' });
@@ -29,7 +29,7 @@ try {
   await page.waitForTimeout(1200);
   const stableStart = Date.now();
   while (Date.now() - stableStart < 3000) {
-    const voteBtn = await page.locator('button:has-text("Vote A"), button:has-text("Vote B"), button:has-text("Vote")').count();
+    const voteBtn = await page.locator('button:has-text("Vote A"), button:has-text("Vote B")').count();
     const reloadFallback = await page.locator('text=Arena is reloading, text=Refilling arena...').count();
     const refreshBtn = await page.locator('button:has-text("Refresh")').count();
     const noActive = await page.locator('text=No active main arena today., text=No active rookie arena today.').count();

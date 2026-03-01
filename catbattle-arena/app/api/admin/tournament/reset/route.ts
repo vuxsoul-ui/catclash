@@ -58,20 +58,48 @@ export async function POST(request: NextRequest) {
   const date = todayUtc();
   const createdByType: Record<'main' | 'rookie', string> = { main: '', rookie: '' };
   for (const type of ['main', 'rookie'] as const) {
-    const { data: inserted, error: insertErr } = await sb
+    const { data: existingToday, error: existingErr } = await sb
       .from('tournaments')
-      .insert({
-        date,
-        status: 'active',
-        round: 1,
-        tournament_type: type,
-      })
       .select('id')
-      .single();
-    if (insertErr || !inserted?.id) {
-      return NextResponse.json({ ok: false, error: insertErr?.message || `Failed to create ${type} tournament` }, { status: 500 });
+      .eq('date', date)
+      .eq('tournament_type', type)
+      .maybeSingle();
+    if (existingErr) {
+      return NextResponse.json({ ok: false, error: existingErr.message }, { status: 500 });
     }
-    createdByType[type] = String(inserted.id);
+
+    let tournamentId = '';
+    if (existingToday?.id) {
+      tournamentId = String(existingToday.id);
+      const { error: resetErr } = await sb
+        .from('tournaments')
+        .update({ status: 'active', round: 1, champion_id: null })
+        .eq('id', tournamentId);
+      if (resetErr) {
+        return NextResponse.json({ ok: false, error: resetErr.message }, { status: 500 });
+      }
+
+      await sb.from('tournament_matches').delete().eq('tournament_id', tournamentId);
+      await sb.from('arena_match_queue').delete().eq('tournament_id', tournamentId);
+      // Clear per-user arena page caches so users don't keep stale match_ids after reset.
+      await sb.from('arena_page_state').delete().eq('arena_type', type);
+    } else {
+      const { data: inserted, error: insertErr } = await sb
+        .from('tournaments')
+        .insert({
+          date,
+          status: 'active',
+          round: 1,
+          tournament_type: type,
+        })
+        .select('id')
+        .single();
+      if (insertErr || !inserted?.id) {
+        return NextResponse.json({ ok: false, error: insertErr?.message || `Failed to create ${type} tournament` }, { status: 500 });
+      }
+      tournamentId = String(inserted.id);
+    }
+    createdByType[type] = tournamentId;
   }
 
   const seeded = await runAdminArenaSeed({

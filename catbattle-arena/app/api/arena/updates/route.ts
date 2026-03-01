@@ -18,12 +18,6 @@ export async function GET(request: NextRequest) {
     const arena = parseArena(url.searchParams.get("arena"));
     const tab = parseTab(url.searchParams.get("tab"));
     const pageIndex = Math.max(0, Number(url.searchParams.get("page") || 0));
-    const sinceRaw = String(url.searchParams.get("since") || "").trim();
-    const parsedSince = Number(sinceRaw || 0);
-    const sinceIso = Number.isFinite(parsedSince) && parsedSince > 0
-      ? new Date(parsedSince).toISOString()
-      : new Date(Date.now() - 60_000).toISOString();
-
     const page = await loadArenaPage({ arena, tab, pageIndex });
     const matchIds = page.matchIds;
     if (matchIds.length === 0) {
@@ -36,20 +30,21 @@ export async function GET(request: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    let rows: any[] = [];
+    // Always return current vote totals for the active page so cross-device
+    // viewers stay in sync even when updated_at stamps are stale or delayed.
     const primary = await supabase
       .from("tournament_matches")
       .select("id, votes_a, votes_b, updated_at, created_at")
-      .in("id", matchIds)
-      .gte("updated_at", sinceIso);
+      .in("id", matchIds);
+    let rows: any[] = [];
     if (!primary.error) {
       rows = primary.data || [];
     } else {
-      const fallbackNoUpdated = await supabase
+      const fallback = await supabase
         .from("tournament_matches")
         .select("id, votes_a, votes_b, created_at")
         .in("id", matchIds);
-      rows = fallbackNoUpdated.data || [];
+      rows = fallback.error ? [] : (fallback.data || []);
     }
 
     const updates = (rows || []).map((r: any) => ({
