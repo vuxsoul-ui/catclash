@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeArenaUtcContext } from "../arena-active.ts";
+import { computeArenaUtcContext } from "../arena-active";
 
 test("computeArenaUtcContext keeps UTC day key near midnight before rollover", () => {
   const now = new Date("2026-02-21T23:59:59.900Z");

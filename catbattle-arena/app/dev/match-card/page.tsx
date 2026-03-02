@@ -1,7 +1,58 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { MatchCard, type ArenaMatch } from '../../page';
+import type { ArenaMatch } from '../../page';
+
+type MatchCardProps = {
+  match: ArenaMatch;
+  voted: string | null;
+  isVoting: boolean;
+  predictBusy: boolean;
+  calloutBusy: boolean;
+  socialEnabled: boolean;
+  availableSigils: number;
+  voteStreak: number;
+  isExiting?: boolean;
+  voteQueued?: boolean;
+  showNextUp?: boolean;
+  onRefreshQueued?: (matchId: string) => void;
+  onVoteAccepted?: (matchId: string, side: 'a' | 'b') => void;
+  slotPhase?: 'idle' | 'voted' | 'exiting';
+  slotChosenSide?: 'a' | 'b' | null;
+  enterPhase?: 'idle' | 'entering';
+  debugMode?: boolean;
+  onVote: (matchId: string, catId: string) => Promise<boolean>;
+  onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
+  onCreateCallout: (matchId: string, catId: string) => void;
+};
+
+function DevMatchCard({ match, voted, isExiting }: MatchCardProps) {
+  const votedLabel = voted ? 'VOTED' : 'UNVOTED';
+  const exitLabel = isExiting ? 'EXITING' : '';
+  return (
+    <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold">{match.match_id}</div>
+        <div className="text-[10px] text-white/60">{[votedLabel, exitLabel].filter(Boolean).join(' • ')}</div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+          <div className="text-xs font-semibold">{match.cat_a?.name || 'Cat A'}</div>
+          <div className="text-[10px] text-white/60">@{match.cat_a?.owner_username || 'unknown'}</div>
+          <div className="mt-1 text-[10px] text-white/60">votes: {match.votes_a}</div>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+          <div className="text-xs font-semibold">{match.cat_b?.name || 'Cat B'}</div>
+          <div className="text-[10px] text-white/60">@{match.cat_b?.owner_username || 'unknown'}</div>
+          <div className="mt-1 text-[10px] text-white/60">votes: {match.votes_b}</div>
+        </div>
+      </div>
+      <div className="mt-2 text-[10px] text-white/50">
+        This sandbox uses a lightweight preview component to avoid importing runtime exports from `app/page.tsx`.
+      </div>
+    </div>
+  );
+}
 
 function makeMatch(id: string, opts?: { close?: boolean; votesA?: number; votesB?: number; cosmetics?: boolean }): ArenaMatch {
   const cosmetics = !!opts?.cosmetics;
@@ -116,7 +167,7 @@ export default function DevMatchCardPage() {
           {mocks.map((entry) => (
             <div key={entry.key} className="rounded-xl border border-white/10 bg-white/[0.02] p-2">
               <p className="mb-1 text-[11px] text-white/60">{entry.label} • Cosmetics: {entry.cosmetics}</p>
-              <MatchCard
+              <DevMatchCard
                 match={entry.match}
                 voted={entry.label === 'Voted' ? (votedMap[entry.match.match_id] || entry.match.cat_a.id) : (votedMap[entry.match.match_id] || null)}
                 isVoting={false}

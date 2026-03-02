@@ -1,13 +1,13 @@
 // REPLACE: app/page.tsx
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react";
 import {
   Sparkles, Flame, Target, Zap, Loader2, Check, Crosshair,
   ArrowRight, Crown, Swords, MessageCircle, Send,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import SigilIcon from "./components/icons/SigilIcon";
 import ArenaFlameCard, { type ArenaFlame } from "./components/ArenaFlameCard";
 import DuelCardMini from "./components/duel/DuelCardMini";
@@ -30,6 +30,8 @@ import { pickFairMatches } from "./api/_lib/pickFairMatches";
 import { checkTapTarget, warnOnce } from "./lib/dev-click-guards";
 import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
 import { canonicalThumbForCat } from "./lib/cat-images";
+import DebugControls from "./components/DebugControls";
+import DebugWidget from "./components/DebugWidget";
 
 // Types
 interface UserProgress {
@@ -413,7 +415,7 @@ function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null
 }
 
 // ── Match Card ── Images link to profile, vote buttons below
-export const MatchCard = React.memo(function MatchCard({
+const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
   debugMode = false,
@@ -1501,7 +1503,7 @@ export const MatchCard = React.memo(function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo,
+  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   votingMatch: string | null;
@@ -1517,6 +1519,7 @@ function ArenaSection({
   onSwitchArena?: (arena: 'main' | 'rookie') => void;
   debugInfo?: ArenaInventoryDebug | null;
   queueInfo?: ArenaQueuePageInfo | null;
+  debugMode?: boolean;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
@@ -1666,8 +1669,6 @@ function ArenaSection({
     if (queuedVotes[matchId]) return true;
     return false;
   }, [keepUntilByMatchId, queuedVotes, slotUiByMatchId, votingMatch]);
-  const searchParams = useSearchParams();
-  const debugMode = searchParams?.get('debug') === '1';
   const visiblePageOrder = useMemo(
     () =>
       visiblePageOrderBase.filter((m) => {
@@ -1714,8 +1715,9 @@ function ArenaSection({
     const totalSize = Math.max(0, Number(queueInfo?.totalSize || 0));
     const votedCount = Math.max(0, Number(queueInfo?.votedCount || 0));
     const pageComplete = !!queueInfo?.pageComplete;
-    if (totalSize > votedCount) return true;
-    return !pageComplete;
+    if (pageComplete) return false;
+    if (totalSize <= 0) return true;
+    return votedCount < totalSize;
   }, [queueInfo?.pageComplete, queueInfo?.totalSize, queueInfo?.votedCount]);
   const hasLocalUnvotedOrQueued = remainingForUserCount > 0;
   const hasMoreFightsForUser =
@@ -2432,8 +2434,12 @@ function ArenaSection({
 
   const handleVoteAccepted = useCallback((matchId: string, side: "a" | "b") => {
     if (segment !== 'voting') return;
-    if (!presentMatchIdsRef.current.has(matchId)) return;
-    setPrunedMatchIds((prev) => (prev[matchId] ? prev : { ...prev, [matchId]: true }));
+    // Do not hard-depend on `presentMatchIdsRef` here: on fast clicks right after a
+    // deck refresh/remount, the "present set" effect may not have run yet, causing
+    // vote animations to intermittently fail to transition.
+    if (presentMatchIdsRef.current.has(matchId)) {
+      setPrunedMatchIds((prev) => (prev[matchId] ? prev : { ...prev, [matchId]: true }));
+    }
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.log('[DEV][vote-lifecycle] accepted', {
@@ -2924,6 +2930,9 @@ async function apiClaimCrate() {
 // ── Main Page ──
 export default function Page() {
   const router = useRouter();
+  const [debugMode, setDebugMode] = useState(false);
+  const resetMatchesRef = useRef<() => void>(() => {});
+  const [debugDeckNonce, setDebugDeckNonce] = useState(0);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [arenas, setArenas] = useState<Arena[]>([]);
@@ -3045,6 +3054,131 @@ export default function Page() {
   const arenaRefillInFlightRef = useRef<Record<'main' | 'rookie', boolean>>({ main: false, rookie: false });
   const arenaRefillLastAtRef = useRef<Record<'main' | 'rookie', number>>({ main: 0, rookie: 0 });
   const voteStateScope = useMemo(() => voteScopeFromArenas(arenas), [arenas]);
+  const showToast = useCallback((msg: string) => showGlobalToast(msg, 5000), []);
+  const handleResetMatches = useCallback(() => {
+    setVotedMatches({});
+    writeVotedMatchesToStorage({}, voteStateScope);
+    setArenaPoolsByType({ main: [], rookie: [] });
+    setArenaQueueInfo((prev) => ({
+      main: { ...prev.main, votedCount: 0, pageComplete: false },
+      rookie: { ...prev.rookie, votedCount: 0, pageComplete: false },
+    }));
+    setHasSeenArenaByType({ main: false, rookie: false });
+    statusBurstUntilRef.current = 0;
+    setVoteStreak(0);
+    showToast("Debug reset: cleared voted matches");
+  }, [voteStateScope, showToast]);
+  resetMatchesRef.current = handleResetMatches;
+  const handleDebugResetMatches = useCallback(() => {
+    setVotedMatches({});
+    writeVotedMatchesToStorage({}, voteStateScope);
+    statusBurstUntilRef.current = 0;
+    setVoteStreak(0);
+    showToast("Votes reset for debugging");
+  }, [voteStateScope, showToast]);
+  const handleDebugWidgetHydrate = useCallback((payload: unknown) => {
+    // Debug refresh should not wipe the current deck; it should just clear local vote state
+    // and rehydrate the deck from the debug refresh payload.
+    handleDebugResetMatches();
+    const data = (payload && typeof payload === 'object') ? (payload as any) : null;
+    const matches = Array.isArray(data?.matches) ? (data.matches as ArenaMatch[]) : [];
+    if (matches.length > 0) {
+      setArenas((prev) => applyPageMatchesToArenas(prev, arenaTypeTab, matches));
+      setArenaPoolsByType((prev) => ({ ...prev, [arenaTypeTab]: matches }));
+      setArenaQueueInfo((prev) => ({
+        ...prev,
+        [arenaTypeTab]: {
+          pageIndex: Math.max(0, Number(data?.page_index || prev[arenaTypeTab]?.pageIndex || 0)),
+          pageSize: Math.max(1, Number(data?.page_size || prev[arenaTypeTab]?.pageSize || 6)),
+          totalSize: Math.max(0, Number(data?.total_size || prev[arenaTypeTab]?.totalSize || 36)),
+          // Debug UX: force "fresh" vote flow even if the server reports completion.
+          votedCount: 0,
+          pageComplete: false,
+        },
+      }));
+    } else {
+      // Still remount the deck UI so you can re-test vote animations on the current deck.
+      setArenaQueueInfo((prev) => ({
+        ...prev,
+        [arenaTypeTab]: { ...prev[arenaTypeTab], votedCount: 0, pageComplete: false },
+      }));
+    }
+    setDebugDeckNonce((n) => n + 1);
+  }, [arenaTypeTab, handleDebugResetMatches]);
+
+  const handleDebugArenaStackRefill = useCallback(async (arenaType?: 'main' | 'rookie'): Promise<ArenaRefreshResult> => {
+    const type = arenaType || arenaTypeTab;
+    const url = `/api/arena/refresh?arena=${encodeURIComponent(type)}&debug=1`;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const payload = await res.json().catch(() => null) as any;
+      const matches = Array.isArray(payload?.matches) ? (payload.matches as ArenaMatch[]) : [];
+      // eslint-disable-next-line no-console
+      console.log('[debug refill] got', { arena: type, status: res.status, count: matches.length });
+
+      if (!payload?.ok || matches.length === 0) {
+        return { ok: true, count: 0, status: 'nonrenderable', renderableCount: 0, advanced: false, pageIndex: 0, pageComplete: false, votedCount: 0, totalSize: 0 };
+      }
+
+      setArenas((prev) => applyPageMatchesToArenas(prev, type, matches));
+      setArenaPoolsByType((prev) => ({ ...prev, [type]: matches }));
+      setArenaQueueInfo((prev) => ({
+        ...prev,
+        [type]: {
+          pageIndex: 0,
+          pageSize: matches.length,
+          totalSize: Math.max(matches.length, Number(payload?.total_size || matches.length)),
+          votedCount: 0,
+          pageComplete: false,
+        },
+      }));
+      setHasSeenArenaByType((prev) => ({ ...prev, [type]: true }));
+      setDebugDeckNonce((n) => n + 1);
+      return { ok: true, count: matches.length, status: 'ok', renderableCount: matches.length, advanced: true, pageIndex: 0, pageComplete: false, votedCount: 0, totalSize: Math.max(matches.length, Number(payload?.total_size || matches.length)) };
+    } catch {
+      return { ok: false, count: 0, status: 'fetch_failed' };
+    }
+  }, [arenaTypeTab]);
+
+  const handleDebugRefreshMatches = useCallback(async () => {
+    const url = `/api/arena/refresh?arena=${encodeURIComponent(arenaTypeTab)}&debug=1`;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const payload = await res.json().catch(() => null) as any;
+
+      const matches = Array.isArray(payload?.matches) ? (payload.matches as ArenaMatch[]) : [];
+      // eslint-disable-next-line no-console
+      console.log('[debug refresh] got', { count: matches.length });
+
+      if (payload?.ok && matches.length > 0) {
+        // Debug refresh should be authoritative: apply directly to the deck-driving state.
+        handleDebugResetMatches();
+        setArenas((prev) => applyPageMatchesToArenas(prev, arenaTypeTab, matches));
+        setArenaPoolsByType((prev) => ({ ...prev, [arenaTypeTab]: matches }));
+        setArenaQueueInfo((prev) => ({
+          ...prev,
+          [arenaTypeTab]: {
+            pageIndex: Math.max(0, Number(payload?.page_index ?? prev[arenaTypeTab]?.pageIndex ?? 0)),
+            pageSize: Math.max(1, Number(payload?.page_size ?? prev[arenaTypeTab]?.pageSize ?? 6)),
+            totalSize: Math.max(0, Number(payload?.total_size ?? prev[arenaTypeTab]?.totalSize ?? 36)),
+            votedCount: 0,
+            pageComplete: false,
+          },
+        }));
+        setHasSeenArenaByType((prev) => ({ ...prev, [arenaTypeTab]: true }));
+        // Remount the arena UI so internal cursor/segment/refill state resets.
+        setDebugDeckNonce((n) => n + 1);
+        // eslint-disable-next-line no-console
+        console.log('[debug refresh] applied to deck state');
+      } else {
+        // eslint-disable-next-line no-console
+        console.log('[debug refresh] no matches to apply', { ok: !!payload?.ok, status: res.status });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG_REFRESH] refresh failed', e);
+    }
+  }, [arenaTypeTab, handleDebugResetMatches]);
   const displayedArenas = useMemo(() => {
     const typed = arenas.filter((a) => a.type === arenaTypeTab);
     if (typed.length > 0) return typed;
@@ -3371,7 +3505,7 @@ export default function Page() {
       [arenaType]: {
         pageIndex: Math.max(0, Number(data.page_index || 0)),
         pageSize: Math.max(1, Number(data.page_size || 6)),
-        totalSize: Math.max(1, Number(data.total_size || 36)),
+        totalSize: Math.max(0, Number(data.total_size || 36)),
         votedCount: Math.max(0, Number(data.voted_count || 0)),
         pageComplete: !!data.page_complete,
       },
@@ -3778,8 +3912,6 @@ export default function Page() {
     }
   }
 
-  function showToast(msg: string) { showGlobalToast(msg, 5000); }
-
   useEffect(() => {
     return () => {
       if (voteCooldownTimerRef.current !== null) {
@@ -3926,13 +4058,23 @@ export default function Page() {
       const nextPageIndex = Math.max(0, Number(data.page_index || prevPageIndex));
       const pageComplete = !!data.page_complete;
       const votedCount = Math.max(0, Number(data.voted_count || 0));
-      const totalSize = Math.max(1, Number(data.total_size || 36));
+      const totalSize = Math.max(0, Number(data.total_size || 36));
       const nextSignature = matches.map((m) => String(m.match_id || '')).filter(Boolean).join('|');
       const renderableMatches = matches.filter((m) =>
         isArenaVotingStatus(m.status) && (!votedMatches[m.match_id] || String(votingMatch || '') === String(m.match_id || ''))
       );
       const renderableCount = renderableMatches.length;
       const advanced = nextPageIndex > prevPageIndex || (!!nextSignature && nextSignature !== prevSignature);
+      setArenaQueueInfo((prev) => ({
+        ...prev,
+        [type]: {
+          pageIndex: nextPageIndex,
+          pageSize: Math.max(1, Number(data.page_size || 6)),
+          totalSize,
+          votedCount,
+          pageComplete,
+        },
+      }));
 
       if (matches.length === 0) {
         fetch('/api/telemetry/event', {
@@ -3984,17 +4126,6 @@ export default function Page() {
 
       setArenas((prev) => applyPageMatchesToArenas(prev, type, matches));
       setArenaPoolsByType((prev) => ({ ...prev, [type]: matches }));
-      setArenaQueueInfo((prev) => ({
-        ...prev,
-        [type]: {
-          pageIndex: nextPageIndex,
-          pageSize: Math.max(1, Number(data.page_size || 6)),
-          totalSize,
-          votedCount,
-          pageComplete,
-        },
-      }));
-
       if (renderableCount > 0) {
         fetch('/api/telemetry/event', {
           method: 'POST',
@@ -4387,6 +4518,9 @@ export default function Page() {
       </div>
 
       {/* Hero */}
+      <Suspense fallback={null}>
+        <DebugWidget arenaType={arenaTypeTab} onHydrate={handleDebugWidgetHydrate} />
+      </Suspense>
       <section className="pt-5 sm:pt-7 lg:pt-8 pb-2 sm:pb-3">
         <div className="max-w-5xl mx-auto px-3.5 sm:px-4">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/25 bg-yellow-500/8 text-[10px]">
@@ -4398,7 +4532,16 @@ export default function Page() {
               <h1 className="text-lg font-bold tracking-tight text-white">Today&apos;s Arenas</h1>
               <p className="text-[11px] text-white/55">Vote fast, stack streaks, and catch the next Pulse.</p>
             </div>
-            <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
+            <div className="flex items-center gap-2">
+              <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
+              <Suspense fallback={null}>
+                <DebugControls
+                  onDebugChange={setDebugMode}
+                  onRefresh={handleDebugRefreshMatches}
+                  onReset={handleDebugResetMatches}
+                />
+              </Suspense>
+            </div>
           </div>
         </div>
       </section>
@@ -4736,7 +4879,7 @@ export default function Page() {
           ) : (
             <div className="space-y-4">
               {displayedArenas.map((arena) => (
-                <ArenaSection key={arena.tournament_id} arena={arena} votedMatches={votedMatches}
+                <ArenaSection key={`${arena.tournament_id}:${debugDeckNonce}`} arena={arena} votedMatches={votedMatches}
                   votingMatch={votingMatch}
                   predictBusyMatch={predictBusyMatch}
                   calloutBusyMatch={calloutBusyMatch}
@@ -4750,10 +4893,11 @@ export default function Page() {
                   queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}
                   pulseCountdown={pulseCountdown}
                   onSwitchArena={undefined}
-                  onRequestMore={() => handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
+                  onRequestMore={() => debugMode ? handleDebugArenaStackRefill((arena.type as 'main' | 'rookie')) : handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
                   onVote={handleVote}
                   onPredict={handlePredict}
                   onCreateCallout={handleCreateCallout}
+                  debugMode={debugMode}
             />
           ))}
         </div>

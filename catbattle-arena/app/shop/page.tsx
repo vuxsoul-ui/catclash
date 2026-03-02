@@ -10,7 +10,8 @@ import CosmeticPreviewSheet from '../components/cosmetics/CosmeticPreviewSheet';
 import CosmeticFrame from '../components/cosmetics/CosmeticFrame';
 import CosmeticTitle from '../components/cosmetics/CosmeticTitle';
 import CosmeticThemeProvider from '../components/cosmetics/CosmeticThemeProvider';
-import { canPurchaseCosmetic, resolveCosmeticEffect, cosmeticTextClassFromSlug } from '../_lib/cosmetics/effectsRegistry';
+import { canPurchaseCosmetic, resolveCosmeticEffect } from '../_lib/cosmetics/effectsRegistry';
+import { cosmeticTextClassFromSlug } from '../_lib/cosmetics/effectsRegistry';
 import { Badge, Button, Card, Chip, SectionHeader } from '../components/ui/primitives';
 
 type ShopItem = {

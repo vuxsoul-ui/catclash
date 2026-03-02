@@ -31,9 +31,6 @@ export default function BorderPreview({
   function renderRail(extraClassName = '') {
     return (
       <div className={`borderFrame h-full rounded-lg ${extraClassName}`}>
-        <span className="previewNameplate" aria-hidden>
-          Preview Cat
-        </span>
         <div className="avatarStub" />
         <span className="previewCue" aria-hidden>{cue}</span>
       </div>
