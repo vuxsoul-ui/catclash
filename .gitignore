@@ -1,0 +1,15 @@
+
+# deps
+node_modules/
+**/node_modules/
+
+# OS junk
+.DS_Store
+
+# Next build output
+.next/
+out/
+
+# env files
+.env.local
+.env.*.local
