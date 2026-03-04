@@ -637,19 +637,19 @@ body {
 .fx-border-flame {
   position: relative;
   overflow: hidden;
-  border-color: rgba(249, 115, 22, 0.72);
+  border-color: rgba(210,140,40,0.38);
   box-shadow:
-    0 0 0 1px rgba(249, 115, 22, 0.42),
-    0 0 20px rgba(239, 68, 68, 0.32),
-    0 0 42px rgba(234, 88, 12, 0.22),
-    inset 0 0 28px rgba(249, 115, 22, 0.2);
+    inset 0 0 30px rgba(180,90,10,0.45),
+    inset 0 0 10px rgba(230,160,40,0.28),
+    0 0 22px rgba(170,80,5,0.38),
+    0 0 48px rgba(120,50,0,0.18);
   background:
-    radial-gradient(118% 96% at 12% 102%, rgba(239, 68, 68, 0.3), transparent 56%),
-    radial-gradient(112% 88% at 92% -4%, rgba(245, 158, 11, 0.28), transparent 52%),
-    repeating-linear-gradient(112deg, rgba(249,115,22,0.18) 0 4px, rgba(249,115,22,0) 4px 11px),
-    linear-gradient(155deg, rgba(39, 18, 8, 0.48), rgba(24, 12, 8, 0.32));
-  background-size: 100% 100%, 100% 100%, 240% 240%, 100% 100%;
-  animation: cosmBorderFlameBase 1.85s ease-in-out infinite;
+    radial-gradient(ellipse at 50% 50%, rgba(210,130,20,0.5) 0%, rgba(210,130,20,0) 35%),
+    radial-gradient(ellipse at 50% 50%, rgba(140,60,5,0.56) 0%, rgba(72,30,3,0.82) 66%, rgba(15,7,0,1) 100%),
+    radial-gradient(ellipse at 30% 40%, rgba(220,150,30,0.18) 0%, rgba(220,150,30,0) 46%),
+    radial-gradient(ellipse at 70% 60%, rgba(220,150,30,0.18) 0%, rgba(220,150,30,0) 46%),
+    radial-gradient(ellipse at 50% 50%, rgba(15,7,0,0.88) 70%, rgba(15,7,0,1) 100%);
+  animation: cosmEmberForgeBreath 4.2s ease-in-out infinite;
 }
 
 .cosm-border-flame::before,
@@ -660,12 +660,11 @@ body {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(116deg, rgba(249,115,22,0.54), rgba(245,158,11,0.24), rgba(248,113,113,0.48), rgba(251,146,60,0.42));
-  background-size: 260% 220%;
+    radial-gradient(ellipse at 50% 50%, rgba(240,170,54,0.36) 0%, rgba(190,96,20,0.2) 44%, rgba(190,96,20,0) 72%);
   mix-blend-mode: screen;
-  opacity: 0.98;
-  filter: blur(1.4px);
-  animation: fxFlameFlow 1.45s ease-in-out infinite, fxFlameEdgeLick 920ms ease-in-out infinite;
+  opacity: 0.4;
+  filter: blur(2px);
+  animation: cosmEmberHeatShimmer 2.4s ease-in-out infinite;
 }
 
 .cosm-border-flame::after,
@@ -676,13 +675,16 @@ body {
   border-radius: inherit;
   pointer-events: none;
   background:
-    radial-gradient(circle at 14% 26%, rgba(255,199,132,0.38) 0 1px, transparent 1px),
-    radial-gradient(circle at 82% 32%, rgba(251,146,60,0.34) 0 1px, transparent 1px),
-    radial-gradient(circle at 56% 70%, rgba(239,68,68,0.28) 0 1px, transparent 1px),
-    radial-gradient(circle at 32% 86%, rgba(254,215,170,0.36) 0 1px, transparent 1px);
-  background-size: 84px 84px, 114px 114px, 102px 102px, 130px 130px;
-  opacity: 0.9;
-  animation: fxFlameFlicker 980ms ease-in-out infinite, fxFlameSparkDrift 1.75s linear infinite;
+    radial-gradient(circle at 16% 72%, rgba(230,166,64,0.56) 0 2px, transparent 2px),
+    radial-gradient(circle at 28% 56%, rgba(218,138,42,0.42) 0 2px, transparent 2px),
+    radial-gradient(circle at 46% 78%, rgba(236,174,72,0.54) 0 2px, transparent 2px),
+    radial-gradient(circle at 68% 64%, rgba(204,120,28,0.38) 0 2px, transparent 2px),
+    radial-gradient(circle at 82% 74%, rgba(228,160,56,0.5) 0 2px, transparent 2px);
+  background-size: 170px 170px, 210px 210px, 180px 180px, 220px 220px, 190px 190px;
+  filter: blur(3px);
+  opacity: 0.44;
+  mix-blend-mode: screen;
+  animation: cosmEmberDrift 4.8s ease-in-out infinite;
 }
 
 .cosm-border-lightning,
@@ -788,15 +790,19 @@ body {
 .cosm-border-solarflare {
   position: relative;
   overflow: hidden;
-  border-color: rgba(251, 191, 36, 0.65);
+  border-color: rgba(255,140,30,0.4);
   box-shadow:
-    0 0 0 1px rgba(251, 191, 36, 0.35),
-    inset 0 0 24px rgba(251, 146, 60, 0.3),
-    0 0 20px rgba(251, 146, 60, 0.38);
+    inset 0 0 30px rgba(220,100,10,0.5),
+    inset 0 0 10px rgba(255,180,40,0.3),
+    0 0 20px rgba(200,80,0,0.4),
+    0 0 50px rgba(160,50,0,0.2);
   background:
-    radial-gradient(130% 96% at 50% 48%, rgba(251, 191, 36, 0.3), rgba(251, 146, 60, 0.24) 52%, rgba(8, 7, 14, 0.96) 82%),
-    radial-gradient(140% 120% at 50% 120%, rgba(120, 36, 8, 0.5), rgba(0, 0, 0, 0) 68%);
-  animation: cosmBorderSolar 3.4s linear infinite;
+    radial-gradient(ellipse at 50% 50%, rgba(255,160,30,0.5) 0%, rgba(255,160,30,0) 35%),
+    radial-gradient(ellipse at 50% 50%, rgba(200,80,16,0.56) 0%, rgba(108,36,8,0.82) 66%, rgba(18,6,0,1) 100%),
+    radial-gradient(ellipse at 25% 35%, rgba(255,200,60,0.18) 0%, rgba(255,200,60,0) 46%),
+    radial-gradient(ellipse at 75% 65%, rgba(255,200,60,0.18) 0%, rgba(255,200,60,0) 46%),
+    radial-gradient(ellipse at 50% 50%, rgba(18,6,0,0.88) 70%, rgba(18,6,0,1) 100%);
+  animation: cosmBorderSolar 3.5s ease-in-out infinite;
 }
 
 .cosm-border-solarflare::before {
@@ -806,14 +812,28 @@ body {
   border-radius: inherit;
   pointer-events: none;
   background:
-    radial-gradient(circle at 24% 30%, rgba(255, 212, 153, 0.28) 0 1px, transparent 1px),
-    radial-gradient(circle at 62% 58%, rgba(251, 146, 60, 0.22) 0 1px, transparent 1px),
-    radial-gradient(circle at 78% 34%, rgba(251, 191, 36, 0.22) 0 1px, transparent 1px);
-  background-size: 140px 140px, 180px 180px, 160px 160px;
-  filter: blur(0.75px);
-  opacity: 0.34;
+    radial-gradient(circle at 18% 28%, rgba(255, 196, 88, 0.5) 0 2px, transparent 2px),
+    radial-gradient(circle at 36% 62%, rgba(255, 168, 58, 0.46) 0 2px, transparent 2px),
+    radial-gradient(circle at 52% 44%, rgba(255, 188, 72, 0.55) 0 2px, transparent 2px),
+    radial-gradient(circle at 68% 70%, rgba(255, 152, 44, 0.42) 0 2px, transparent 2px),
+    radial-gradient(circle at 82% 34%, rgba(255, 206, 96, 0.52) 0 2px, transparent 2px);
+  background-size: 170px 170px, 190px 190px, 160px 160px, 210px 210px, 180px 180px;
+  filter: blur(3px);
+  opacity: 0.5;
   mix-blend-mode: screen;
-  animation: cosmBorderGalaxy 9s linear infinite;
+  animation: cosmSolarMoteDrift 5.2s ease-in-out infinite;
+}
+
+.cosm-border-solarflare::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 190, 70, 0.38) 0%, rgba(255, 140, 30, 0.18) 42%, rgba(255, 140, 30, 0) 70%);
+  mix-blend-mode: screen;
+  animation: cosmSolarFlicker 1.7s ease-in-out infinite;
 }
 
 .cosm-border-galaxy {
@@ -1232,8 +1252,32 @@ body {
   50% { background-position: 100% 50%; filter: brightness(1.08); }
 }
 @keyframes cosmBorderSolar {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 100% 100%; }
+  0%, 100% { transform: scale(0.95); filter: brightness(0.94) saturate(1); }
+  50% { transform: scale(1.06); filter: brightness(1.06) saturate(1.08); }
+}
+@keyframes cosmSolarFlicker {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+@keyframes cosmSolarMoteDrift {
+  0%, 100% { transform: translate(0, 0) scale(0.96); opacity: 0.38; }
+  25% { transform: translate(-6px, -4px) scale(1.06); opacity: 0.62; }
+  55% { transform: translate(7px, -8px) scale(0.98); opacity: 0.44; }
+  78% { transform: translate(-4px, 3px) scale(1.04); opacity: 0.54; }
+}
+@keyframes cosmEmberForgeBreath {
+  0%, 100% { transform: scale(0.96); filter: brightness(0.94) saturate(1); }
+  50% { transform: scale(1.05); filter: brightness(1.05) saturate(1.08); }
+}
+@keyframes cosmEmberHeatShimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes cosmEmberDrift {
+  0%, 100% { transform: translate(0, 0) scale(0.95); opacity: 0.34; }
+  28% { transform: translate(-5px, -8px) scale(1.04); opacity: 0.58; }
+  54% { transform: translate(6px, -12px) scale(0.98); opacity: 0.42; }
+  80% { transform: translate(-3px, -4px) scale(1.02); opacity: 0.5; }
 }
 @keyframes cosmBorderLightning {
   0% { background-position: 0% 50%; filter: brightness(0.96); }
@@ -1460,6 +1504,96 @@ body {
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2); }
 }
 
+@keyframes rvRoyalBreath {
+  0%, 100% { transform: scale(0.97); opacity: 0.8; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+
+@keyframes rvRoyalParticle1 {
+  0%, 100% { transform: translate(0, 0) scale(0.95); opacity: 0.46; }
+  35% { transform: translate(5px, -6px) scale(1.08); opacity: 0.68; }
+  70% { transform: translate(11px, -2px) scale(0.9); opacity: 0.42; }
+}
+
+@keyframes rvRoyalParticle2 {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.44; }
+  45% { transform: translate(-7px, -5px) scale(1.14); opacity: 0.66; }
+  80% { transform: translate(-11px, 2px) scale(0.9); opacity: 0.4; }
+}
+
+@keyframes rvRoyalParticle3 {
+  0%, 100% { transform: translate(0, 0) scale(0.92); opacity: 0.5; }
+  40% { transform: translate(6px, -8px) scale(1.1); opacity: 0.7; }
+  75% { transform: translate(10px, -1px) scale(0.88); opacity: 0.42; }
+}
+
+@keyframes rvRoyalParticle4 {
+  0%, 100% { transform: translate(0, 0) scale(0.9); opacity: 0.4; }
+  30% { transform: translate(-6px, -7px) scale(1.06); opacity: 0.62; }
+  68% { transform: translate(-9px, 1px) scale(0.88); opacity: 0.42; }
+}
+
+@keyframes rvRoyalParticle5 {
+  0%, 100% { transform: translate(0, 0) scale(0.96); opacity: 0.44; }
+  38% { transform: translate(7px, -6px) scale(1.1); opacity: 0.66; }
+  74% { transform: translate(12px, 0px) scale(0.9); opacity: 0.42; }
+}
+
+.rv-royal-breath {
+  animation: rvRoyalBreath 4.6s ease-in-out infinite;
+}
+
+.rv-royal-particle-1 { animation: rvRoyalParticle1 4.2s ease-in-out infinite; }
+.rv-royal-particle-2 { animation: rvRoyalParticle2 5.1s ease-in-out infinite; }
+.rv-royal-particle-3 { animation: rvRoyalParticle3 4.8s ease-in-out infinite; }
+.rv-royal-particle-4 { animation: rvRoyalParticle4 5.4s ease-in-out infinite; }
+.rv-royal-particle-5 { animation: rvRoyalParticle5 4.4s ease-in-out infinite; }
+
+@keyframes rvVoidDrift {
+  0%, 100% { transform: scale(0.98); opacity: 0.9; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+
+@keyframes rvVoidParticle1 {
+  0%, 100% { transform: translate(0, 0) scale(0.92); opacity: 0.24; }
+  38% { transform: translate(4px, -5px) scale(1.06); opacity: 0.48; }
+  72% { transform: translate(9px, -1px) scale(0.88); opacity: 0.22; }
+}
+
+@keyframes rvVoidParticle2 {
+  0%, 100% { transform: translate(0, 0) scale(0.96); opacity: 0.22; }
+  45% { transform: translate(-8px, -4px) scale(1.1); opacity: 0.42; }
+  78% { transform: translate(-12px, 1px) scale(0.9); opacity: 0.2; }
+}
+
+@keyframes rvVoidParticle3 {
+  0%, 100% { transform: translate(0, 0) scale(0.9); opacity: 0.26; }
+  40% { transform: translate(6px, -7px) scale(1.08); opacity: 0.5; }
+  76% { transform: translate(11px, -2px) scale(0.86); opacity: 0.24; }
+}
+
+@keyframes rvVoidParticle4 {
+  0%, 100% { transform: translate(0, 0) scale(0.88); opacity: 0.2; }
+  33% { transform: translate(-7px, -6px) scale(1.02); opacity: 0.4; }
+  70% { transform: translate(-10px, 0px) scale(0.84); opacity: 0.2; }
+}
+
+@keyframes rvVoidParticle5 {
+  0%, 100% { transform: translate(0, 0) scale(0.94); opacity: 0.22; }
+  35% { transform: translate(5px, -6px) scale(1.08); opacity: 0.46; }
+  74% { transform: translate(10px, -1px) scale(0.88); opacity: 0.22; }
+}
+
+.rv-void-drift {
+  animation: rvVoidDrift 5.6s ease-in-out infinite;
+}
+
+.rv-void-particle-1 { animation: rvVoidParticle1 5.2s ease-in-out infinite; }
+.rv-void-particle-2 { animation: rvVoidParticle2 5.8s ease-in-out infinite; }
+.rv-void-particle-3 { animation: rvVoidParticle3 5.4s ease-in-out infinite; }
+.rv-void-particle-4 { animation: rvVoidParticle4 5.9s ease-in-out infinite; }
+.rv-void-particle-5 { animation: rvVoidParticle5 5.1s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .cosm-border-lightning,
   .cosm-border-neon-cyan,
@@ -1492,6 +1626,8 @@ body {
   .fx-border-flame::after,
   .fx-border-lightning::before,
   .fx-border-lightning::after,
+  .cosm-border-solarflare::before,
+  .cosm-border-solarflare::after,
   .fx-border-shadow::before,
   .fx-border-shadow::after {
     animation: none !important;
@@ -1526,6 +1662,20 @@ body {
   .cosm-vote-crest {
     animation: none !important;
     display: none !important;
+  }
+  .rv-royal-breath,
+  .rv-royal-particle-1,
+  .rv-royal-particle-2,
+  .rv-royal-particle-3,
+  .rv-royal-particle-4,
+  .rv-royal-particle-5,
+  .rv-void-drift,
+  .rv-void-particle-1,
+  .rv-void-particle-2,
+  .rv-void-particle-3,
+  .rv-void-particle-4,
+  .rv-void-particle-5 {
+    animation: none !important;
   }
 }
 

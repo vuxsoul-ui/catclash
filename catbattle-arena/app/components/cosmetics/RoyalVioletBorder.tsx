@@ -1,8 +1,6 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
-import { useMousePosition } from './useMousePosition';
+import type { ReactNode } from 'react';
 
 type RoyalVioletBorderProps = {
   children: ReactNode;
@@ -11,124 +9,72 @@ type RoyalVioletBorderProps = {
   thickness?: number;
 };
 
-const ROYAL_GRADIENT =
-  'conic-gradient(from 18deg, #2e1065, #7c3aed, #c084fc, #4c1d95, #2e1065)';
-
-function ringMaskStyle(thickness: number): CSSProperties {
-  return {
-    padding: `${thickness}px`,
-    WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-    WebkitMaskComposite: 'xor',
-    maskComposite: 'exclude',
-  } as CSSProperties;
-}
-
 export default function RoyalVioletBorder({
   children,
   className = '',
   radiusClassName = 'rounded-2xl',
   thickness = 2,
 }: RoyalVioletBorderProps) {
-  const reduceMotion = useReducedMotion();
-  const { ref, mouse, handlers } = useMousePosition<HTMLDivElement>();
-  const ringMask = ringMaskStyle(Math.max(1, thickness));
-  const rotateX = reduceMotion ? 0 : -mouse.y * 5;
-  const rotateY = reduceMotion ? 0 : mouse.x * 5;
+  const frameThickness = Math.max(1, thickness);
 
   return (
-    <motion.div
-      ref={ref}
-      className={`relative isolate overflow-hidden bg-slate-950 p-[2px] ${radiusClassName} ${className}`}
-      style={{ transformStyle: 'preserve-3d', backfaceVisibility: 'hidden', willChange: 'transform' }}
-      animate={reduceMotion ? { rotateX: 0, rotateY: 0, scale: 1 } : { rotateX, rotateY, scale: mouse.active ? 1.01 : 1 }}
-      transition={{ type: 'spring', stiffness: 180, damping: 18, mass: 0.65 }}
-      {...handlers}
+    <div
+      className={`relative isolate overflow-hidden border ${radiusClassName} ${className}`}
+      style={{
+        padding: `${frameThickness}px`,
+        borderColor: 'rgba(140,80,255,0.35)',
+        backgroundColor: '#0d0618',
+        boxShadow:
+          'inset 0 0 30px rgba(120,50,220,0.4), inset 0 0 8px rgba(160,80,255,0.25), 0 0 20px rgba(100,40,200,0.3), 0 0 40px rgba(80,20,160,0.15)',
+      }}
     >
-      <motion.div
+      <div
         aria-hidden
-        className={`pointer-events-none absolute -inset-3 ${radiusClassName} blur-[20px]`}
+        className={`pointer-events-none absolute inset-0 ${radiusClassName} rv-royal-breath`}
         style={{
-          backgroundImage: ROYAL_GRADIENT,
-          backgroundSize: '210% 210%',
-          opacity: 0.4,
-          mixBlendMode: 'screen',
-          willChange: 'transform, opacity',
+          background:
+            'radial-gradient(ellipse at 50% 50%, rgba(110,50,200,0.55) 0%, rgba(110,50,200,0) 35%), radial-gradient(ellipse at 50% 50%, rgba(78,28,140,0.5) 0%, rgba(42,14,78,0.82) 66%, rgba(13,6,24,1) 100%), radial-gradient(ellipse at 30% 40%, rgba(150,80,255,0.2) 0%, rgba(150,80,255,0) 44%), radial-gradient(ellipse at 70% 60%, rgba(150,80,255,0.2) 0%, rgba(150,80,255,0) 44%), radial-gradient(ellipse at 50% 50%, rgba(13,6,24,0.82) 68%, rgba(13,6,24,1) 100%)',
         }}
-        animate={reduceMotion ? { opacity: 0.3 } : { backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'], opacity: [0.34, 0.46, 0.36] }}
-        transition={reduceMotion ? undefined : { duration: 8, ease: 'linear', repeat: Infinity }}
       />
-
-      <motion.div
-        aria-hidden
-        className={`pointer-events-none absolute inset-0 ${radiusClassName}`}
-        style={{
-          ...ringMask,
-          backgroundImage: ROYAL_GRADIENT,
-          backgroundSize: '200% 200%',
-          mixBlendMode: 'soft-light',
-          willChange: 'transform',
-        }}
-        animate={
-          reduceMotion
-            ? { opacity: [0.24, 0.36, 0.24] }
-            : {
-                rotate: [0, 360],
-                backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
-                filter: ['saturate(1.05) hue-rotate(0deg)', 'saturate(1.12) hue-rotate(15deg)', 'saturate(1.05) hue-rotate(0deg)'],
-              }
-        }
-        transition={{
-          rotate: { duration: 8, ease: 'linear', repeat: Infinity },
-          backgroundPosition: { duration: 8, ease: 'linear', repeat: Infinity },
-          filter: { duration: 8, ease: 'easeInOut', repeat: Infinity },
-          opacity: { duration: 4, ease: 'easeInOut', repeat: Infinity },
-        }}
-      >
-        <motion.div
-          className={`absolute inset-0 ${radiusClassName}`}
-          style={{
-            backgroundImage: ROYAL_GRADIENT,
-            backgroundSize: '220% 220%',
-            opacity: 0.44,
-            mixBlendMode: 'color-dodge',
-            filter: 'blur(1.5px)',
-            willChange: 'transform, opacity',
-          }}
-          animate={reduceMotion ? { opacity: 0.28 } : { opacity: [0.24, 0.58, 0.28], backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-          transition={reduceMotion ? undefined : { duration: 8, ease: 'linear', repeat: Infinity }}
-        />
-
-        <motion.div
-          className={`pointer-events-none absolute inset-0 ${radiusClassName}`}
-          style={{
-            background:
-              'radial-gradient(120% 90% at 50% 46%, rgba(192,132,252,0.38), rgba(124,58,237,0.18) 52%, rgba(17,24,39,0) 74%), radial-gradient(115% 110% at 50% 50%, rgba(15,23,42,0), rgba(15,23,42,0.52) 86%)',
-            mixBlendMode: 'screen',
-            filter: 'blur(0.8px)',
-            opacity: 0.5,
-            willChange: 'transform, opacity',
-          }}
-          animate={
-            reduceMotion
-              ? { opacity: [0.42, 0.52, 0.42] }
-              : { scale: [1, 1.02, 1], opacity: [0.42, 0.58, 0.44] }
-          }
-          transition={{ duration: 6.8, ease: 'easeInOut', repeat: Infinity }}
-        />
-      </motion.div>
 
       <div
         aria-hidden
-        className={`pointer-events-none absolute inset-[2px] ${radiusClassName}`}
+        className="pointer-events-none absolute h-[4px] w-[4px] rounded-full rv-royal-particle-1"
+        style={{ left: '20%', top: '34%', background: 'rgba(170,110,255,0.62)', filter: 'blur(3px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[5px] w-[5px] rounded-full rv-royal-particle-2"
+        style={{ left: '34%', top: '58%', background: 'rgba(170,110,255,0.56)', filter: 'blur(2px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[3px] w-[3px] rounded-full rv-royal-particle-3"
+        style={{ left: '48%', top: '42%', background: 'rgba(180,120,255,0.66)', filter: 'blur(2px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[4px] w-[4px] rounded-full rv-royal-particle-4"
+        style={{ left: '62%', top: '62%', background: 'rgba(160,92,255,0.52)', filter: 'blur(3px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[5px] w-[5px] rounded-full rv-royal-particle-5"
+        style={{ left: '74%', top: '36%', background: 'rgba(180,120,255,0.58)', filter: 'blur(4px)' }}
+      />
+
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute inset-[1px] ${radiusClassName}`}
         style={{
-          background: 'rgba(2, 6, 23, 0.2)',
-          boxShadow: 'inset 0 0 4px rgba(255, 255, 255, 0.4), inset 0 0 14px rgba(124, 58, 237, 0.24)',
+          boxShadow: 'inset 0 0 10px rgba(150,80,255,0.2)',
+          background: 'radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.03), rgba(255,255,255,0) 60%)',
         }}
       />
 
-      <div className={`relative z-10 ${radiusClassName}`} style={{ transform: 'translateZ(8px)', backfaceVisibility: 'hidden' }}>
+      <div className={`relative z-10 border border-white/10 bg-slate-950/62 ${radiusClassName}`} style={{ margin: frameThickness }}>
         {children}
       </div>
-    </motion.div>
+    </div>
   );
 }
