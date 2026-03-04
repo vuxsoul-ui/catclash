@@ -39,6 +39,8 @@ type CatDTO = {
 
 type MatchDTO = {
   match_id: string;
+  cat_a_id?: string;
+  cat_b_id?: string;
   cat_a: CatDTO;
   cat_b: CatDTO;
   status: string;
@@ -77,6 +79,40 @@ export async function GET() {
 
     const matches = inner?.matches ?? [];
 
+    const matchIds = matches.map((m) => String(m.match_id || '')).filter(Boolean);
+    const { data: battleRows } = matchIds.length > 0
+      ? await supabase
+        .from('tournament_matches')
+        .select('id, cat_a_id, cat_b_id')
+        .in('id', matchIds)
+      : { data: [] as Array<{ id: string; cat_a_id: string | null; cat_b_id: string | null }> };
+    const battleById = new Map<string, { cat_a_id: string | null; cat_b_id: string | null }>();
+    for (const row of battleRows || []) {
+      battleById.set(String(row.id), { cat_a_id: row.cat_a_id || null, cat_b_id: row.cat_b_id || null });
+    }
+
+    const voteCounts = new Map<string, { votes_a: number; votes_b: number }>();
+    if (matchIds.length > 0) {
+      const { data: voteRows } = await supabase
+        .from('votes')
+        .select('battle_id, voted_for')
+        .in('battle_id', matchIds);
+      for (const vote of voteRows || []) {
+        const battleId = String(vote.battle_id || '');
+        if (!battleId) continue;
+        const refs = battleById.get(battleId);
+        if (!refs?.cat_a_id || !refs?.cat_b_id) {
+          console.warn('[tournament/today] missing cat ids for match', { battleId });
+          voteCounts.set(battleId, voteCounts.get(battleId) || { votes_a: 0, votes_b: 0 });
+          continue;
+        }
+        const tally = voteCounts.get(battleId) || { votes_a: 0, votes_b: 0 };
+        if (String(vote.voted_for) === String(refs.cat_a_id)) tally.votes_a += 1;
+        if (String(vote.voted_for) === String(refs.cat_b_id)) tally.votes_b += 1;
+        voteCounts.set(battleId, tally);
+      }
+    }
+
     // Enrich with image URLs
     const enrichedMatches: MatchDTO[] = matches.map((match) => {
       const pathA = match.cat_a?.image_path ?? null;
@@ -84,16 +120,23 @@ export async function GET() {
 
       const urlA = resolveImageUrl(supabase, match.cat_a?.id, pathA);
       const urlB = resolveImageUrl(supabase, match.cat_b?.id, pathB);
+      const refs = battleById.get(String(match.match_id || ''));
+      const tally = voteCounts.get(String(match.match_id || ''));
+      const catAId = refs?.cat_a_id || match.cat_a?.id || null;
+      const catBId = refs?.cat_b_id || match.cat_b?.id || null;
 
       return {
         ...match,
+        cat_a_id: catAId || undefined,
+        cat_b_id: catBId || undefined,
         cat_a: { ...match.cat_a, image_url: urlA ?? null },
         cat_b: { ...match.cat_b, image_url: urlB ?? null },
+        votes_a: Number(tally?.votes_a ?? 0),
+        votes_b: Number(tally?.votes_b ?? 0),
       };
     });
 
     // Get which matches this user already voted on
-    const matchIds = enrichedMatches.map(m => m.match_id);
     const votedMatches: Record<string, string> = {};
     if (guestId && matchIds.length > 0) {
       const { data: votes } = await supabase

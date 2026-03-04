@@ -15,7 +15,7 @@ type ElementalBorderProps = {
 };
 
 const PRISM_GRADIENT = 'linear-gradient(135deg, #ff0080, #7928ca, #0070f3, #00dfd8, #ff0080)';
-const STREAK_GRADIENT = 'radial-gradient(ellipse at center, #ff0000 0%, #ff8c00 50%, transparent 100%)';
+const EMBER_PARTICLE_GRADIENT = 'radial-gradient(circle at 50% 50%, rgba(255, 214, 153, 0.72) 0%, rgba(255, 120, 32, 0.4) 44%, rgba(255, 120, 32, 0) 74%)';
 
 export default function ElementalBorder({
   variant,
@@ -42,11 +42,11 @@ export default function ElementalBorder({
 
   const plasmaLayers = Array.from({ length: 4 }, (_, idx) => ({
     id: idx,
-    left: `${12 + idx * 22}%`,
-    width: 28 + idx * 8,
-    height: 120 + idx * 24,
-    duration: 2.2 + idx * 0.55,
-    delay: idx * 0.3,
+    left: `${18 + idx * 20}%`,
+    width: 44 + idx * 10,
+    height: 44 + idx * 10,
+    duration: 3.2 + idx * 0.75,
+    delay: idx * 0.28,
   }));
 
   const bloomBackgroundByVariant: Record<ElementalVariant, string> = {
@@ -79,22 +79,23 @@ export default function ElementalBorder({
                 className="absolute rounded-[999px]"
                 style={{
                   left: layer.left,
-                  bottom: '-24%',
+                  top: `${24 + layer.id * 14}%`,
                   width: layer.width,
                   height: layer.height,
-                  background: STREAK_GRADIENT,
+                  background: EMBER_PARTICLE_GRADIENT,
                   transform: 'translateX(-50%)',
                   willChange: 'transform, opacity',
+                  filter: 'blur(6px)',
                 }}
                 animate={
                   reduceMotion
-                    ? { y: 0, opacity: 0.28 }
-                    : { y: ['100%', '-20%'], x: [0, (layer.id - 1.5) * 2.5], opacity: [0.18, 0.95, 0.06] }
+                    ? { y: 0, opacity: 0.24 }
+                    : { y: [0, -12, 4, -8, 0], x: [0, (layer.id - 1.5) * 4, 0], opacity: [0.16, 0.42, 0.2, 0.36, 0.16] }
                 }
                 transition={{
                   duration: reduceMotion ? 2 : layer.duration,
                   delay: reduceMotion ? 0 : layer.delay,
-                  ease: 'easeIn',
+                  ease: 'easeInOut',
                   repeat: Infinity,
                 }}
               />

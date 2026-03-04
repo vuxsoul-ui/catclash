@@ -83,20 +83,19 @@ export async function GET(
     });
 
     // Use match-derived totals to avoid stale/overcounted counters from legacy resolve flows.
+    // Note: `.or(...)` is a single filter; keep winner logic *inside* each AND branch to avoid precedence surprises.
     const [{ count: winsCount }, { count: lossesCount }] = await Promise.all([
       supabase
         .from('tournament_matches')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'complete')
-        .eq('winner_id', cat.id)
-        .or(`cat_a_id.eq.${cat.id},cat_b_id.eq.${cat.id}`),
+        .or(`and(cat_a_id.eq.${cat.id},winner_id.eq.${cat.id}),and(cat_b_id.eq.${cat.id},winner_id.eq.${cat.id})`),
       supabase
         .from('tournament_matches')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'complete')
         .not('winner_id', 'is', null)
-        .neq('winner_id', cat.id)
-        .or(`cat_a_id.eq.${cat.id},cat_b_id.eq.${cat.id}`),
+        .or(`and(cat_a_id.eq.${cat.id},winner_id.neq.${cat.id}),and(cat_b_id.eq.${cat.id},winner_id.neq.${cat.id})`),
     ]);
 
     const safeWins = Math.max(0, Number(winsCount || 0));

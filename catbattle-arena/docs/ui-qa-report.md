@@ -188,7 +188,7 @@ Date: 2026-02-21
 ### UTC boundary deterministic test
 - Test file: `/Users/charon/go/catbattle-arena/app/api/_lib/__tests__/arena-active.test.ts`
 - Command:
-  - `node --test --experimental-strip-types app/api/_lib/__tests__/arena-active.test.ts`
+  - `node --test --import tsx app/api/_lib/__tests__/arena-active.test.ts`
 - Cases:
   - `2026-02-21T23:59:59.900Z` => `dayKeyUtc=2026-02-21`
   - `2026-02-22T00:00:00.100Z` => `dayKeyUtc=2026-02-22`

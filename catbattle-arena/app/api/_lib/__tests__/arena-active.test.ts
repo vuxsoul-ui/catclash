@@ -17,3 +17,4 @@ test("computeArenaUtcContext rolls to next UTC day immediately after midnight", 
   assert.equal(out.pulseWindow.startUtc, "2026-02-22T00:00:00.000Z");
   assert.equal(out.pulseWindow.endUtc, "2026-02-23T00:00:00.000Z");
 });
+

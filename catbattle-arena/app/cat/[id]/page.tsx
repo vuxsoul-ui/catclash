@@ -92,6 +92,7 @@ export default function CatProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const catId = params?.id as string;
+  const from = String(searchParams?.get('from') || '').trim().toLowerCase();
   const ref = String(searchParams?.get('ref') || '').trim();
   const guildFromRef = String(searchParams?.get('guild') || '').trim().toLowerCase();
   const targetParam = String(searchParams?.get('target') || '').trim();
@@ -225,9 +226,22 @@ export default function CatProfilePage() {
       <div className={`fixed inset-0 pointer-events-none opacity-20 bg-gradient-to-br ${r.gradient}`} style={{ filter: 'blur(120px)' }} />
 
       <div className="relative z-10 max-w-lg mx-auto px-4 py-6">
-        <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm mb-6">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
+        {from === 'gallery' ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+              else router.push('/gallery');
+            }}
+            className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Gallery
+          </button>
+        ) : (
+          <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm mb-6">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+        )}
         <div className="mb-4">
           {challengeBanner.active && (
             <div className="mb-3 rounded-xl border border-rose-300/30 bg-rose-500/10 p-3">

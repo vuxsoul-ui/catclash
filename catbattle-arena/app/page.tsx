@@ -2182,12 +2182,23 @@ function ArenaSection({
       match: snapshotById[id] || null,
     }));
   }, [segment, snapshotById, snapshotOrder]);
+  const hasRenderableVotingMatch = useMemo(
+    () => votingSlots.some((slot) => !!slot?.match),
+    [votingSlots],
+  );
   const topVotingSlot = segment === 'voting' ? (votingSlots[0] || null) : null;
   const nextVotingSlot = segment === 'voting' ? (votingSlots[1] || null) : null;
   const showAllVotedState =
     segment === 'voting' &&
     activeVoting.length === 0 &&
     userCaughtUp;
+  const showAllVotedModule =
+    segment === 'voting' &&
+    (showAllVotedState || !hasRenderableVotingMatch);
+  const isStableVotingEmpty =
+    segment === 'voting' &&
+    !hasRenderableVotingMatch;
+  const shouldShowEmptyModule = isStableVotingEmpty || (segment !== 'voting' && activeList.length === 0);
   useEffect(() => {
     if (segment !== 'voting') return;
     if (!userCaughtUp) return;
@@ -2642,7 +2653,7 @@ function ArenaSection({
           debug: {debugInfo.whyNotFilled.join(', ')} · eligible {Number(debugInfo.eligibleCatsCount || 0)} · open {Number(debugInfo.openMatchesCount || 0)}
         </p>
       ) : null}
-      {segment === 'voting' && feedError && !showAllVotedState && hasMoreFightsForUser && isRefilling && (
+      {segment === 'voting' && hasRenderableVotingMatch && feedError && !showAllVotedModule && hasMoreFightsForUser && isRefilling && (
         <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-[11px] text-amber-100 flex items-center justify-between gap-2">
           <span>{feedError}</span>
           {showManualRefresh && (
@@ -2669,11 +2680,11 @@ function ArenaSection({
         </div>
       )}
 
-      {(showAllVotedState || (segment === 'voting' ? votingSlots.length === 0 && (feedStatus === 'ready' || !hasMoreFightsForUser) : activeList.length === 0)) ? (
+      {shouldShowEmptyModule ? (
         <div className="rounded-2xl bg-white/[0.02] p-6 text-center">
-          {!showAllVotedState ? <Target className="w-7 h-7 text-white/40 mx-auto mb-2" /> : null}
+          {!showAllVotedModule ? <Target className="w-7 h-7 text-white/40 mx-auto mb-2" /> : null}
           {segment === 'voting' ? (
-            showAllVotedState ? (
+            showAllVotedModule ? (
               <AllMatchesVotedCard pulseCountdown={pulseCountdown} />
             ) : (
               <>
@@ -2734,16 +2745,22 @@ function ArenaSection({
                     onPredict={stablePredict}
                     onCreateCallout={stableCreateCallout}
                   />
-                ) : (
-                  <LoadingNextFightsCard />
+                ) : shouldShowEmptyModule ? null : (
+                  <LoadingNextFightsCard
+                    text={
+                      refillRetryAttempt > 0
+                        ? `Loading next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
+                        : 'Loading next fights...'
+                    }
+                  />
                 )}
               </div>
-              {isRefilling && hasMoreFightsForUser && !showAllVotedState && (
+              {topVotingSlot?.match && hasRenderableVotingMatch && isRefilling && hasMoreFightsForUser && !showAllVotedModule && (
                 <LoadingNextFightsCard
                   text={
                     refillRetryAttempt > 0
-                        ? `Loading next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
-                        : 'Loading next fights...'
+                      ? `Loading next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
+                      : 'Loading next fights...'
                   }
                 />
               )}

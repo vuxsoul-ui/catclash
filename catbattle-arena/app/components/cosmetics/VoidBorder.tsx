@@ -110,20 +110,26 @@ export default function VoidBorder({
         />
 
         <motion.div
-          className="absolute -top-1/2 h-[220%] w-[26%]"
+          className={`absolute inset-0 ${radiusClassName}`}
           style={{
-            left: '36%',
-            borderRadius: '999px',
             background:
-              'linear-gradient(45deg, rgba(125,211,252,0), rgba(125,211,252,0.1), rgba(125,211,252,0))',
-            filter: 'blur(34px)',
-            opacity: 0.1,
+              'radial-gradient(120% 80% at 50% 50%, rgba(88,28,135,0.45), transparent 70%), radial-gradient(100% 60% at 50% 50%, rgba(30,0,60,0.9), rgba(10,0,25,1))',
+            filter: 'blur(0.5px)',
+            opacity: 0.42,
             mixBlendMode: 'screen',
-            transform: 'rotate(45deg)',
             willChange: 'transform, opacity',
           }}
-          animate={reduceMotion ? { x: 0, opacity: 0.08 } : { x: rayX, opacity: mouse.active ? 0.14 : 0.1 }}
-          transition={{ type: 'spring', stiffness: 120, damping: 16, mass: 0.9 }}
+          animate={
+            reduceMotion
+              ? { scale: 1, opacity: [0.36, 0.44, 0.36] }
+              : { x: rayX * 0.12, y: -mouse.y * 8, scale: [1, 1.02, 1], opacity: mouse.active ? 0.5 : 0.42 }
+          }
+          transition={{
+            x: { type: 'spring', stiffness: 120, damping: 16, mass: 0.9 },
+            y: { type: 'spring', stiffness: 120, damping: 16, mass: 0.9 },
+            scale: { duration: 9, ease: 'easeInOut', repeat: Infinity },
+            opacity: { duration: 8, ease: 'easeInOut', repeat: reduceMotion ? Infinity : 0 },
+          }}
         />
 
         <motion.div
@@ -140,7 +146,7 @@ export default function VoidBorder({
 
         <div
           className={`absolute inset-0 ${radiusClassName}`}
-          style={{ boxShadow: 'inset 0 0 10px rgba(139, 92, 246, 0.3)' }}
+          style={{ boxShadow: 'inset 0 0 30px rgba(120, 0, 255, 0.4), 0 0 20px rgba(120, 0, 255, 0.25)' }}
         />
       </motion.div>
 

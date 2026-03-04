@@ -139,3 +139,4 @@ test('legacy check-in streak does not carry over into Arena Flame day count', ()
   assert.equal(out.dayCount, 1);
   assert.equal(out.lastFlameDate, '2026-02-21');
 });
+

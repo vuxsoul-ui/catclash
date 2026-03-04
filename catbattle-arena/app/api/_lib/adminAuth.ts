@@ -23,13 +23,18 @@ function safeEq(a: string, b: string): boolean {
 }
 
 function getAllowedSecrets(): string[] {
+  const adminToken = String(process.env.ADMIN_TOKEN || '').trim();
   const adminSecret = String(process.env.ADMIN_SECRET || '').trim();
   const cronSecret = String(process.env.CRON_SECRET || '').trim();
-  const list = [adminSecret, cronSecret].filter(Boolean);
+  const list = [adminToken, adminSecret, cronSecret].filter(Boolean);
   return Array.from(new Set(list));
 }
 
 function isSecretConfigUsable(): { ok: true } | { ok: false; reason: string } {
+  const adminToken = String(process.env.ADMIN_TOKEN || '').trim();
+  // Fail closed to avoid accidental public admin access when token env is unset.
+  if (!adminToken) return { ok: false, reason: 'ADMIN_TOKEN is required' };
+
   const secrets = getAllowedSecrets();
   if (process.env.NODE_ENV === 'production') {
     const adminSecret = String(process.env.ADMIN_SECRET || '').trim();

@@ -7,6 +7,10 @@ export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
 export async function POST(request: NextRequest) {
+  // Fail closed to avoid accidentally exposing admin resolution when token config is missing.
+  if (!String(process.env.ADMIN_TOKEN || '').trim()) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  }
   if (!isAdmin(request)) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }

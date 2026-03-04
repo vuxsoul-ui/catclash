@@ -34,7 +34,6 @@ export default function RoyalVioletBorder({
   const ringMask = ringMaskStyle(Math.max(1, thickness));
   const rotateX = reduceMotion ? 0 : -mouse.y * 5;
   const rotateY = reduceMotion ? 0 : mouse.x * 5;
-  const rayX = mouse.x * 50;
 
   return (
     <motion.div
@@ -100,35 +99,21 @@ export default function RoyalVioletBorder({
         />
 
         <motion.div
-          className="pointer-events-none absolute -top-1/2 h-[220%] w-[10%]"
+          className={`pointer-events-none absolute inset-0 ${radiusClassName}`}
           style={{
-            left: '26%',
-            borderRadius: '999px',
-            background: 'linear-gradient(45deg, rgba(255,255,255,0), rgba(255,255,255,0.78), rgba(255,255,255,0))',
-            opacity: 0.28,
-            filter: 'blur(12px)',
-            mixBlendMode: 'color-dodge',
-            transform: 'rotate(38deg)',
+            background:
+              'radial-gradient(120% 90% at 50% 46%, rgba(192,132,252,0.38), rgba(124,58,237,0.18) 52%, rgba(17,24,39,0) 74%), radial-gradient(115% 110% at 50% 50%, rgba(15,23,42,0), rgba(15,23,42,0.52) 86%)',
+            mixBlendMode: 'screen',
+            filter: 'blur(0.8px)',
+            opacity: 0.5,
             willChange: 'transform, opacity',
           }}
-          animate={reduceMotion ? { x: 0, opacity: 0.16 } : { x: [rayX, rayX + 24, rayX], opacity: [0.14, 0.3, 0.16] }}
-          transition={{ duration: 4.8, ease: 'easeInOut', repeat: Infinity }}
-        />
-
-        <motion.div
-          className="pointer-events-none absolute -top-1/2 h-[220%] w-[9%]"
-          style={{
-            left: '56%',
-            borderRadius: '999px',
-            background: 'linear-gradient(45deg, rgba(255,255,255,0), rgba(255,255,255,0.65), rgba(255,255,255,0))',
-            opacity: 0.2,
-            filter: 'blur(12px)',
-            mixBlendMode: 'color-dodge',
-            transform: 'rotate(38deg)',
-            willChange: 'transform, opacity',
-          }}
-          animate={reduceMotion ? { x: 0, opacity: 0.14 } : { x: [rayX - 10, rayX + 14, rayX - 10], opacity: [0.1, 0.24, 0.12] }}
-          transition={{ duration: 5.9, ease: 'easeInOut', repeat: Infinity }}
+          animate={
+            reduceMotion
+              ? { opacity: [0.42, 0.52, 0.42] }
+              : { scale: [1, 1.02, 1], opacity: [0.42, 0.58, 0.44] }
+          }
+          transition={{ duration: 6.8, ease: 'easeInOut', repeat: Infinity }}
         />
       </motion.div>
 

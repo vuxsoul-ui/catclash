@@ -605,7 +605,7 @@ export default function GalleryPage() {
                   canDelete={myCats.some((m) => m.id === cat.id)}
                   deleting={deletingCatId === cat.id}
                   onDelete={deleteMyCat}
-                  onOpen={(catId) => router.push(`/cat/${encodeURIComponent(catId)}`)}
+                  onOpen={(catId) => router.push(`/cat/${encodeURIComponent(catId)}?from=gallery`)}
                 />
               ))}
             </div>

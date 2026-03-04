@@ -20,20 +20,12 @@ export default function BorderPreview({
   }
 
   const variant = mapVariant(fxClass);
-  const cue =
-    fxClass?.includes('lightning') ? 'Electric' :
-    fxClass?.includes('flame') ? 'Ember' :
-    fxClass?.includes('void') || fxClass?.includes('shadow') ? 'Void' :
-    fxClass?.includes('prism') ? 'Prism' :
-    fxClass?.includes('violet') || fxClass?.includes('royal') ? 'Royal' :
-    fxClass?.includes('galaxy') ? 'Galaxy' :
-    'Border';
-  function renderRail(extraClassName = '') {
+  function renderSurface(extraClassName = '') {
     return (
-      <div className={`borderFrame h-full rounded-lg ${extraClassName}`}>
-        <div className="avatarStub" />
-        <span className="previewCue" aria-hidden>{cue}</span>
-      </div>
+      <div
+        aria-hidden
+        className={`h-full w-full rounded-lg border border-white/10 bg-slate-950/50 ${extraClassName}`}
+      />
     );
   }
 
@@ -41,10 +33,10 @@ export default function BorderPreview({
     <div className={`borderPreview ${compact ? 'h-16 isCompact' : 'h-28'} rounded-xl border border-white/10 bg-black/35 p-2`}>
       {variant ? (
         <ElementalBorder variant={variant} className="h-full rounded-lg">
-          {renderRail()}
+          {renderSurface()}
         </ElementalBorder>
       ) : (
-        renderRail(fxClass || 'cosm-border-default')
+        renderSurface(fxClass || 'cosm-border-default')
       )}
     </div>
   );
