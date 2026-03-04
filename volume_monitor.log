@@ -88880,3 +88880,4712 @@ Run complete: Sun Mar  1 15:35:08 PST 2026
 =========================================
 Volume Monitor Run: Sun Mar  1 15:40:00 PST 2026
 =========================================
+[2026-03-01 15:40:00.753670] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 15:40:08.013301] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 15:40:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 15:45:00 PST 2026
+=========================================
+[2026-03-01 15:45:00.741722] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 15:45:08.133939] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 15:45:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 15:50:00 PST 2026
+=========================================
+[2026-03-01 15:50:00.874964] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 15:50:08.299701] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 15:50:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 15:55:00 PST 2026
+=========================================
+[2026-03-01 15:55:00.889930] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 15:55:08.289697] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 15:55:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:00:00 PST 2026
+=========================================
+[2026-03-01 16:00:00.913033] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:00:08.545947] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:00:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:05:00 PST 2026
+=========================================
+[2026-03-01 16:05:01.155701] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:05:08.679302] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:10:01 PST 2026
+=========================================
+[2026-03-01 16:10:01.405513] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:10:08.686167] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:15:01 PST 2026
+=========================================
+[2026-03-01 16:15:01.335738] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:15:08.749243] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:15:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:20:00 PST 2026
+=========================================
+[2026-03-01 16:20:00.356352] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:20:07.589495] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:20:07 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:25:00 PST 2026
+=========================================
+[2026-03-01 16:25:01.297666] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:25:08.939760] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:30:00 PST 2026
+=========================================
+[2026-03-01 16:30:00.529996] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:30:07.970004] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:30:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:35:00 PST 2026
+=========================================
+[2026-03-01 16:35:00.566074] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:35:07.910705] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:35:07 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:40:00 PST 2026
+=========================================
+[2026-03-01 16:40:00.549891] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:40:07.981273] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:40:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 16:45:00 PST 2026
+=========================================
+[2026-03-01 16:45:00.510118] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 16:45:08.087820] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 16:45:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 17:09:34 PST 2026
+=========================================
+[2026-03-01 17:09:35.050048] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 17:09:42.838026] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 17:09:42 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 17:10:01 PST 2026
+=========================================
+[2026-03-01 17:10:01.203024] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 17:10:08.940686] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 17:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 17:25:00 PST 2026
+=========================================
+[2026-03-01 17:25:00.512123] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 17:25:07.969281] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 17:25:07 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 18:20:01 PST 2026
+=========================================
+[2026-03-01 18:37:20.700948] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 18:37:33.924571] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 18:37:33 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 18:55:01 PST 2026
+=========================================
+[2026-03-01 18:55:01.314922] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+Request error: <urlopen error _ssl.c:1112: The handshake operation timed out>
+  No snapshot data available for NVDA
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 19:11:44.956290] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 19:11:44 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 20:35:01 PST 2026
+=========================================
+[2026-03-01 20:46:08.773025] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 20:46:21.209862] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 20:46:21 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 22:20:00 PST 2026
+=========================================
+[2026-03-01 22:20:01.060389] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+  Average volume (20d): 79.54M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+  Average volume (20d): 180.35M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+  Average volume (20d): 5.20M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+  Average volume (20d): 9.29M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 22:37:10.224656] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 22:37:10 PST 2026
+
+=========================================
+Volume Monitor Run: Sun Mar  1 23:35:00 PST 2026
+=========================================
+[2026-03-01 23:35:00.501248] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+  Average volume (20d): 79.54M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+  Average volume (20d): 180.35M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+  Average volume (20d): 5.20M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+  Average volume (20d): 9.29M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-01 23:51:44.927651] Check complete. Alerts sent: 0
+Run complete: Sun Mar  1 23:51:45 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 05:30:01 PST 2026
+=========================================
+[2026-03-02 05:30:01.291752] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 11.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 371.18K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 45.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 05:30:10.581170] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 05:30:10 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:00:00 PST 2026
+=========================================
+[2026-03-02 07:00:01.081693] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 781.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 821.95K, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 11.11K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 13.93K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:00:08.546605] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:00:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:05:00 PST 2026
+=========================================
+[2026-03-02 07:05:01.066518] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 914.58K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 872.80K, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 14.79K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 14.80K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:05:08.898390] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:10:00 PST 2026
+=========================================
+[2026-03-02 07:10:00.562072] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.06M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 1.00M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 20.22K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 16.10K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:10:08.618992] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:15:00 PST 2026
+=========================================
+[2026-03-02 07:15:00.380754] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.19M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 1.13M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 25.13K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 16.11K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:15:07.921433] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:15:07 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:20:00 PST 2026
+=========================================
+[2026-03-02 07:20:00.643714] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.31M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 1.26M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 27.93K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 16.46K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:20:08.237916] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:20:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:25:00 PST 2026
+=========================================
+[2026-03-02 07:25:00.844357] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.36M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 1.36M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 32.16K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 16.70K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:25:08.544205] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:45:00 PST 2026
+=========================================
+[2026-03-02 07:45:00.793912] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.61M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 1.73M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 49.86K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 18.73K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:45:08.327052] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:45:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 07:50:00 PST 2026
+=========================================
+[2026-03-02 07:50:00.837487] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.66M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 1.80M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 51.38K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 19.86K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 07:50:08.339917] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 07:50:08 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 10:10:00 PST 2026
+=========================================
+[2026-03-02 10:10:00.864031] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 3.00M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+Request error: The read operation timed out
+  No snapshot data available for NVDA
+
+Checking SLS...
+  Current volume: 147.74K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 32.00K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 10:26:45.987775] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 10:26:46 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 14:56:38 PST 2026
+=========================================
+[2026-03-02 14:56:39.232460] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 3.84M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  ✓ Volume spike detected for ONDS!
+Alert logged to .volume_alerts.jsonl
+Message preview: 🚨 VOLUME SPIKE ALERT: ONDS 🚨
+⏰ 2026-03-02 14:56:40 PST
+
+📊 Volume Analysis:
+• Current Volume: 3.84M
+•...
+
+Checking NVDA...
+  Current volume: 6.16M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 275.10K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 52.89K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 14:56:46.950123] Check complete. Alerts sent: 1
+Processing pending alerts...
+Found 1 pending alerts
+Sending alert to 8467656798...
+Error sending message: [Errno 2] No such file or directory: 'openclaw'
+  ✗ Failed to send
+Run complete: Mon Mar  2 14:56:47 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 17:40:00 PST 2026
+=========================================
+[2026-03-02 17:40:00.775849] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 3.84M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 6.16M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 275.10K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 52.89K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 17:56:09.130282] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 17:56:09 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 18:35:00 PST 2026
+=========================================
+[2026-03-02 18:35:00.876160] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 3.84M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 6.16M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 275.10K, Threshold: 15.00M
+Request error: [Errno 54] Connection reset by peer
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 52.89K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 18:50:34.737244] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 18:50:34 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 19:00:38 PST 2026
+=========================================
+[2026-03-02 19:00:38.926455] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 3.84M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 6.16M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 275.10K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 52.89K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 19:00:49.364451] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 19:00:49 PST 2026
+
+=========================================
+Volume Monitor Run: Mon Mar  2 21:20:00 PST 2026
+=========================================
+[2026-03-02 21:20:00.772888] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 3.84M, Threshold: 300.00K
+  Average volume (20d): 76.47M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 6.16M, Threshold: 400.00M
+  Average volume (20d): 187.37M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 275.10K, Threshold: 15.00M
+  Average volume (20d): 5.54M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 52.89K, Threshold: 300.00K
+  Average volume (20d): 9.24M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-02 21:20:08.715553] Check complete. Alerts sent: 0
+Run complete: Mon Mar  2 21:20:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 08:59:33 PST 2026
+=========================================
+[2026-03-03 08:59:33.328558] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 998.44K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.61M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 59.05K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 93.65K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:00:17.571197] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:00:17 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:00:17 PST 2026
+=========================================
+[2026-03-03 09:00:17.824207] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.01M, Threshold: 300.00K
+Request error: The read operation timed out
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+Request error: <urlopen error timed out>
+  No snapshot data available for NVDA
+
+Checking SLS...
+Request error: <urlopen error timed out>
+  No snapshot data available for SLS
+
+Checking VOO...
+  Current volume: 94.71K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:03:30.077733] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:03:30 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:05:00 PST 2026
+=========================================
+[2026-03-03 09:05:00.546355] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.02M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.67M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 59.48K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 95.49K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:05:08.179416] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:10:00 PST 2026
+=========================================
+[2026-03-03 09:10:01.043133] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.06M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.75M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 63.98K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 97.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:10:08.250133] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:15:00 PST 2026
+=========================================
+[2026-03-03 09:15:01.066378] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.08M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.80M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 64.60K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 98.44K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:15:08.747068] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:15:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:20:00 PST 2026
+=========================================
+[2026-03-03 09:20:00.397582] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.09M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.83M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 66.16K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 100.43K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:20:07.657902] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:20:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:25:01 PST 2026
+=========================================
+[2026-03-03 09:25:01.372900] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.12M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 67.95K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 101.30K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:25:08.696762] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:30:01 PST 2026
+=========================================
+[2026-03-03 09:30:01.299962] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.12M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.90M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 73.29K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 101.92K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:30:09.485684] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:30:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:35:00 PST 2026
+=========================================
+[2026-03-03 09:35:01.058685] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.14M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.97M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 74.01K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 102.12K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:35:08.495307] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:35:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:40:00 PST 2026
+=========================================
+[2026-03-03 09:40:01.299317] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.15M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.06M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 77.30K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 102.32K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:40:08.802554] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:40:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:45:00 PST 2026
+=========================================
+[2026-03-03 09:45:00.471611] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.16M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.14M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 78.62K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 104.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:45:07.892693] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:45:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:50:00 PST 2026
+=========================================
+[2026-03-03 09:50:00.413288] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.17M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.17M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 83.52K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 105.73K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:50:08.051760] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:50:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 09:55:00 PST 2026
+=========================================
+[2026-03-03 09:55:00.707980] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.18M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.20M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 94.46K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 106.23K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 09:55:07.910557] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 09:55:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:00:00 PST 2026
+=========================================
+[2026-03-03 10:00:00.466740] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.18M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.22M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 104.39K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 106.64K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:00:07.710463] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:00:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:05:01 PST 2026
+=========================================
+[2026-03-03 10:05:01.463224] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.20M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.27M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 117.47K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 107.39K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:05:08.658966] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:10:01 PST 2026
+=========================================
+[2026-03-03 10:10:01.364392] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.23M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.30M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 119.50K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 107.99K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:10:08.613325] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:15:01 PST 2026
+=========================================
+[2026-03-03 10:15:01.316416] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.24M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.34M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 120.23K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 108.20K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:15:09.675357] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:15:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:21:07 PST 2026
+=========================================
+[2026-03-03 10:21:08.010191] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for NVDA
+
+Checking SLS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for SLS
+
+Checking VOO...
+  Current volume: 109.97K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:25:02.746789] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:25:02 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:25:02 PST 2026
+=========================================
+[2026-03-03 10:25:03.062059] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.26M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.41M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 126.05K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 109.97K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:25:11.400658] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:25:11 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:30:00 PST 2026
+=========================================
+[2026-03-03 10:30:01.150378] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.27M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.46M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 129.59K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 110.30K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:30:08.535911] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:30:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:35:00 PST 2026
+=========================================
+[2026-03-03 10:35:01.103746] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.28M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.49M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 130.88K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 110.59K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:35:08.415093] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:35:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:40:00 PST 2026
+=========================================
+[2026-03-03 10:40:01.101977] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.29M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.54M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 131.52K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 110.99K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:40:08.648447] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:40:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:45:01 PST 2026
+=========================================
+[2026-03-03 10:45:01.294643] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.31M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.58M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 133.74K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 111.08K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:45:08.507195] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:45:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:50:00 PST 2026
+=========================================
+[2026-03-03 10:50:01.061193] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.33M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.62M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 151.82K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 111.64K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:50:08.188539] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:50:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 10:55:00 PST 2026
+=========================================
+[2026-03-03 10:55:00.992569] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.34M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.65M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 156.09K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 112.67K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 10:55:09.443071] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 10:55:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:00:00 PST 2026
+=========================================
+[2026-03-03 11:00:00.980716] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.36M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.66M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 161.27K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 113.97K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:00:08.257151] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:00:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:05:00 PST 2026
+=========================================
+[2026-03-03 11:05:00.856214] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.37M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.72M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 164.13K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 118.01K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:05:08.163291] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:10:00 PST 2026
+=========================================
+[2026-03-03 11:10:00.885120] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.38M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.76M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 167.46K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 118.30K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:10:08.572714] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:15:00 PST 2026
+=========================================
+[2026-03-03 11:15:01.240186] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.39M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.79M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 174.45K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 118.81K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:15:08.660940] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:15:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:20:00 PST 2026
+=========================================
+[2026-03-03 11:20:01.198595] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.41M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.82M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 185.88K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 118.92K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:20:08.605747] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:20:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:25:00 PST 2026
+=========================================
+[2026-03-03 11:25:01.138175] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.41M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.85M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 188.24K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 120.09K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:25:08.198877] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:30:00 PST 2026
+=========================================
+[2026-03-03 11:30:00.659229] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.42M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.88M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 189.91K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 120.56K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:30:07.794500] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:30:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:35:00 PST 2026
+=========================================
+[2026-03-03 11:35:00.413820] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.44M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.90M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 190.59K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 121.29K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:35:07.739399] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:35:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:41:26 PST 2026
+=========================================
+[2026-03-03 11:41:26.444605] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.46M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 3.99M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 191.47K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 123.99K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 11:41:35.223597] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 11:41:35 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 11:55:00 PST 2026
+=========================================
+[2026-03-03 11:55:00.877199] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for NVDA
+
+Checking SLS...
+  Current volume: 197.74K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+Request error: <urlopen error [Errno 60] Operation timed out>
+  No snapshot data available for VOO
+
+--------------------------------------------------
+[2026-03-03 12:28:09.514701] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:28:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 12:32:43 PST 2026
+=========================================
+[2026-03-03 12:32:44.111470] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.65M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.41M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 232.38K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 133.74K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 12:32:51.871593] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:32:51 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 12:35:00 PST 2026
+=========================================
+[2026-03-03 12:35:00.303853] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.66M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.45M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 233.09K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 133.82K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 12:35:07.562099] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:35:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 12:40:00 PST 2026
+=========================================
+[2026-03-03 12:40:01.200559] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.68M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.51M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 235.28K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 134.88K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 12:40:09.163426] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:40:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 12:45:00 PST 2026
+=========================================
+[2026-03-03 12:45:00.684676] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.69M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.59M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 241.91K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 135.41K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 12:45:08.476490] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:45:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 12:50:00 PST 2026
+=========================================
+[2026-03-03 12:50:01.066920] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.71M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.65M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 247.27K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 135.97K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 12:50:08.560810] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:50:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 12:55:00 PST 2026
+=========================================
+[2026-03-03 12:55:01.153208] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.74M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.70M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 256.73K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 138.36K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 12:55:08.611019] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 12:55:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 13:00:00 PST 2026
+=========================================
+[2026-03-03 13:00:01.151089] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.00K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 13:00:09.309075] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 13:00:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 13:05:00 PST 2026
+=========================================
+[2026-03-03 13:05:00.844491] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.00K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 13:05:08.023736] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 13:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 13:10:00 PST 2026
+=========================================
+[2026-03-03 13:10:00.663372] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.00K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 13:10:07.936812] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 13:10:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 13:17:03 PST 2026
+=========================================
+[2026-03-03 13:17:04.740728] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.03K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 13:17:51.831955] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 13:17:51 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 13:23:01 PST 2026
+=========================================
+=========================================
+Volume Monitor Run: Tue Mar  3 13:30:32 PST 2026
+=========================================
+[2026-03-03 13:23:02.006877] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for NVDA
+
+Checking SLS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for SLS
+
+Checking VOO...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for VOO
+
+--------------------------------------------------
+[2026-03-03 13:30:38.432069] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 13:30:38 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 14:40:00 PST 2026
+=========================================
+[2026-03-03 13:30:33.177231] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for NVDA
+
+Checking SLS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for SLS
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 15:05:30.486464] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 15:05:30 PST 2026
+
+[2026-03-03 14:40:00.430454] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 15:05:36.668728] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 15:05:36 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 16:50:00 PST 2026
+=========================================
+[2026-03-03 16:50:01.196951] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 16:50:09.076049] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 16:50:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 17:17:03 PST 2026
+=========================================
+[2026-03-03 17:17:03.991693] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 17:17:12.989906] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 17:17:13 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 20:20:00 PST 2026
+=========================================
+[2026-03-03 20:20:01.003207] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 20:36:22.201874] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 20:36:22 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 21:20:00 PST 2026
+=========================================
+[2026-03-03 21:20:01.159201] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 21:37:28.741866] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 21:37:28 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 21:55:00 PST 2026
+=========================================
+[2026-03-03 21:55:01.008134] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+Request error: <urlopen error [Errno 8] nodename nor servname provided, or not known>
+  No snapshot data available for NVDA
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 21:59:46.053454] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 21:59:46 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:00:00 PST 2026
+=========================================
+[2026-03-03 22:00:01.042302] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:00:09.172642] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:00:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:05:00 PST 2026
+=========================================
+[2026-03-03 22:05:01.072690] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:05:08.743709] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:10:01 PST 2026
+=========================================
+[2026-03-03 22:10:01.443384] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:10:08.656930] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:15:00 PST 2026
+=========================================
+[2026-03-03 22:15:01.238970] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:15:09.322205] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:15:09 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:20:00 PST 2026
+=========================================
+[2026-03-03 22:20:01.207740] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:20:08.713337] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:20:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:25:00 PST 2026
+=========================================
+[2026-03-03 22:25:00.528696] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:25:08.234069] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:30:00 PST 2026
+=========================================
+[2026-03-03 22:30:00.908326] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:30:08.774783] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:30:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:35:01 PST 2026
+=========================================
+[2026-03-03 22:35:02.198561] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:35:10.588124] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:35:10 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:40:00 PST 2026
+=========================================
+[2026-03-03 22:40:01.179065] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:40:08.636022] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:40:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:45:01 PST 2026
+=========================================
+[2026-03-03 22:45:01.315471] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:45:09.922386] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:45:10 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:50:00 PST 2026
+=========================================
+[2026-03-03 22:50:00.662386] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:50:08.719250] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:50:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 22:55:00 PST 2026
+=========================================
+[2026-03-03 22:55:00.445112] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 22:55:08.258862] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 22:55:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:00:00 PST 2026
+=========================================
+[2026-03-03 23:00:01.158999] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:00:08.855672] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:00:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:05:00 PST 2026
+=========================================
+[2026-03-03 23:05:00.712051] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:05:08.764574] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:05:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:10:00 PST 2026
+=========================================
+[2026-03-03 23:10:00.432714] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:10:08.036683] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:10:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:15:00 PST 2026
+=========================================
+[2026-03-03 23:15:00.793620] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:15:08.782977] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:15:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:20:00 PST 2026
+=========================================
+[2026-03-03 23:20:00.424287] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:20:07.865639] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:20:07 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:25:00 PST 2026
+=========================================
+[2026-03-03 23:25:00.698921] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:25:08.298865] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Tue Mar  3 23:30:00 PST 2026
+=========================================
+[2026-03-03 23:30:00.985917] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.88M, Threshold: 300.00K
+  Average volume (20d): 77.18M
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.86M, Threshold: 400.00M
+  Average volume (20d): 187.61M
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 285.64K, Threshold: 15.00M
+  Average volume (20d): 5.60M
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 140.06K, Threshold: 300.00K
+  Average volume (20d): 9.08M
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-03 23:30:08.412997] Check complete. Alerts sent: 0
+Run complete: Tue Mar  3 23:30:08 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 09:00:44 PST 2026
+=========================================
+[2026-03-04 09:00:44.800640] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 620.85K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.27M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 95.57K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 41.71K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 09:19:45.726252] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 09:19:45 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 09:26:03 PST 2026
+=========================================
+[2026-03-04 09:26:04.147418] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 650.44K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.52M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 98.78K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 43.29K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 09:26:21.345991] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 09:26:21 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 09:55:00 PST 2026
+=========================================
+[2026-03-04 09:55:01.116570] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 732.83K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.74M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 105.51K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 46.13K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 09:55:08.672746] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 09:55:08 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 10:00:00 PST 2026
+=========================================
+[2026-03-04 10:00:01.289595] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 735.11K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.76M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 109.09K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 46.38K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 10:00:09.343415] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 10:00:09 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 10:10:00 PST 2026
+=========================================
+[2026-03-04 10:10:01.140726] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 751.46K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.80M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 114.85K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 48.21K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 10:10:09.021283] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 10:10:09 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 10:15:11 PST 2026
+=========================================
+[2026-03-04 10:15:35.368768] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 764.35K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.83M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 126.32K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 48.35K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 10:17:03.667807] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 10:17:10 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 10:20:19 PST 2026
+=========================================
+[2026-03-04 10:21:07.770758] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 778.30K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.87M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 126.94K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 48.67K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 10:21:44.419039] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 10:21:44 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 10:25:00 PST 2026
+=========================================
+[2026-03-04 10:25:01.223485] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 784.03K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 2.89M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 127.30K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 49.06K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 10:25:08.652597] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 10:25:08 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 10:30:40 PST 2026
+=========================================
+[2026-03-04 10:30:40.697685] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+Request error: <urlopen error timed out>
+  No snapshot data available for ONDS
+
+Checking NVDA...
+Request error: <urlopen error timed out>
+  No snapshot data available for NVDA
+
+Checking SLS...
+Request error: <urlopen error timed out>
+  No snapshot data available for SLS
+
+Checking VOO...
+Request error: <urlopen error _ssl.c:1112: The handshake operation timed out>
+  No snapshot data available for VOO
+
+--------------------------------------------------
+[2026-03-04 11:04:16.628652] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 11:04:16 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 12:02:29 PST 2026
+=========================================
+[2026-03-04 12:02:30.093547] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.07M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.18M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 169.04K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 68.02K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 12:11:45.216355] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 12:11:45 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 12:11:46 PST 2026
+=========================================
+[2026-03-04 12:11:47.253591] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.08M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.18M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 169.04K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 68.02K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 12:11:58.002516] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 12:11:58 PST 2026
+
+=========================================
+Volume Monitor Run: Wed Mar  4 12:15:00 PST 2026
+=========================================
+[2026-03-04 12:15:00.486886] Starting volume spike check...
+Monitoring: ONDS, NVDA, SLS, VOO
+--------------------------------------------------
+Checking ONDS...
+  Current volume: 1.10M, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Already alerted for similar volume - skipping
+
+Checking NVDA...
+  Current volume: 4.21M, Threshold: 400.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking SLS...
+  Current volume: 169.58K, Threshold: 15.00M
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+Checking VOO...
+  Current volume: 70.35K, Threshold: 300.00K
+HTTP Error 403: Forbidden
+Error body: {"message":"subscription does not permit querying recent SIP data"}
+
+  Average volume (20d): 0
+  Below threshold - no alert
+
+--------------------------------------------------
+[2026-03-04 12:15:08.241385] Check complete. Alerts sent: 0
+Run complete: Wed Mar  4 12:15:08 PST 2026
+

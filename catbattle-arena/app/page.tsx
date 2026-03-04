@@ -995,7 +995,7 @@ const MatchCard = React.memo(function MatchCard({
           DEBUG: voted{selectedSide ? ` ${selectedSide.toUpperCase()}` : ''}
         </div>
       )}
-      <div className={`${!dragging && !exitingVisual && !reduceMotion ? 'deck-float' : ''}`}>
+      <div>
         {voteFxSide && (
           <div key={`flash-${animTick}`} className={`vote-flash ${voteFxSide === 'a' ? 'vote-flash-a' : 'vote-flash-b'}`} />
         )}
@@ -1172,6 +1172,7 @@ const MatchCard = React.memo(function MatchCard({
         <button
           onClick={() => void commitVote("tap", match.cat_a.id)}
           aria-label={`Vote for ${catAName}`}
+          data-testid="vote-a"
           disabled={!canVote}
           className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
@@ -1181,6 +1182,7 @@ const MatchCard = React.memo(function MatchCard({
         <button
           onClick={() => void commitVote("tap", match.cat_b.id)}
           aria-label={`Vote for ${catBName}`}
+          data-testid="vote-b"
           disabled={!canVote}
           className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
@@ -1541,7 +1543,6 @@ function ArenaSection({
   const config = getArenaConfig(arena.type);
   const [segment, setSegment] = useState<"voting" | "results">("voting");
   const [stackIds, setStackIds] = useState<string[]>([]);
-  const [cursor, setCursor] = useState(0);
   const [slotUiByMatchId, setSlotUiByMatchId] = useState<Record<string, SlotUiState>>({});
   const [queuedVotes, setQueuedVotes] = useState<Record<string, boolean>>({});
   const [prunedMatchIds, setPrunedMatchIds] = useState<Record<string, boolean>>({});
@@ -1556,6 +1557,7 @@ function ArenaSection({
   const autoTopupBusyRef = useRef(false);
   const lastAutoTopupAtRef = useRef(0);
   const lowInventoryRetryKeyRef = useRef('');
+  const deckInitKeyRef = useRef('');
   const suppressVotedPruneUntilRef = useRef(0);
   const keepVisibleVoteMatchIdsRef = useRef<Set<string>>(new Set());
   const votedRenderDebugSeenRef = useRef<Set<string>>(new Set());
@@ -1929,7 +1931,6 @@ function ArenaSection({
       if (excluded.has(id)) continue;
       if (!isVotableForUser(id)) continue;
       cursorRef.current = i + 1;
-      setCursor(i + 1);
       return id;
     }
     if (testerMode) {
@@ -1939,7 +1940,6 @@ function ArenaSection({
         if (excluded.has(id)) continue;
         if (!isVotableForUser(id)) continue;
         cursorRef.current = i + 1;
-        setCursor(i + 1);
         return id;
       }
     }
@@ -1984,10 +1984,6 @@ function ArenaSection({
   }, [fillStackToFour]);
 
   useEffect(() => {
-    cursorRef.current = cursor;
-  }, [cursor]);
-
-  useEffect(() => {
     stackIdsRef.current = stackIds;
   }, [stackIds]);
 
@@ -2010,6 +2006,7 @@ function ArenaSection({
 
   useEffect(() => {
     if (segment !== 'voting') {
+      deckInitKeyRef.current = '';
       setStackReady(false);
       return;
     }
@@ -2021,6 +2018,13 @@ function ArenaSection({
     lastResetKeyRef.current = resetKey;
     if (segment !== 'voting') return;
     if (Object.keys(keepUntilByMatchId).some((id) => shouldKeepInUI(id))) return;
+    const initKey = [
+      String(arena.tournament_id || ''),
+      visiblePageOrder.map((m) => String(m.match_id || '')).join(','),
+      Object.keys(votedMatches).sort().join(','),
+    ].join('|');
+    if (deckInitKeyRef.current === initKey) return;
+    deckInitKeyRef.current = initKey;
     clearAllTransitionTimeouts();
     const votedSet = new Set(Object.keys(votedMatches));
     const initial: string[] = [];
@@ -2031,7 +2035,6 @@ function ArenaSection({
       initial.push(id);
     }
     cursorRef.current = i;
-    setCursor((prev) => (prev === i ? prev : i));
     setSlotUiByMatchId({});
     setStackIds(initial);
     setQueuedVotes({});
@@ -2068,14 +2071,13 @@ function ArenaSection({
     if (Date.now() < suppressVotedPruneUntilRef.current) return;
     if (hasSlotTransition) return;
     if (votingMatch) return;
+    const hasVotedCardsInStack = stackIds.some((id) => !!votedMatches[id]);
+    if (!hasVotedCardsInStack) return;
     setStackIds((prev) => {
-      const hasVotedCardsInStack = prev.some((id) => !!votedMatchesRef.current[id]);
-      if (!hasVotedCardsInStack) return prev;
       const next = fillStackToFour(prev.filter((id) => isVotableForUser(id)));
-      if (next.length === prev.length && next.every((id, idx) => id === prev[idx])) return prev;
-      return next;
+      return next.join('|') === prev.join('|') ? prev : next;
     });
-  }, [hasSlotTransition, isVotableForUser, segment, votedMatchesSig, votingMatch]);
+  }, [hasSlotTransition, isVotableForUser, segment, stackIds, votedMatches, votingMatch]);
 
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -2210,9 +2212,9 @@ function ArenaSection({
       }
       return;
     }
-    const nextSig = nextOrder.join('|');
-    if (lastOrderSigRef.current !== nextSig) {
-      lastOrderSigRef.current = nextSig;
+    const nextOrderKey = nextOrder.join('|');
+    const orderChanged = snapshotOrder.join('|') !== nextOrderKey;
+    if (orderChanged) {
       setSnapshotOrder(nextOrder);
       setSnapshotVersion((v) => v + 1);
     }
@@ -2225,7 +2227,7 @@ function ArenaSection({
       }
       return prev;
     });
-  }, [activeById, activeSig, feedStatus, hasMoreFightsForUser, segment, snapshotOrder.length, userCaughtUp]);
+  }, [activeVoting, feedStatus, hasMoreFightsForUser, segment, snapshotKey, snapshotOrder.length, userCaughtUp]);
 
   const votingSlots = useMemo(() => {
     if (segment !== 'voting') return [] as Array<{ key: string; match: ArenaMatch | null }>;
@@ -2882,7 +2884,6 @@ function ArenaSection({
                   }
                   if (nextIds.length === 0) {
                     cursorRef.current = 0;
-                    setCursor(0);
                     setStackIds(fillStackToFour([]));
                   } else {
                     setStackIds(nextIds);
