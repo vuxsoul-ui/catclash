@@ -1,17 +1,15 @@
-# USER.md - About Your Human
+# CatClash User System
 
-*Learn about the person you're helping. Update this as you go.*
+## Voting System
+- Users see two cats.
+- Vote is stored client-side and server-side.
+- Matches are not repeated once voted (unless debug reset).
 
-- **Name:** 
-- **What to call them:** 
-- **Pronouns:** *(optional)*
-- **Timezone:** 
-- **Notes:** 
+## Arena Flow
+- Deck loads 6 matches per page.
+- When page_complete = true, new page is fetched.
+- Match refresh respects fair rotation rules.
 
-## Context
-
-*(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)*
-
----
-
-The more you know, the better you can help. But remember — you're learning about a person, not building a dossier. Respect the difference.
+## Debug Controls
+- ?debug=1 enables manual refresh/reset.
+- Debug features must never expose admin secrets.

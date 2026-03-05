@@ -19,7 +19,8 @@
     "crates:idempotency:smoke": "node scripts/crates-idempotency-smoke.mjs",
     "qa:mobile-smoke": "node scripts/mobile-smoke.mjs",
     "images:backfill:dry": "node scripts/backfill-cat-image-derivatives.mjs",
-    "images:backfill": "node scripts/backfill-cat-image-derivatives.mjs --write"
+    "images:backfill": "node scripts/backfill-cat-image-derivatives.mjs --write",
+    "test:e2e": "playwright test tests/vote-new-user-flow.spec.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

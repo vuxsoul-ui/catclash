@@ -1,8 +1,6 @@
 'use client';
 
-import type { CSSProperties, ReactNode } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
-import { useMousePosition } from './useMousePosition';
+import type { ReactNode } from 'react';
 
 type VoidBorderProps = {
   children: ReactNode;
@@ -11,155 +9,72 @@ type VoidBorderProps = {
   thickness?: number;
 };
 
-const COSMIC_GRADIENT =
-  'conic-gradient(from 24deg, #020617, #1e1b4b, #4c1d95, #020617)';
-const GRAIN_TEXTURE =
-  'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'120\' viewBox=\'0 0 120 120\'%3E%3Cfilter id=\'n\' x=\'0\' y=\'0\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.95\' numOctaves=\'2\' stitchTiles=\'stitch\' /%3E%3C/filter%3E%3Crect width=\'120\' height=\'120\' filter=\'url(%23n)\' /%3E%3C/svg%3E")';
-
-function ringMaskStyle(thickness: number): CSSProperties {
-  return {
-    padding: `${thickness}px`,
-    WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-    WebkitMaskComposite: 'xor',
-    maskComposite: 'exclude',
-  } as CSSProperties;
-}
-
 export default function VoidBorder({
   children,
   className = '',
   radiusClassName = 'rounded-2xl',
-  thickness = 10,
+  thickness = 2,
 }: VoidBorderProps) {
-  const reduceMotion = useReducedMotion();
-  const { ref, mouse, handlers } = useMousePosition<HTMLDivElement>();
   const frameThickness = Math.max(1, thickness);
-  const ringMask = ringMaskStyle(frameThickness);
-  const rotateX = reduceMotion ? 0 : -mouse.y * 5;
-  const rotateY = reduceMotion ? 0 : mouse.x * 5;
-  const rayX = mouse.x * 52;
 
   return (
-    <motion.div
-      ref={ref}
-      className={`relative isolate overflow-hidden bg-slate-950 p-[2px] ${radiusClassName} ${className}`}
+    <div
+      className={`relative isolate overflow-hidden border ${radiusClassName} ${className}`}
       style={{
-        transformStyle: 'preserve-3d',
-        backfaceVisibility: 'hidden',
-        willChange: 'transform',
+        padding: `${frameThickness}px`,
+        borderColor: 'rgba(100,60,200,0.3)',
+        backgroundColor: '#050310',
+        boxShadow:
+          'inset 0 0 30px rgba(60,20,160,0.45), inset 0 0 10px rgba(90,40,200,0.25), 0 0 20px rgba(40,10,120,0.3), 0 0 50px rgba(20,5,80,0.15)',
       }}
-      animate={
-        reduceMotion ? { rotateX: 0, rotateY: 0, scale: 1 } : { rotateX, rotateY, scale: mouse.active ? 1.01 : 1 }
-      }
-      transition={{
-        type: 'spring',
-        stiffness: 180,
-        damping: 18,
-        mass: 0.65,
-      }}
-      {...handlers}
     >
-      <motion.div
+      <div
         aria-hidden
-        className={`pointer-events-none absolute -inset-3 ${radiusClassName}`}
+        className={`pointer-events-none absolute inset-0 ${radiusClassName} rv-void-drift`}
         style={{
-          backgroundImage: COSMIC_GRADIENT,
-          filter: 'blur(25px)',
-          opacity: 0.42,
-          backgroundSize: '180% 180%',
-          willChange: 'transform, opacity',
+          background:
+            'radial-gradient(ellipse at 50% 50%, rgba(50,20,140,0.5) 0%, rgba(50,20,140,0) 40%), radial-gradient(ellipse at 50% 50%, rgba(20,8,42,0.62) 0%, rgba(12,6,26,0.9) 66%, rgba(5,3,16,1) 100%), radial-gradient(ellipse at 25% 35%, rgba(80,40,180,0.18) 0%, rgba(80,40,180,0) 46%), radial-gradient(ellipse at 75% 65%, rgba(80,40,180,0.18) 0%, rgba(80,40,180,0) 46%), radial-gradient(ellipse at 50% 50%, rgba(5,3,16,0.88) 70%, rgba(5,3,16,1) 100%)',
         }}
-        animate={reduceMotion ? { opacity: 0.3 } : { backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'], opacity: mouse.active ? 0.54 : 0.42 }}
-        transition={reduceMotion ? undefined : { duration: 12, ease: 'linear', repeat: Infinity }}
       />
 
-      <motion.div
+      <div
         aria-hidden
-        className={`pointer-events-none absolute inset-0 ${radiusClassName}`}
-        style={{
-          ...ringMask,
-          backgroundColor: '#020617',
-          willChange: 'transform, opacity, filter',
-        }}
-      >
-        <motion.div
-          className={`absolute -inset-8 ${radiusClassName}`}
-          style={{
-            backgroundImage: COSMIC_GRADIENT,
-            backgroundSize: '180% 180%',
-            filter: 'blur(15px)',
-            mixBlendMode: 'screen',
-            willChange: 'transform',
-          }}
-          animate={
-            reduceMotion
-              ? { opacity: [0.16, 0.24, 0.16] }
-              : {
-                  rotate: [0, 360],
-                  opacity: [0.2, 0.34, 0.2],
-                  scale: [1, 1.02, 1],
-                  filter: ['blur(15px) brightness(0.98)', 'blur(15px) brightness(1.03)', 'blur(15px) brightness(0.98)'],
-                }
-          }
-          transition={{
-            rotate: { duration: 12, ease: 'linear', repeat: Infinity },
-            opacity: { duration: 10, ease: 'easeInOut', repeat: Infinity },
-            scale: { duration: 10, ease: 'easeInOut', repeat: Infinity },
-            filter: { duration: 10, ease: 'easeInOut', repeat: Infinity },
-          }}
-        />
-
-        <motion.div
-          className={`absolute inset-0 ${radiusClassName}`}
-          style={{
-            background:
-              'radial-gradient(120% 80% at 50% 50%, rgba(88,28,135,0.45), transparent 70%), radial-gradient(100% 60% at 50% 50%, rgba(30,0,60,0.9), rgba(10,0,25,1))',
-            filter: 'blur(0.5px)',
-            opacity: 0.42,
-            mixBlendMode: 'screen',
-            willChange: 'transform, opacity',
-          }}
-          animate={
-            reduceMotion
-              ? { scale: 1, opacity: [0.36, 0.44, 0.36] }
-              : { x: rayX * 0.12, y: -mouse.y * 8, scale: [1, 1.02, 1], opacity: mouse.active ? 0.5 : 0.42 }
-          }
-          transition={{
-            x: { type: 'spring', stiffness: 120, damping: 16, mass: 0.9 },
-            y: { type: 'spring', stiffness: 120, damping: 16, mass: 0.9 },
-            scale: { duration: 9, ease: 'easeInOut', repeat: Infinity },
-            opacity: { duration: 8, ease: 'easeInOut', repeat: reduceMotion ? Infinity : 0 },
-          }}
-        />
-
-        <motion.div
-          className={`absolute inset-0 ${radiusClassName}`}
-          style={{
-            backgroundImage: GRAIN_TEXTURE,
-            backgroundSize: '140px 140px',
-            mixBlendMode: 'screen',
-            willChange: 'opacity',
-          }}
-          animate={reduceMotion ? { opacity: 0.05 } : { opacity: [0.03, 0.05, 0.04, 0.05, 0.03] }}
-          transition={{ duration: 6, ease: 'easeInOut', repeat: Infinity }}
-        />
-
-        <div
-          className={`absolute inset-0 ${radiusClassName}`}
-          style={{ boxShadow: 'inset 0 0 30px rgba(120, 0, 255, 0.4), 0 0 20px rgba(120, 0, 255, 0.25)' }}
-        />
-      </motion.div>
+        className="pointer-events-none absolute h-[4px] w-[4px] rounded-full rv-void-particle-1"
+        style={{ left: '18%', top: '30%', background: 'rgba(74,48,138,0.44)', filter: 'blur(4px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[5px] w-[5px] rounded-full rv-void-particle-2"
+        style={{ left: '33%', top: '61%', background: 'rgba(72,46,132,0.36)', filter: 'blur(5px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[3px] w-[3px] rounded-full rv-void-particle-3"
+        style={{ left: '49%', top: '42%', background: 'rgba(82,54,150,0.5)', filter: 'blur(3px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[4px] w-[4px] rounded-full rv-void-particle-4"
+        style={{ left: '64%', top: '66%', background: 'rgba(70,42,126,0.34)', filter: 'blur(4px)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute h-[5px] w-[5px] rounded-full rv-void-particle-5"
+        style={{ left: '78%', top: '34%', background: 'rgba(78,50,146,0.4)', filter: 'blur(5px)' }}
+      />
 
       <div
-        className={`relative z-10 border border-white/10 bg-slate-950 ${radiusClassName}`}
+        aria-hidden
+        className={`pointer-events-none absolute inset-[1px] ${radiusClassName}`}
         style={{
-          margin: frameThickness,
-          transform: 'translateZ(8px)',
-          backfaceVisibility: 'hidden',
+          boxShadow: 'inset 0 0 10px rgba(90,40,200,0.2)',
+          background: 'radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.02), rgba(255,255,255,0) 62%)',
         }}
-      >
+      />
+
+      <div className={`relative z-10 border border-white/10 bg-[#050310]/72 ${radiusClassName}`} style={{ margin: frameThickness }}>
         {children}
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -418,6 +418,7 @@ function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null
 const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
+  isRefilling = false, resetFlipSignal = '',
   debugMode = false,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
@@ -434,6 +435,8 @@ const MatchCard = React.memo(function MatchCard({
   slotPhase?: "idle" | "voted" | "exiting";
   slotChosenSide?: "a" | "b" | null;
   enterPhase?: "idle" | "entering";
+  isRefilling?: boolean;
+  resetFlipSignal?: string;
   debugMode?: boolean;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
@@ -451,6 +454,7 @@ const MatchCard = React.memo(function MatchCard({
   const liveSide: "a" | "b" | null = slotChosenSide || chosenSide || selectedSide;
   const parentConfirmed = slotPhase === "voted" || slotPhase === "exiting";
   const exitingVisual = isExiting || slotPhase === "exiting";
+  const forceFront = isRefilling || exitingVisual || voteQueued || slotPhase !== "idle";
   const voteStage: "idle" | "pending" | "confirmed" =
     parentConfirmed
       ? "confirmed"
@@ -843,7 +847,13 @@ const MatchCard = React.memo(function MatchCard({
     setFlipA(false);
     setFlipB(false);
     voteInFlightRef.current = false;
-  }, [match.match_id]);
+  }, [match.match_id, resetFlipSignal]);
+
+  useEffect(() => {
+    if (!isRefilling) return;
+    setFlipA(false);
+    setFlipB(false);
+  }, [isRefilling]);
 
   useEffect(() => {
     return () => {
@@ -974,7 +984,7 @@ const MatchCard = React.memo(function MatchCard({
 
   return (
     <div
-      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-transform transition-opacity ${reduceMotion ? 'duration-150' : 'duration-300'} ease-out touch-pan-y ${dragging ? 'is-dragging' : ''} ${impactSide && !reduceMotion ? 'impact' : ''} ${match.is_close_match && !dragging && !exitingVisual && !reduceMotion ? 'close-glow' : ''} ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-transform transition-opacity ${reduceMotion ? 'duration-150' : 'duration-300'} ease-out touch-pan-y ${dragging ? 'is-dragging' : ''} ${impactSide && !reduceMotion ? 'impact' : ''} ${match.is_close_match && !dragging && !exitingVisual && !reduceMotion ? 'close-glow' : ''} ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? (isRefilling ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
@@ -1053,7 +1063,7 @@ const MatchCard = React.memo(function MatchCard({
       <div className="grid grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)] items-start gap-2">
         <div className="min-w-0">
           <div className="arena-flip-scene h-[220px] md:h-[300px]">
-            <div className={`arena-flip-card ${flipA ? 'is-flipped' : ''}`}>
+            <div className={`arena-flip-card ${flipA && !forceFront ? 'is-flipped' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'b' ? 'opacity-75' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : dragIntent === 'b' ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
@@ -1109,7 +1119,7 @@ const MatchCard = React.memo(function MatchCard({
 
         <div className="min-w-0">
           <div className="arena-flip-scene h-[220px] md:h-[300px]">
-            <div className={`arena-flip-card ${flipB ? 'is-flipped' : ''}`}>
+            <div className={`arena-flip-card ${flipB && !forceFront ? 'is-flipped' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'a' ? 'opacity-75' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : dragIntent === 'a' ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
@@ -1493,6 +1503,8 @@ const MatchCard = React.memo(function MatchCard({
     prev.slotPhase === next.slotPhase &&
     prev.slotChosenSide === next.slotChosenSide &&
     prev.enterPhase === next.enterPhase &&
+    prev.isRefilling === next.isRefilling &&
+    prev.resetFlipSignal === next.resetFlipSignal &&
     prev.onVote === next.onVote &&
     prev.onPredict === next.onPredict &&
     prev.onCreateCallout === next.onCreateCallout &&
@@ -1548,6 +1560,9 @@ function ArenaSection({
   const keepVisibleVoteMatchIdsRef = useRef<Set<string>>(new Set());
   const votedRenderDebugSeenRef = useRef<Set<string>>(new Set());
   const prunedMatchIdsRef = useRef<Record<string, boolean>>({});
+  const votedMatchesRef = useRef<Record<string, string>>({});
+  const queuedVotesStateRef = useRef<Record<string, boolean>>({});
+  const prunedMatchIdsStateRef = useRef<Record<string, boolean>>({});
   const stackIdsRef = useRef<string[]>([]);
   const keepUntilByMatchIdRef = useRef<Record<string, number>>({});
   const onVoteRef = useRef(onVote);
@@ -1561,6 +1576,8 @@ function ArenaSection({
   const hotStreakTimerRef = useRef<number | null>(null);
   const prevTopMatchIdRef = useRef<string | null>(null);
   const prevVoteStreakRef = useRef(0);
+  const lastResetKeyRef = useRef<string>('');
+  const lastOrderSigRef = useRef<string>('');
   const [snapshotOrder, setSnapshotOrder] = useState<string[]>([]);
   const [snapshotById, setSnapshotById] = useState<Record<string, ArenaMatch>>({});
   const [snapshotVersion, setSnapshotVersion] = useState(0);
@@ -1683,14 +1700,20 @@ function ArenaSection({
     [debugMode, prunedMatchIds, queuedVotes, shouldKeepInUI, visiblePageOrderBase, votedMatches]
   );
   const votingById = useMemo(() => new Map(visiblePageOrderBase.map((m) => [m.match_id, m])), [visiblePageOrderBase]);
+  const votedMatchesSig = useMemo(() => Object.keys(votedMatches).sort().join('|'), [votedMatches]);
+  const queuedVotesSig = useMemo(() => Object.keys(queuedVotes).sort().join('|'), [queuedVotes]);
+  const prunedMatchIdsSig = useMemo(
+    () => Object.keys(prunedMatchIds).filter((id) => !!prunedMatchIds[id]).sort().join('|'),
+    [prunedMatchIds]
+  );
   const isVotableForUser = useCallback((id: string): boolean => {
     if (!id) return false;
     if (debugMode) return true;
-    if (prunedMatchIds[id] && !shouldKeepInUI(id)) return false;
-    if (queuedVotes[id]) return true;
+    if (prunedMatchIdsStateRef.current[id] && !shouldKeepInUI(id)) return false;
+    if (queuedVotesStateRef.current[id]) return true;
     if (shouldKeepInUI(id)) return true;
-    return !votedMatches[id];
-  }, [debugMode, prunedMatchIds, queuedVotes, shouldKeepInUI, votedMatches]);
+    return !votedMatchesRef.current[id];
+  }, [debugMode, prunedMatchIdsSig, queuedVotesSig, shouldKeepInUI, votedMatchesSig]);
   const resultsList = useMemo(() => results.slice(0, MAX_VISIBLE), [results]);
   const activeVoting = useMemo(
     () =>
@@ -1975,6 +1998,15 @@ function ArenaSection({
   useEffect(() => {
     prunedMatchIdsRef.current = prunedMatchIds;
   }, [prunedMatchIds]);
+  useEffect(() => {
+    votedMatchesRef.current = votedMatches;
+  }, [votedMatchesSig]);
+  useEffect(() => {
+    queuedVotesStateRef.current = queuedVotes;
+  }, [queuedVotesSig]);
+  useEffect(() => {
+    prunedMatchIdsStateRef.current = prunedMatchIds;
+  }, [prunedMatchIdsSig]);
 
   useEffect(() => {
     if (segment !== 'voting') {
@@ -1983,7 +2015,10 @@ function ArenaSection({
     }
   }, [segment]);
 
+  const resetKey = `${String(arena.tournament_id || '')}:${arena.type}:${segment}`;
   useEffect(() => {
+    if (lastResetKeyRef.current === resetKey) return;
+    lastResetKeyRef.current = resetKey;
     if (segment !== 'voting') return;
     if (Object.keys(keepUntilByMatchId).some((id) => shouldKeepInUI(id))) return;
     clearAllTransitionTimeouts();
@@ -1996,7 +2031,7 @@ function ArenaSection({
       initial.push(id);
     }
     cursorRef.current = i;
-    setCursor(i);
+    setCursor((prev) => (prev === i ? prev : i));
     setSlotUiByMatchId({});
     setStackIds(initial);
     setQueuedVotes({});
@@ -2004,7 +2039,7 @@ function ArenaSection({
     setKeepUntilByMatchId({});
     setNextUpId(null);
     setStackReady(true);
-  }, [arena.tournament_id, clearAllTransitionTimeouts, keepUntilByMatchId, segment, shouldKeepInUI, visiblePageOrder, votedMatches]);
+  }, [clearAllTransitionTimeouts, keepUntilByMatchId, resetKey, segment, shouldKeepInUI, visiblePageOrder, votedMatches]);
 
   useEffect(() => {
     if (!globalPageInfo) return;
@@ -2033,10 +2068,14 @@ function ArenaSection({
     if (Date.now() < suppressVotedPruneUntilRef.current) return;
     if (hasSlotTransition) return;
     if (votingMatch) return;
-    const hasVotedCardsInStack = stackIds.some((id) => !!votedMatches[id]);
-    if (!hasVotedCardsInStack) return;
-    setStackIds((prev) => fillStackToFour(prev.filter((id) => isVotableForUser(id))));
-  }, [hasSlotTransition, isVotableForUser, segment, stackIds, votedMatches, votingMatch]);
+    setStackIds((prev) => {
+      const hasVotedCardsInStack = prev.some((id) => !!votedMatchesRef.current[id]);
+      if (!hasVotedCardsInStack) return prev;
+      const next = fillStackToFour(prev.filter((id) => isVotableForUser(id)));
+      if (next.length === prev.length && next.every((id, idx) => id === prev[idx])) return prev;
+      return next;
+    });
+  }, [hasSlotTransition, isVotableForUser, segment, votedMatchesSig, votingMatch]);
 
   useEffect(() => {
     if (segment !== 'voting') return;
@@ -2130,12 +2169,17 @@ function ArenaSection({
   }, [stackLead, stackSecond]);
   const lowInventory = segment === 'voting' && activeVoting.length > 0 && activeVoting.length < MAX_VISIBLE;
   const isRefilling = feedStatus === 'refilling' || feedStatus === 'transitioning';
-  const snapshotKey = useMemo(() => activeVoting.map((m) => m.match_id).join('|'), [activeVoting]);
+  const flipResetSignal = `${feedStatus}:${snapshotVersion}:${refillRetryAttempt}`;
+  const activeSig = useMemo(() => activeVoting.map((m) => m.match_id).join('|'), [activeVoting]);
+  const activeById = useMemo(() => {
+    const next: Record<string, ArenaMatch> = {};
+    for (const m of activeVoting) next[m.match_id] = m;
+    return next;
+  }, [activeSig]);
   useEffect(() => {
     if (segment !== 'voting') return;
-    const nextOrder = activeVoting.map((m) => m.match_id).filter(Boolean);
-    const nextById: Record<string, ArenaMatch> = {};
-    for (const m of activeVoting) nextById[m.match_id] = m;
+    const nextOrder = Object.keys(activeById).filter(Boolean);
+    const nextById = activeById;
 
     if (nextOrder.length > 0) {
       preserveSnapshotOnEmptyRef.current = false;
@@ -2166,13 +2210,22 @@ function ArenaSection({
       }
       return;
     }
-    setSnapshotOrder((prev) => {
-      if (prev.join('|') === nextOrder.join('|')) return prev;
+    const nextSig = nextOrder.join('|');
+    if (lastOrderSigRef.current !== nextSig) {
+      lastOrderSigRef.current = nextSig;
+      setSnapshotOrder(nextOrder);
       setSnapshotVersion((v) => v + 1);
-      return nextOrder;
+    }
+    setSnapshotById((prev) => {
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(nextById);
+      if (prevKeys.length !== nextKeys.length) return nextById;
+      for (const key of nextKeys) {
+        if (prev[key] !== nextById[key]) return nextById;
+      }
+      return prev;
     });
-    setSnapshotById(nextById);
-  }, [activeVoting, feedStatus, hasMoreFightsForUser, segment, snapshotKey, snapshotOrder.length, userCaughtUp]);
+  }, [activeById, activeSig, feedStatus, hasMoreFightsForUser, segment, snapshotOrder.length, userCaughtUp]);
 
   const votingSlots = useMemo(() => {
     if (segment !== 'voting') return [] as Array<{ key: string; match: ArenaMatch | null }>;
@@ -2199,6 +2252,31 @@ function ArenaSection({
     segment === 'voting' &&
     !hasRenderableVotingMatch;
   const shouldShowEmptyModule = isStableVotingEmpty || (segment !== 'voting' && activeList.length === 0);
+  const refillProbeLoggedRef = useRef(false);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (refillProbeLoggedRef.current) return;
+    if (segment !== 'voting' || !isRefilling || !topVotingSlot?.match) return;
+    const timer = window.setTimeout(() => {
+      const card = document.querySelector('.arena-match-card') as HTMLElement | null;
+      if (!card) return;
+      const rect = card.getBoundingClientRect();
+      const x = Math.floor(rect.left + rect.width / 2);
+      const y = Math.floor(rect.top + rect.height / 2);
+      const top = document.elementFromPoint(x, y) as HTMLElement | null;
+      const style = top ? window.getComputedStyle(top) : null;
+      // eslint-disable-next-line no-console
+      console.log('[DEV][arena-card-center-probe]', {
+        point: { x, y },
+        topTag: top?.tagName || null,
+        topClass: top?.className || null,
+        topPointerEvents: style?.pointerEvents || null,
+        topZIndex: style?.zIndex || null,
+      });
+      refillProbeLoggedRef.current = true;
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [isRefilling, segment, topVotingSlot?.match?.match_id]);
   useEffect(() => {
     if (segment !== 'voting') return;
     if (!userCaughtUp) return;
@@ -2737,6 +2815,8 @@ function ArenaSection({
                     slotPhase={slotUiByMatchId[topVotingSlot.match.match_id]?.phase || 'idle'}
                     slotChosenSide={slotUiByMatchId[topVotingSlot.match.match_id]?.chosenSide || null}
                     enterPhase={deckEnterPhase}
+                    isRefilling={isRefilling}
+                    resetFlipSignal={flipResetSignal}
                     voteQueued={!!queuedVotes[topVotingSlot.match.match_id]}
                     showNextUp={nextUpId === topVotingSlot.match.match_id}
                     onRefreshQueued={handleRefreshQueued}
@@ -3014,6 +3094,8 @@ export default function Page() {
   }>(null);
   const [hudPulseKey, setHudPulseKey] = useState('');
   const [displayStats, setDisplayStats] = useState({ streak: 0, xp: 0, sigils: 0, pred: 0 });
+  const displayStatsRef = useRef(displayStats);
+  const statsAnimRafRef = useRef<number | null>(null);
   const [hudCompact, setHudCompact] = useState(false);
   const [hudDetail, setHudDetail] = useState<null | { title: string; detail: string }>(null);
   const [dailyRewardSplash, setDailyRewardSplash] = useState<null | {
@@ -3032,6 +3114,11 @@ export default function Page() {
   const [pulseCountdown, setPulseCountdown] = useState('00:00:00');
   const [pulseSecondsRemaining, setPulseSecondsRemaining] = useState(0);
   const [pulseRecap, setPulseRecap] = useState<string | null>(null);
+  const nextRefreshAtUtc = useMemo(() => {
+    const next = new Date();
+    next.setUTCHours(24, 0, 0, 0);
+    return next.toISOString();
+  }, []);
   const [launchSpotlight, setLaunchSpotlight] = useState<{ title: string; subtitle: string; cta_href: string } | null>(null);
   const [launchSocialProofLine, setLaunchSocialProofLine] = useState<string | null>(null);
   const [recruitPushEnabled, setRecruitPushEnabled] = useState(false);
@@ -3256,29 +3343,54 @@ export default function Page() {
     }).catch(() => null);
   }, [recruitPushEnabled]);
   useEffect(() => {
-    if (!progress) return;
-    const animateTo = (field: 'streak' | 'xp' | 'sigils' | 'pred', target: number) => {
-      const start = displayStats[field];
-      const diff = target - start;
-      if (diff === 0) return;
-      const duration = 260;
-      const t0 = performance.now();
-      const tick = (t: number) => {
-        const p = Math.min(1, (t - t0) / duration);
-        const eased = 1 - Math.pow(1 - p, 3);
-        const val = Math.round(start + diff * eased);
-        setDisplayStats((prev) => ({ ...prev, [field]: val }));
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
+    displayStatsRef.current = displayStats;
+  }, [displayStats]);
+  const statsTargetSig = `${Number(progress?.currentStreak || 0)}:${Number(progress?.xp || 0)}:${Number(progress?.sigils || 0)}:${Number(progress?.predictionStreak || 0)}`;
+  const shouldAnimateStats = true;
+  useEffect(() => {
+    const target = {
+      streak: Number(progress?.currentStreak || 0),
+      xp: Number(progress?.xp || 0),
+      sigils: Number(progress?.sigils || 0),
+      pred: Number(progress?.predictionStreak || 0),
     };
-    animateTo('streak', Number(progress.currentStreak || 0));
-    animateTo('xp', Number(progress.xp || 0));
-    animateTo('sigils', Number(progress.sigils || 0));
-    animateTo('pred', Number(progress.predictionStreak || 0));
-    setHudPulseKey(`${progress.currentStreak}:${progress.xp}:${progress.sigils}:${progress.predictionStreak}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress?.currentStreak, progress?.xp, progress?.sigils, progress?.predictionStreak]);
+    setHudPulseKey(statsTargetSig);
+    if (statsAnimRafRef.current !== null) {
+      window.cancelAnimationFrame(statsAnimRafRef.current);
+      statsAnimRafRef.current = null;
+    }
+    if (!shouldAnimateStats) {
+      setDisplayStats(target);
+      return;
+    }
+    const start = displayStatsRef.current;
+    const duration = 260;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const next = {
+        streak: Math.round(start.streak + (target.streak - start.streak) * eased),
+        xp: Math.round(start.xp + (target.xp - start.xp) * eased),
+        sigils: Math.round(start.sigils + (target.sigils - start.sigils) * eased),
+        pred: Math.round(start.pred + (target.pred - start.pred) * eased),
+      };
+      setDisplayStats(next);
+      displayStatsRef.current = next;
+      if (p < 1) {
+        statsAnimRafRef.current = window.requestAnimationFrame(tick);
+      } else {
+        statsAnimRafRef.current = null;
+      }
+    };
+    statsAnimRafRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      if (statsAnimRafRef.current !== null) {
+        window.cancelAnimationFrame(statsAnimRafRef.current);
+        statsAnimRafRef.current = null;
+      }
+    };
+  }, [shouldAnimateStats, statsTargetSig]);
   useEffect(() => {
     const onScroll = () => setHudCompact(window.scrollY > 20);
     onScroll();
@@ -3375,13 +3487,11 @@ export default function Page() {
     return () => window.clearTimeout(timer);
   }, [dailyRewardSplash]);
   useEffect(() => {
+    const targetMs = new Date(nextRefreshAtUtc).getTime();
     const tick = () => {
-      const now = new Date();
-      const next = new Date(now);
-      next.setUTCHours(24, 0, 0, 0);
-      const ms = Math.max(0, next.getTime() - now.getTime());
+      const ms = Math.max(0, targetMs - Date.now());
       const total = Math.floor(ms / 1000);
-      setPulseSecondsRemaining(total);
+      setPulseSecondsRemaining((prev) => (prev === total ? prev : total));
       const h = String(Math.floor(total / 3600)).padStart(2, '0');
       const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
       const s = String(total % 60).padStart(2, '0');
@@ -3390,7 +3500,7 @@ export default function Page() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [nextRefreshAtUtc]);
   useEffect(() => {
     const tick = () => {
       const now = new Date();
