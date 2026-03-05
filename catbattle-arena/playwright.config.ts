@@ -1,20 +1,22 @@
-import { defineConfig } from 'playwright/test';
-
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+import { defineConfig, devices } from 'playwright/test';
 
 export default defineConfig({
   testDir: './tests',
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  fullyParallel: false,
-  retries: 0,
+  reporter: 'list',
   use: {
-    baseURL: BASE_URL,
+    baseURL: process.env.BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
-    launchOptions: {
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    },
-    video: 'off',
-    screenshot: 'only-on-failure',
   },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+  ],
 });
