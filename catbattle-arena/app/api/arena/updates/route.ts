@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { loadArenaPage, type ArenaType, type ArenaTab } from "../../_lib/arena-pages";
+import { computeVoteStats } from "../../_lib/vote-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +48,20 @@ export async function GET(request: NextRequest) {
       rows = fallback.error ? [] : (fallback.data || []);
     }
 
-    const updates = (rows || []).map((r: any) => ({
-      matchId: String(r.id),
-      votesA: Number(r.votes_a || 0),
-      votesB: Number(r.votes_b || 0),
-      updatedAt: String(r.updated_at || r.created_at || new Date().toISOString()),
-    }));
+    const updates = (rows || []).map((r: any) => {
+      const votesA = Number(r.votes_a || 0);
+      const votesB = Number(r.votes_b || 0);
+      const stats = computeVoteStats(votesA, votesB);
+      return {
+        matchId: String(r.id),
+        votesA,
+        votesB,
+        totalVotes: stats.total_votes,
+        percentA: stats.percent_a,
+        percentB: stats.percent_b,
+        updatedAt: String(r.updated_at || r.created_at || new Date().toISOString()),
+      };
+    });
 
     return NextResponse.json({
       ok: true,

@@ -11,6 +11,7 @@ import { loadArenaPage } from "../../_lib/arena-pages";
 import { pickFairMatches } from "../../_lib/pickFairMatches";
 import { isAdminAuthorized } from "../../_lib/adminAuth";
 import { isFeatureTesterId } from "../../_lib/tester";
+import { computeVoteStats } from "../../_lib/vote-stats";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -357,14 +358,20 @@ export async function GET(request: NextRequest) {
       const b = catMap[m.cat_b_id];
       if (!a || !b) return null;
       if (!testerMode && isSameOwnerPair(a.owner_id || null, b.owner_id || null)) return null;
+      const votesA = Number(m.votes_a || 0);
+      const votesB = Number(m.votes_b || 0);
+      const stats = computeVoteStats(votesA, votesB);
       return {
         match_id: m.id,
         status: testerMode ? 'active' : m.status,
         created_at: m.created_at || null,
-        votes_a: m.votes_a || 0,
-        votes_b: m.votes_b || 0,
+        votes_a: votesA,
+        votes_b: votesB,
+        total_votes: stats.total_votes,
+        percent_a: stats.percent_a,
+        percent_b: stats.percent_b,
         winner_id: testerMode ? null : m.winner_id,
-        is_close_match: Math.abs((m.votes_a || 0) - (m.votes_b || 0)) <= 2,
+        is_close_match: Math.abs(votesA - votesB) <= 2,
         user_prediction: userPredictions[m.id] || null,
         cat_a: a,
         cat_b: b,

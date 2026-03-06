@@ -4,6 +4,7 @@ import { requireGuestId } from '../../_lib/guest';
 import { normalizeCatImageUrl } from '../../_lib/images';
 import { checkRateLimitMany, getClientIp, hashValue } from '../../_lib/rateLimit';
 import { isFeatureTesterId } from '../../_lib/tester';
+import { computeVoteStats } from '../../_lib/vote-stats';
 
 export const dynamic = 'force-dynamic';
 
@@ -155,13 +156,19 @@ export async function GET(request: NextRequest) {
         const catB = catMap.get(String(row.cat_b_id || ''));
         if (!catA || !catB) return null;
         if (!testerMode && String((catA as any).owner_id || '') && String((catA as any).owner_id || '') === String((catB as any).owner_id || '')) return null;
+        const votesA = Number(row.votes_a || 0);
+        const votesB = Number(row.votes_b || 0);
+        const stats = computeVoteStats(votesA, votesB);
         return {
           match_id: id,
           status: testerMode ? 'active' : String(row.status || 'active'),
-          votes_a: Number(row.votes_a || 0),
-          votes_b: Number(row.votes_b || 0),
+          votes_a: votesA,
+          votes_b: votesB,
+          total_votes: stats.total_votes,
+          percent_a: stats.percent_a,
+          percent_b: stats.percent_b,
           winner_id: testerMode ? null : (row.winner_id ? String(row.winner_id) : null),
-          is_close_match: Math.abs(Number(row.votes_a || 0) - Number(row.votes_b || 0)) <= 2,
+          is_close_match: Math.abs(votesA - votesB) <= 2,
           cat_a: catA,
           cat_b: catB,
         };

@@ -1,5 +1,6 @@
 // REPLACE: app/api/vote/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { requireGuestId } from "../_lib/guest";
 import { computeGuildStandings } from "../_lib/guilds";
@@ -11,6 +12,36 @@ import { trackAppEvent } from "../_lib/telemetry";
 import { applyFeatureTesterBoost, isFeatureTesterId } from "../_lib/tester";
 
 export const dynamic = "force-dynamic";
+
+function newRequestId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+}
+
+function logVoteEvent(payload: Record<string, unknown>) {
+  // Structured log for launch debugging (no secrets).
+  // eslint-disable-next-line no-console
+  console.info("[VOTE_LOG]", JSON.stringify({ ts: new Date().toISOString(), ...payload }));
+}
+
+async function fetchMatchVotes(supabase: any, matchId: string) {
+  try {
+    const { data } = await supabase
+      .from("tournament_matches")
+      .select("id, votes_a, votes_b")
+      .eq("id", matchId)
+      .maybeSingle();
+    if (!data) return null;
+    const a = Number(data.votes_a || 0);
+    const b = Number(data.votes_b || 0);
+    return { votes_a: a, votes_b: b, total_votes: a + b };
+  } catch {
+    return null;
+  }
+}
 
 async function attachArenaPageVoteState(
   supabase: any,
@@ -35,10 +66,12 @@ async function attachArenaPageVoteState(
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = newRequestId();
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !serviceKey) {
+      logVoteEvent({ request_id: requestId, outcome: "error", detail: "missing_env" });
       return NextResponse.json(
         { ok: false, error: "missing_env" },
         { status: 500 }
@@ -54,6 +87,7 @@ export async function POST(req: NextRequest) {
     const votedFor = body?.voted_for as string | undefined;
 
     if (!matchId || !votedFor) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, outcome: "invalid" });
       return NextResponse.json({ ok: false, error: "missing_params" }, { status: 400 });
     }
 
@@ -61,6 +95,7 @@ export async function POST(req: NextRequest) {
     try {
       voterUserId = await requireGuestId();
     } catch {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, outcome: "unauthorized" });
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     const testerMode = isFeatureTesterId(voterUserId);
@@ -75,13 +110,20 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (matchErr || !match) {
+        logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_match" });
         return NextResponse.json({ ok: false, error: "match_not_found" }, { status: 404 });
       }
       if (votedFor !== match.cat_a_id && votedFor !== match.cat_b_id) {
+        logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat" });
         return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
       }
 
       const voteA = votedFor === match.cat_a_id;
+      const beforeVotes = {
+        votes_a: Number(match.votes_a || 0),
+        votes_b: Number(match.votes_b || 0),
+        total_votes: Number(match.votes_a || 0) + Number(match.votes_b || 0),
+      };
       await supabase
         .from("tournament_matches")
         .update(
@@ -91,6 +133,17 @@ export async function POST(req: NextRequest) {
         )
         .eq("id", matchId);
       await applyFeatureTesterBoost(supabase as any, voterUserId);
+      const afterVotes = await fetchMatchVotes(supabase, matchId);
+      logVoteEvent({
+        request_id: requestId,
+        match_id: matchId,
+        voted_for: votedFor,
+        user_id: voterUserId,
+        outcome: "success",
+        tester_mode: true,
+        votes_before: beforeVotes,
+        votes_after: afterVotes,
+      });
       try {
         await trackAppEvent(supabase, "vote_cast", { match_id: matchId, tester_mode: true }, voterUserId);
       } catch {}
@@ -115,6 +168,7 @@ export async function POST(req: NextRequest) {
       { key: `rl:vote:ip:${ipHash || "unknown"}`, limit: 30, windowMs: 60_000 },
     ]);
     if (!limitResult.allowed) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "rate_limited" });
       return NextResponse.json(
         { ok: false, error: "Rate limit exceeded. Try again shortly." },
         { status: 429, headers: { "Retry-After": String(limitResult.retryAfterSec) } }
@@ -133,6 +187,16 @@ export async function POST(req: NextRequest) {
 
     // If RPC works, return its result
     if (!rpcError) {
+      const afterVotes = await fetchMatchVotes(supabase, matchId);
+      logVoteEvent({
+        request_id: requestId,
+        match_id: matchId,
+        voted_for: votedFor,
+        user_id: voterUserId,
+        outcome: "success",
+        rpc: true,
+        votes_after: afterVotes,
+      });
       const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
       if (voterUserId) {
         await trackAppEvent(supabase, isRegistered ? 'vote_cast' : 'guest_vote_cast', { match_id: matchId }, voterUserId);
@@ -168,15 +232,18 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (matchErr || !match) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_match" });
       return NextResponse.json({ ok: false, error: "match_not_found" }, { status: 404 });
     }
 
     if (match.status !== "active") {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_state", detail: "match_closed" });
       return NextResponse.json({ ok: false, error: "match_closed" }, { status: 400 });
     }
 
     // Verify voted_for is one of the two cats
     if (votedFor !== match.cat_a_id && votedFor !== match.cat_b_id) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat" });
       return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
     }
 
@@ -190,6 +257,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (existingVote) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "duplicate" });
       const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
       return NextResponse.json(
         { ok: true, alreadyVoted: true, matchId, choice: String((existingVote as any)?.voted_for || votedFor), ...pageVoteMeta },
@@ -208,6 +276,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (ipVote) {
+        logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "duplicate", detail: "ip_hash" });
         const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
         return NextResponse.json(
           { ok: true, alreadyVoted: true, matchId, choice: String((ipVote as any)?.voted_for || votedFor), ...pageVoteMeta },
@@ -230,6 +299,7 @@ export async function POST(req: NextRequest) {
     if (insertErr) {
       // Unique constraint violation = duplicate vote
       if (insertErr.code === "23505") {
+        logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "duplicate", detail: "unique" });
         const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
         return NextResponse.json(
           { ok: true, alreadyVoted: true, matchId, choice: votedFor, ...pageVoteMeta },
@@ -237,6 +307,7 @@ export async function POST(req: NextRequest) {
         );
       }
       console.error("[VOTE] Insert error:", insertErr);
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "error", detail: "insert_failed" });
       return NextResponse.json({ ok: false, error: "vote_failed", details: insertErr.message }, { status: 500 });
     }
 
@@ -348,6 +419,16 @@ export async function POST(req: NextRequest) {
     }
 
     const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
+    const afterVotes = await fetchMatchVotes(supabase, matchId);
+    logVoteEvent({
+      request_id: requestId,
+      match_id: matchId,
+      voted_for: votedFor,
+      user_id: voterUserId,
+      outcome: "success",
+      rpc: false,
+      votes_after: afterVotes,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -367,6 +448,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[VOTE] Exception:", msg);
+    logVoteEvent({ request_id: requestId, outcome: "error", detail: msg });
     return NextResponse.json({ ok: false, error: "server_error", details: msg }, { status: 500 });
   }
 }

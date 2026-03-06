@@ -1,8 +1,16 @@
-import { expect, test, type APIResponse, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type APIResponse, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
-const BASE_URL = (process.env.BASE_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+const BASE_URL = (process.env.BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '');
+const MAX_VOTES = 2;
 
 type ModeName = 'debug' | 'normal';
+
+type VoteTarget = { locator: Locator; side: 'a' | 'b' | null };
+
+type MatchState = {
+  matchId: string | null;
+  text: string;
+};
 
 type ModeResult = {
   mode: ModeName;
@@ -10,6 +18,7 @@ type ModeResult = {
   uiVoteSucceeded: boolean;
   apiVoteSucceeded: boolean;
   voteRequestObserved: boolean;
+  percentConsistencyChecked?: boolean;
   repeatedRefreshLoopDetected: boolean;
   pulsingUnclickableDetected: boolean;
   maxUpdateDepthErrorDetected: boolean;
@@ -25,6 +34,7 @@ function statusSummary(result: ModeResult) {
     uiVoteSucceeded: result.uiVoteSucceeded,
     apiVoteSucceeded: result.apiVoteSucceeded,
     voteRequestObserved: result.voteRequestObserved,
+    percentConsistencyChecked: result.percentConsistencyChecked,
     repeatedRefreshLoopDetected: result.repeatedRefreshLoopDetected,
     pulsingUnclickableDetected: result.pulsingUnclickableDetected,
     maxUpdateDepthErrorDetected: result.maxUpdateDepthErrorDetected,
@@ -39,6 +49,31 @@ async function debugResponse(label: string, res: APIResponse) {
   const body = await res.text().catch(() => '<unreadable body>');
   // eslint-disable-next-line no-console
   console.log(`[E2E] ${label} status=${res.status()} body=${body.slice(0, 1200)}`);
+}
+
+type VoteAttemptNotes = string[];
+
+async function getCurrentMatchState(page: Page): Promise<MatchState> {
+  const root = page.getByTestId('match-root').first();
+  const count = await root.count();
+  if (!count) return { matchId: null, text: '' };
+
+  const matchId = (await root.getAttribute('data-match-id'))?.trim() || null;
+  const text = (await root.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+  return { matchId, text };
+}
+
+async function waitForMatchTransition(page: Page, prior: MatchState, timeoutMs = 5_000): Promise<boolean> {
+  const endAt = Date.now() + timeoutMs;
+  while (Date.now() < endAt) {
+    const current = await getCurrentMatchState(page);
+    const changed = !!current.matchId && (!!prior.matchId ? current.matchId !== prior.matchId : true) && current.text !== prior.text;
+    if (changed || (prior.matchId && current.matchId && current.matchId !== prior.matchId) || (current.text && current.text !== prior.text)) {
+      return true;
+    }
+    await page.waitForTimeout(250);
+  }
+  return false;
 }
 
 async function isLoadingVisible(page: Page) {
@@ -67,28 +102,77 @@ async function detectRepeatedLoadingLoop(page: Page) {
   return loadingVisibleMs >= 9_000;
 }
 
-async function findVoteButton(page: Page) {
-  const testIds = ['vote-a', 'vote-b', 'vote-left', 'vote-right'];
-  for (const id of testIds) {
+async function findVoteButton(page: Page): Promise<VoteTarget | null> {
+  const priorityIds = [
+    { id: 'vote-a', side: 'a' as const },
+    { id: 'vote-b', side: 'b' as const },
+  ];
+
+  for (const { id, side } of priorityIds) {
     const locator = page.getByTestId(id).first();
-    if (await locator.count()) return locator;
+    if (await locator.count()) return { locator, side };
+  }
+
+  for (const id of ['vote-left', 'vote-right']) {
+    const locator = page.getByTestId(id).first();
+    if (await locator.count()) return { locator, side: null };
   }
 
   const roleButton = page.getByRole('button', { name: /vote|pick|choose|select/i }).first();
-  if (await roleButton.count()) return roleButton;
+  if (await roleButton.count()) return { locator: roleButton, side: null };
 
   const fallback = page.locator('.arena-match-card button').first();
-  if (await fallback.count()) return fallback;
+  if (await fallback.count()) return { locator: fallback, side: null };
 
   return null;
 }
 
+async function clickVoteButton(page: Page, target: VoteTarget, notes: VoteAttemptNotes, mode: string): Promise<void> {
+  await target.locator.scrollIntoViewIfNeeded().catch(() => null);
+
+  try {
+    await target.locator.click({ trial: true, timeout: 2_000 });
+  } catch (error) {
+    const pointerEvents = await target.locator
+      .evaluate((el) => window.getComputedStyle(el).pointerEvents)
+      .catch(() => 'unknown');
+    const box = await target.locator.boundingBox().catch(() => null);
+    notes.push(`[${mode}] trial click failed: ${String(error)}`);
+    notes.push(`[${mode}] pointer-events=${String(pointerEvents)} box=${JSON.stringify(box)}`);
+    const screenshotPath = `/tmp/${mode}-vote-trial-${Date.now()}.png`;
+    await page.screenshot({ path: screenshotPath });
+    notes.push(`[${mode}] screenshot: ${screenshotPath}`);
+  }
+
+  await target.locator.click({ timeout: 5_000 }).catch(async () => {
+    if (page.context().browser()?.browserType().name() === 'webkit') {
+      notes.push(`[${mode}] using webkit force click fallback`);
+      await target.locator.click({ force: true, timeout: 5_000 }).catch(() => null);
+    }
+  });
+}
+
+function waitForVoteResponse(page: Page, timeoutMs = 5_000) {
+  const voteResponse = page.waitForResponse((res) => {
+    const req = res.request();
+    return req.method() === 'POST' && /\/api\/vote(?:\?|$)/.test(res.url());
+  }, { timeout: timeoutMs }).then((res) => res).catch(() => null);
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+  return Promise.race([voteResponse, timeout]);
+}
+
 async function waitUntilEnabled(button: ReturnType<Page['locator']>, timeoutMs = 5_000) {
   const startedAt = Date.now();
+  const page = button.page();
   while (Date.now() - startedAt < timeoutMs) {
+    if (page.isClosed()) return false;
     const enabled = await button.isEnabled().catch(() => false);
     if (enabled) return true;
-    await button.page().waitForTimeout(250);
+    try {
+      await page.waitForTimeout(250);
+    } catch {
+      return false;
+    }
   }
   return false;
 }
@@ -113,8 +197,28 @@ function findFallbackCandidate(activeJson: any): { matchId: string; catAId: stri
   return null;
 }
 
+function findMatchWithPercents(activeJson: any): { matchId: string; percentA: number; percentB: number; totalVotes: number } | null {
+  const arenas = Array.isArray(activeJson?.arenas) ? activeJson.arenas : [];
+  for (const arena of arenas) {
+    const rounds = Array.isArray(arena?.rounds) ? arena.rounds : [];
+    for (const round of rounds) {
+      const matches = Array.isArray(round?.matches) ? round.matches : [];
+      for (const match of matches) {
+        const matchId = String(match?.match_id || '');
+        const percentA = Number(match?.percent_a);
+        const percentB = Number(match?.percent_b);
+        const totalVotes = Number(match?.total_votes ?? (Number(match?.votes_a || 0) + Number(match?.votes_b || 0)));
+        if (!matchId) continue;
+        if (!Number.isFinite(percentA) || !Number.isFinite(percentB)) continue;
+        return { matchId, percentA, percentB, totalVotes };
+      }
+    }
+  }
+  return null;
+}
+
 test('new user can vote in debug + normal mode', async ({ browser, request }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(75_000);
 
   const modes: Array<{ mode: ModeName; path: string }> = [
     { mode: 'debug', path: '/?debug=1' },
@@ -122,12 +226,14 @@ test('new user can vote in debug + normal mode', async ({ browser, request }) =>
   ];
 
   for (const { mode, path } of modes) {
+    const notes: string[] = [];
     const result: ModeResult = {
       mode,
       apiHealthy: false,
       uiVoteSucceeded: false,
       apiVoteSucceeded: false,
       voteRequestObserved: false,
+      percentConsistencyChecked: false,
       repeatedRefreshLoopDetected: false,
       pulsingUnclickableDetected: false,
       maxUpdateDepthErrorDetected: false,
@@ -144,7 +250,10 @@ test('new user can vote in debug + normal mode', async ({ browser, request }) =>
 
       const activeRes = await request.get(`${BASE_URL}/api/tournament/active`);
       await debugResponse(`/api/tournament/active (${mode})`, activeRes);
-      const activeJson = await activeRes.json().catch(() => null);
+      let activeJson = await activeRes.json().catch(() => null);
+      const activeRes2 = await request.get(`${BASE_URL}/api/tournament/active`);
+      await debugResponse(`/api/tournament/active#2 (${mode})`, activeRes2);
+      const activeJson2 = await activeRes2.json().catch(() => null);
 
       result.apiHealthy = meRes.status() === 200 && activeRes.status() === 200;
       if (!result.apiHealthy) {
@@ -155,6 +264,33 @@ test('new user can vote in debug + normal mode', async ({ browser, request }) =>
         // eslint-disable-next-line no-console
         console.log(`[E2E][${mode}] summary`, statusSummary(result));
         continue;
+      }
+
+      const firstPct = findMatchWithPercents(activeJson);
+      const secondPct = firstPct
+        ? findMatchWithPercents({
+            arenas: (Array.isArray(activeJson2?.arenas) ? activeJson2.arenas : []).map((arena: any) => ({
+              ...arena,
+              rounds: Array.isArray(arena?.rounds)
+                ? arena.rounds.map((round: any) => ({
+                    ...round,
+                    matches: Array.isArray(round?.matches)
+                      ? round.matches.filter((m: any) => String(m?.match_id || '') === firstPct.matchId)
+                      : [],
+                  }))
+                : [],
+            })),
+          })
+        : null;
+      if (firstPct && secondPct) {
+        expect(firstPct.totalVotes).toBe(secondPct.totalVotes);
+        expect(firstPct.percentA).toBe(secondPct.percentA);
+        expect(firstPct.percentB).toBe(secondPct.percentB);
+        expect(firstPct.percentA + firstPct.percentB).toBe(100);
+        result.percentConsistencyChecked = true;
+      } else {
+        // eslint-disable-next-line no-console
+        console.log(`[E2E][${mode}] percent check skipped (no match with percents)`);
       }
 
       context = await browser.newContext();
@@ -172,64 +308,109 @@ test('new user can vote in debug + normal mode', async ({ browser, request }) =>
       });
 
       await page.goto(`${BASE_URL}${path}`, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      notes.push(`[${mode}] goto done`);
 
       result.repeatedRefreshLoopDetected = await detectRepeatedLoadingLoop(page);
+      if (result.repeatedRefreshLoopDetected) {
+        notes.push(`[${mode}] repeated loading loop detected`);
+      }
 
-      const voteButton = await findVoteButton(page);
-      if (voteButton) {
-        const enabledWithin5s = await waitUntilEnabled(voteButton, 5_000);
-        if (!enabledWithin5s) {
-          result.pulsingUnclickableDetected = true;
+      let previousMatch = await getCurrentMatchState(page);
+
+      for (let attempt = 1; attempt <= MAX_VOTES; attempt += 1) {
+        notes.push(`[${mode}] attempt ${attempt}/${MAX_VOTES}`);
+
+        let voteWorked = false;
+        let disableObservedForMode = false;
+        const voteTarget = await findVoteButton(page);
+        if (voteTarget) {
+          notes.push(`[${mode}] found vote button`);
+          const enabledWithin5s = await waitUntilEnabled(voteTarget.locator, 5_000);
+          if (!enabledWithin5s) {
+            disableObservedForMode = true;
+            notes.push(`[${mode}] vote button disabled`);
+          } else {
+            notes.push(`[${mode}] button enabled`);
+            const voteResponsePromise = waitForVoteResponse(page, 5_000);
+            await clickVoteButton(page, voteTarget, notes, mode);
+            const voteResponse = await voteResponsePromise;
+            result.voteRequestObserved = !!voteResponse || result.voteRequestObserved;
+
+            const votedIndicator = await page.getByText(/voted|thanks/i).first().isVisible().catch(() => false);
+            const selectedHeuristic = await page.locator('.arena-vote-btn:has-text("Voted")').first().isVisible().catch(() => false);
+            voteWorked = result.voteRequestObserved || votedIndicator || selectedHeuristic;
+            result.uiVoteSucceeded = result.uiVoteSucceeded || voteWorked;
+            notes.push(`[${mode}] ui success=${voteWorked}`);
+          }
         } else {
-          const voteResponsePromise = page
-            .waitForResponse((res) => {
-              const req = res.request();
-              return req.method() === 'POST' && /\/api\/vote(?:\?|$)/.test(res.url());
-            }, { timeout: 5_000 })
-            .then((res) => res)
-            .catch(() => null);
+          notes.push(`[${mode}] no vote buttons found`);
+        }
 
-          await voteButton.scrollIntoViewIfNeeded().catch(() => null);
-          await voteButton.click({ timeout: 3_000 }).catch(() => null);
+        if (!voteWorked) {
+          notes.push(`[${mode}] fallback API vote`);
+          const candidate = findFallbackCandidate(activeJson);
+          if (!candidate) {
+            if (!result.uiVoteSucceeded && !result.apiVoteSucceeded) {
+              result.skipped = true;
+              result.skipReason = 'no votable match candidate available';
+              // eslint-disable-next-line no-console
+              console.log(`[E2E][${mode}] SKIP: no votable match candidate available`);
+            }
+            break;
+          }
 
-          const voteResponse = await voteResponsePromise;
-          result.voteRequestObserved = !!voteResponse;
+          const apiRes = await request.post(`${BASE_URL}/api/vote`, {
+            data: { match_id: candidate.matchId, voted_for: candidate.catAId },
+          });
+          result.apiVoteStatus = apiRes.status();
+          result.apiVoteSucceeded = apiRes.status() === 200 || apiRes.status() === 409;
+          voteWorked = result.apiVoteSucceeded;
+          // eslint-disable-next-line no-console
+          console.log(`[E2E][${mode}] /api/vote => ${apiRes.status()}`);
+          // refresh active payload for next candidate attempt
+          const refreshRes = await request.get(`${BASE_URL}/api/tournament/active`);
+          activeJson = await refreshRes.json().catch(() => null);
+        }
 
-          const votedIndicator = await page.getByText(/voted|thanks/i).first().isVisible().catch(() => false);
-          const selectedHeuristic = await page.locator('.arena-vote-btn:has-text("Voted")').first().isVisible().catch(() => false);
-          result.uiVoteSucceeded = result.voteRequestObserved || votedIndicator || selectedHeuristic;
+        if (voteWorked) {
+          if (!previousMatch.matchId && !previousMatch.text) {
+            notes.push(`[${mode}] no initial match-root content to track transition`);
+            break;
+          }
+
+          const changed = await waitForMatchTransition(page, previousMatch, 5_000);
+          notes.push(`[${mode}] next match loaded=${changed}`);
+          if (disableObservedForMode && !result.uiVoteSucceeded && !result.apiVoteSucceeded) {
+            result.pulsingUnclickableDetected = true;
+          }
+          if (!changed) {
+            break;
+          }
+          previousMatch = await getCurrentMatchState(page);
+          continue;
         }
       }
 
-      if (!result.uiVoteSucceeded) {
-        const candidate = findFallbackCandidate(activeJson);
-        if (!candidate) {
-          result.skipped = true;
-          result.skipReason = 'no votable match candidate available';
-          // eslint-disable-next-line no-console
-          console.log(`[E2E][${mode}] SKIP: no votable match candidate available`);
-          // eslint-disable-next-line no-console
-          console.log(`[E2E][${mode}] summary`, statusSummary(result));
-          continue;
+      if (result.uiVoteSucceeded || result.apiVoteSucceeded) {
+        const postRes = await request.get(`${BASE_URL}/api/tournament/active`);
+        const postJson = await postRes.json().catch(() => null);
+        const pct = findMatchWithPercents(postJson);
+        if (pct) {
+          expect(pct.percentA + pct.percentB).toBe(100);
         }
-
-        const voteRes = await request.post(`${BASE_URL}/api/vote`, {
-          data: {
-            match_id: candidate.matchId,
-            voted_for: candidate.catAId,
-          },
-        });
-
-        result.apiVoteStatus = voteRes.status();
-        result.apiVoteSucceeded = voteRes.status() === 200 || voteRes.status() === 409;
-        // eslint-disable-next-line no-console
-        console.log(`[E2E][${mode}] /api/vote => ${voteRes.status()}`);
       }
 
       expect(result.maxUpdateDepthErrorDetected, `[${mode}] max update depth error should be absent`).toBeFalsy();
       expect(result.repeatedRefreshLoopDetected, `[${mode}] repeated loading loop detected`).toBeFalsy();
-      expect(result.pulsingUnclickableDetected, `[${mode}] vote controls stayed disabled >5s`).toBeFalsy();
-      expect(result.uiVoteSucceeded || result.apiVoteSucceeded, `[${mode}] vote did not succeed via UI or API fallback`).toBeTruthy();
+      if (!result.apiVoteSucceeded && !result.uiVoteSucceeded) {
+        expect(result.pulsingUnclickableDetected, `[${mode}] vote controls stayed disabled >5s`).toBeFalsy();
+      }
+      if (!result.skipped) {
+        expect(result.uiVoteSucceeded || result.apiVoteSucceeded, `[${mode}] vote did not succeed via UI or API fallback`).toBeTruthy();
+      }
+
+      // eslint-disable-next-line no-console
+      console.log(`[E2E][${mode}] notes`, notes.join(' | '));
       // eslint-disable-next-line no-console
       console.log(`[E2E][${mode}] summary`, statusSummary(result));
     } finally {

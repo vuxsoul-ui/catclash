@@ -69,6 +69,9 @@ export interface ArenaMatch {
   cat_b: ArenaCat;
   votes_a: number;
   votes_b: number;
+  total_votes?: number;
+  percent_a?: number;
+  percent_b?: number;
   status: string;
   winner_id?: string | null;
   is_close_match?: boolean;
@@ -221,10 +224,16 @@ function getCatDisplayName(cat: Partial<ArenaCat> | null | undefined): string {
   return 'Unnamed Cat';
 }
 
-function getVotePercent(a: number, b: number): [number, number] {
-  const total = a + b;
+function getVotePercent(match: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'>): [number, number] {
+  const pA = Number(match.percent_a);
+  const pB = Number(match.percent_b);
+  if (Number.isFinite(pA) && Number.isFinite(pB) && pA >= 0 && pB >= 0) {
+    return [Math.max(0, Math.min(100, Math.round(pA))), Math.max(0, Math.min(100, Math.round(pB)))];
+  }
+  const total = Number(match.votes_a || 0) + Number(match.votes_b || 0);
   if (total === 0) return [50, 50];
-  return [Math.round((a / total) * 100), Math.round((b / total) * 100)];
+  const aPct = Math.round((Number(match.votes_a || 0) / total) * 100);
+  return [aPct, Math.max(0, 100 - aPct)];
 }
 
 function voteScopeFromArenas(arenas: Arena[]): string {
@@ -261,7 +270,7 @@ function clamp(n: number, min: number, max: number): number {
 
 function computeMatchEnergy(match: ArenaMatch, leadFlipCount = 0): number {
   const total = Math.max(0, Number(match.votes_a || 0) + Number(match.votes_b || 0));
-  const [pctA, pctB] = getVotePercent(match.votes_a, match.votes_b);
+  const [pctA, pctB] = getVotePercent(match);
   const margin = Math.abs(pctA - pctB);
   const closeness = clamp(40 - margin, 0, 40);
   const voteVolume = clamp(Math.round(total * 1.25), 0, 35);
@@ -442,7 +451,7 @@ const MatchCard = React.memo(function MatchCard({
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
 }) {
-  const [pctA, pctB] = getVotePercent(match.votes_a, match.votes_b);
+  const [pctA, pctB] = getVotePercent(match);
   const isComplete = String(match.status || '').toLowerCase() === "complete" || String(match.status || '').toLowerCase() === "completed";
   const hasVoted = !!voted;
   const [votePending, setVotePending] = useState(false);
@@ -454,7 +463,6 @@ const MatchCard = React.memo(function MatchCard({
   const liveSide: "a" | "b" | null = slotChosenSide || chosenSide || selectedSide;
   const parentConfirmed = slotPhase === "voted" || slotPhase === "exiting";
   const exitingVisual = isExiting || slotPhase === "exiting";
-  const forceFront = isRefilling || exitingVisual || voteQueued || slotPhase !== "idle";
   const voteStage: "idle" | "pending" | "confirmed" =
     parentConfirmed
       ? "confirmed"
@@ -487,6 +495,9 @@ const MatchCard = React.memo(function MatchCard({
   const [flipB, setFlipB] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const voteInFlightRef = useRef(false);
+  const flipTouchedRef = useRef(false);
+  const allowFlip = flipTouchedRef.current;
+  const forceFront = !allowFlip || isRefilling || exitingVisual || voteQueued || slotPhase !== "idle";
   const motionRef = useRef<HTMLDivElement | null>(null);
   const dragXRef = useRef(0);
   const dragIntentRef = useRef<"a" | "b" | null>(null);
@@ -546,16 +557,6 @@ const MatchCard = React.memo(function MatchCard({
   const SWIPE_Y_CANCEL = 44;
   const SWIPE_MIN_VELOCITY = 0.24; // px/ms
   const SWIPE_EXIT_MS = reduceMotion ? 80 : 180;
-
-  const applyVoteBias = useCallback((prev: { a: number; b: number }, side: "a" | "b") => {
-    const delta = 12;
-    if (side === 'a') {
-      const nextA = Math.max(62, Math.min(94, prev.a + delta));
-      return { a: nextA, b: 100 - nextA };
-    }
-    const nextB = Math.max(62, Math.min(94, prev.b + delta));
-    return { a: 100 - nextB, b: nextB };
-  }, []);
 
   const applyMotionTransform = useCallback((rawDx: number, opts?: { released?: boolean }) => {
     const el = motionRef.current;
@@ -625,7 +626,6 @@ const MatchCard = React.memo(function MatchCard({
     setChosenSide(side);
     setVotePending(true);
     setVoteSubmitted(false);
-    setDisplayPct((prev) => applyVoteBias(prev, side));
     let ok = false;
     try {
       ok = await onVote(match.match_id, catId);
@@ -846,6 +846,7 @@ const MatchCard = React.memo(function MatchCard({
     setAnimTick(0);
     setFlipA(false);
     setFlipB(false);
+    flipTouchedRef.current = false;
     voteInFlightRef.current = false;
   }, [match.match_id, resetFlipSignal]);
 
@@ -853,7 +854,15 @@ const MatchCard = React.memo(function MatchCard({
     if (!isRefilling) return;
     setFlipA(false);
     setFlipB(false);
+    flipTouchedRef.current = false;
   }, [isRefilling]);
+
+  useEffect(() => {
+    if (flipTouchedRef.current) return;
+    if (!flipA && !flipB) return;
+    setFlipA(false);
+    setFlipB(false);
+  }, [flipA, flipB]);
 
   useEffect(() => {
     return () => {
@@ -985,6 +994,8 @@ const MatchCard = React.memo(function MatchCard({
   return (
     <div
       className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-transform transition-opacity ${reduceMotion ? 'duration-150' : 'duration-300'} ease-out touch-pan-y ${dragging ? 'is-dragging' : ''} ${impactSide && !reduceMotion ? 'impact' : ''} ${match.is_close_match && !dragging && !exitingVisual && !reduceMotion ? 'close-glow' : ''} ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? (isRefilling ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'}`}
+      data-testid="match-root"
+      data-match-id={match.match_id}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
@@ -1073,7 +1084,10 @@ const MatchCard = React.memo(function MatchCard({
                     <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[8px] text-white/85">LVL {Math.max(1, Number(match.cat_a.level || 1))}</span>
                     <button
                       type="button"
-                      onClick={() => setFlipA(true)}
+                      onClick={() => {
+                        flipTouchedRef.current = true;
+                        setFlipA(true);
+                      }}
                       aria-label={`Open ${catAName} details`}
                       className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
                     >
@@ -1083,7 +1097,10 @@ const MatchCard = React.memo(function MatchCard({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFlipA((v) => !v)}
+                  onClick={() => {
+                    flipTouchedRef.current = true;
+                    setFlipA((v) => !v);
+                  }}
                   aria-label={`Flip ${catAName} card`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
@@ -1099,14 +1116,14 @@ const MatchCard = React.memo(function MatchCard({
                   </div>
                 </div>
               </div>
-              <CatCardBack
-                cat={match.cat_a}
-                role="Challenger"
-                votes={Number(match.votes_a || 0)}
-                sharePct={displayPct.a}
-                onClose={() => setFlipA(false)}
-                className={borderA}
-              />
+                <CatCardBack
+                  cat={match.cat_a}
+                  role="Challenger"
+                  votes={Number(match.votes_a || 0)}
+                  sharePct={displayPct.a}
+                  onClose={() => setFlipA(false)}
+                  className={borderA}
+                />
             </div>
           </div>
         </div>
@@ -1129,7 +1146,10 @@ const MatchCard = React.memo(function MatchCard({
                     <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[8px] text-white/85">LVL {Math.max(1, Number(match.cat_b.level || 1))}</span>
                     <button
                       type="button"
-                      onClick={() => setFlipB(true)}
+                      onClick={() => {
+                        flipTouchedRef.current = true;
+                        setFlipB(true);
+                      }}
                       aria-label={`Open ${catBName} details`}
                       className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
                     >
@@ -1139,7 +1159,10 @@ const MatchCard = React.memo(function MatchCard({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFlipB((v) => !v)}
+                  onClick={() => {
+                    flipTouchedRef.current = true;
+                    setFlipB((v) => !v);
+                  }}
                   aria-label={`Flip ${catBName} card`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
@@ -1155,14 +1178,14 @@ const MatchCard = React.memo(function MatchCard({
                   </div>
                 </div>
               </div>
-              <CatCardBack
-                cat={match.cat_b}
-                role="Defender"
-                votes={Number(match.votes_b || 0)}
-                sharePct={displayPct.b}
-                onClose={() => setFlipB(false)}
-                className={borderB}
-              />
+                <CatCardBack
+                  cat={match.cat_b}
+                  role="Defender"
+                  votes={Number(match.votes_b || 0)}
+                  sharePct={displayPct.b}
+                  onClose={() => setFlipB(false)}
+                  className={borderB}
+                />
             </div>
           </div>
         </div>
@@ -1618,7 +1641,7 @@ function ArenaSection({
     if (arranged.length <= 1) return arranged;
 
     const scored = arranged.map((m) => {
-      const [aPct, bPct] = getVotePercent(m.votes_a, m.votes_b);
+  const [aPct, bPct] = getVotePercent(m);
       const margin = Math.abs(aPct - bPct);
       const energy = computeMatchEnergy(m, 0);
       const tension = margin < 15 || energy >= 45 || !!m.is_close_match;
@@ -2227,7 +2250,7 @@ function ArenaSection({
       }
       return prev;
     });
-  }, [activeVoting, feedStatus, hasMoreFightsForUser, segment, snapshotKey, snapshotOrder.length, userCaughtUp]);
+  }, [activeVoting, feedStatus, hasMoreFightsForUser, segment, snapshotVersion, snapshotOrder.length, userCaughtUp]);
 
   const votingSlots = useMemo(() => {
     if (segment !== 'voting') return [] as Array<{ key: string; match: ArenaMatch | null }>;
@@ -3898,9 +3921,9 @@ export default function Page() {
     const matchedMatch = arenas
       .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
       .find((m) => m.match_id === matchId);
-    const matchedArenaType = arenas.find((a) =>
-      (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
-    )?.type as 'main' | 'rookie' | undefined;
+  const matchedArenaType = arenas.find((a) =>
+    (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
+  )?.type as 'main' | 'rookie' | undefined;
     setVotingMatch(matchId);
     setError(null);
     setVotedMatches((prev) => {
@@ -4023,6 +4046,41 @@ export default function Page() {
         // Keep voting flow stable: avoid full arena refetch on every vote.
         // Arena data refreshes when the current stack is exhausted.
         statusBurstUntilRef.current = Date.now() + 20_000;
+        if (matchedArenaType && globalPageInfo?.[matchedArenaType]?.dayKey) {
+          fetch(`/api/arena/updates?arena=${matchedArenaType}&tab=voting&page=${globalPageInfo[matchedArenaType].pageIndex}`, { cache: 'no-store' })
+            .then((r) => r.json().catch(() => null))
+            .then((payload) => {
+              const updates = Array.isArray(payload?.updates) ? payload.updates : [];
+              if (!updates.length) return;
+              const updateMap = new Map(updates.map((u: any) => [String(u.matchId || ''), u]));
+              setArenas((prev) => prev.map((arena) => {
+                if (arena.type !== matchedArenaType) return arena;
+                return {
+                  ...arena,
+                  rounds: (arena.rounds || []).map((round) => ({
+                    ...round,
+                    matches: (round.matches || []).map((m) => {
+                      const u = updateMap.get(String(m.match_id || ''));
+                      if (!u) return m;
+                      return {
+                        ...m,
+                        votes_a: Number(u.votesA || 0),
+                        votes_b: Number(u.votesB || 0),
+                        total_votes: Number(u.totalVotes || 0),
+                        percent_a: Number(u.percentA || 0),
+                        percent_b: Number(u.percentB || 0),
+                      };
+                    }),
+                  })),
+                };
+              }));
+              setGlobalPageInfo((prev) => ({
+                ...prev,
+                [matchedArenaType]: { ...prev[matchedArenaType], livePulseAt: Date.now() },
+              }));
+            })
+            .catch(() => null);
+        }
         refreshGettingStarted();
         return true;
       }
@@ -4076,7 +4134,7 @@ export default function Page() {
             const res = await fetch(`/api/arena/updates?arena=${activeArena}&tab=voting&page=${info.pageIndex}&since=${since}`, { cache: 'no-store' });
             const data = await res.json().catch(() => null);
             if (data?.ok && Array.isArray(data.updates)) {
-              const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number }>;
+              const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number; totalVotes?: number; percentA?: number; percentB?: number }>;
               if (updates.length > 0) {
                 const updateMap = new Map(updates.map((u) => [u.matchId, u]));
                 setArenas((prev) => prev.map((arena) => {
@@ -4088,7 +4146,14 @@ export default function Page() {
                       matches: (round.matches || []).map((match) => {
                         const u = updateMap.get(match.match_id);
                         if (!u) return match;
-                        return { ...match, votes_a: Number(u.votesA || 0), votes_b: Number(u.votesB || 0) };
+                        return {
+                          ...match,
+                          votes_a: Number(u.votesA || 0),
+                          votes_b: Number(u.votesB || 0),
+                          total_votes: Number(u.totalVotes || 0),
+                          percent_a: Number(u.percentA || 0),
+                          percent_b: Number(u.percentB || 0),
+                        };
                       }),
                     })),
                   };

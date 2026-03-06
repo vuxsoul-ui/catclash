@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizeCatImageUrl } from "./images";
 import { ensureActiveArenasUtc, CANONICAL_ACTIVE_STATUS } from "./arena-active";
+import { computeVoteStats } from "./vote-stats";
 import { pickFairMatches } from "./pickFairMatches";
 
 export type ArenaType = "main" | "rookie";
@@ -29,6 +30,9 @@ export type ArenaPageMatch = {
   status: string;
   votes_a: number;
   votes_b: number;
+  total_votes: number;
+  percent_a: number;
+  percent_b: number;
   winner_id: string | null;
   is_close_match: boolean;
   user_prediction?: { predicted_cat_id: string; bet_sigils: number } | null;
@@ -650,16 +654,24 @@ export async function loadArenaPage(params: {
       if (!a || !b) return false;
       return !isSameOwnerPair(a.owner_id || null, b.owner_id || null);
     })
-    .map((m) => ({
-      match_id: String(m.id),
-      status: String(m.status || "active"),
-      votes_a: Number(m.votes_a || 0),
-      votes_b: Number(m.votes_b || 0),
-      winner_id: m.winner_id ? String(m.winner_id) : null,
-      is_close_match: Math.abs(Number(m.votes_a || 0) - Number(m.votes_b || 0)) <= 2,
-      cat_a: catMap[String(m.cat_a_id)],
-      cat_b: catMap[String(m.cat_b_id)],
-    }));
+    .map((m) => {
+      const votesA = Number(m.votes_a || 0);
+      const votesB = Number(m.votes_b || 0);
+      const stats = computeVoteStats(votesA, votesB);
+      return {
+        match_id: String(m.id),
+        status: String(m.status || "active"),
+        votes_a: votesA,
+        votes_b: votesB,
+        total_votes: stats.total_votes,
+        percent_a: stats.percent_a,
+        percent_b: stats.percent_b,
+        winner_id: m.winner_id ? String(m.winner_id) : null,
+        is_close_match: Math.abs(votesA - votesB) <= 2,
+        cat_a: catMap[String(m.cat_a_id)],
+        cat_b: catMap[String(m.cat_b_id)],
+      };
+    });
 
   const seed = `${dayKey}:${arena}:${tab}:${activeRound}`;
   const globallyOrdered = arrangeWithCatSpacing(

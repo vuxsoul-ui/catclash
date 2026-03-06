@@ -69,6 +69,24 @@ jobs:
           cat /tmp/catbattle-arena-dev.log || true
           exit 1
 
+      - name: API smoke checks
+        run: |
+          set -euo pipefail
+          for endpoint in /api/health /api/me /api/tournament/active; do
+            status="$(curl -sS -o /tmp/api-smoke-body.txt -w '%{http_code}' "http://127.0.0.1:3000${endpoint}")"
+            body="$(cat /tmp/api-smoke-body.txt || true)"
+            echo "API smoke ${endpoint} status=${status}"
+            echo "API smoke ${endpoint} body=${body}"
+            if [ \"$status\" -ne 200 ]; then
+              echo "API smoke failed: ${endpoint} returned ${status}"
+              exit 1
+            fi
+            if [ \"$endpoint\" = \"/api/health\" ] && ! printf '%s' \"$body\" | grep -q '"ok":true'; then
+              echo "API smoke failed: /api/health not ok"
+              exit 1
+            fi
+          done
+
       - name: Run Playwright (chromium)
         working-directory: catbattle-arena
         env:
