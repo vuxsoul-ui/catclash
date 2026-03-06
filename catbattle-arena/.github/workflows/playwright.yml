@@ -1,0 +1,76 @@
+name: Playwright E2E
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    name: Playwright Vote Flow
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    # SECRET NOTE: set SUPABASE_SERVICE_ROLE_KEY and other runtime credentials in GitHub repository/environment secrets.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: catbattle-arena/package-lock.json
+
+      - name: Install dependencies
+        working-directory: catbattle-arena
+        run: npm ci
+
+      - name: Install Playwright browser (chromium)
+        working-directory: catbattle-arena
+        run: npx playwright install --with-deps chromium
+
+      - name: Start app
+        working-directory: catbattle-arena
+        run: |
+          npm run dev > /tmp/catbattle-arena-dev.log 2>&1 &
+          echo $! > /tmp/catbattle-arena-dev.pid
+
+      - name: Wait for health endpoint
+        working-directory: catbattle-arena
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health | grep -q '"ok":true'; then
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:3000/api/health | grep -q '"ok":true'; then
+            echo "Health check failed"
+            curl -fsS http://127.0.0.1:3000/api/health || true
+            echo "--- dev log ---"
+            cat /tmp/catbattle-arena-dev.log || true
+            exit 1
+          fi
+
+      - name: Run Playwright (chromium)
+        working-directory: catbattle-arena
+        env:
+          CI: "1"
+          BASE_URL: "http://127.0.0.1:3000"
+        run: npx playwright test tests/vote-new-user-flow.spec.ts --project=chromium
+
+      - name: Upload playwright results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            catbattle-arena/test-results
+            catbattle-arena/playwright-report
+            catbattle-arena/.playwright-traces
