@@ -34,6 +34,16 @@ jobs:
         working-directory: catbattle-arena
         run: npx playwright install --with-deps chromium
 
+      - name: Verify required env vars
+        run: |
+          for v in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            if [ -n "${!v:-}" ]; then
+              echo "$v=SET"
+            else
+              echo "$v=MISSING"
+            fi
+          done
+
       - name: Start app
         working-directory: catbattle-arena
         run: |
@@ -44,19 +54,20 @@ jobs:
         working-directory: catbattle-arena
         run: |
           set -euo pipefail
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000/api/health | grep -q '"ok":true'; then
-              break
+          HEALTH_BODY=""
+          for i in $(seq 1 90); do
+            HEALTH_BODY="$(curl -sS http://127.0.0.1:3000/api/health || true)"
+            echo "health attempt $i: ${HEALTH_BODY}"
+            if printf "%s" "$HEALTH_BODY" | grep -q '"ok":true'; then
+              exit 0
             fi
             sleep 1
           done
-          if ! curl -fsS http://127.0.0.1:3000/api/health | grep -q '"ok":true'; then
-            echo "Health check failed"
-            curl -fsS http://127.0.0.1:3000/api/health || true
-            echo "--- dev log ---"
-            cat /tmp/catbattle-arena-dev.log || true
-            exit 1
-          fi
+          echo "Health check failed after retries"
+          echo "Final health body: ${HEALTH_BODY}"
+          echo "--- dev log ---"
+          cat /tmp/catbattle-arena-dev.log || true
+          exit 1
 
       - name: Run Playwright (chromium)
         working-directory: catbattle-arena
