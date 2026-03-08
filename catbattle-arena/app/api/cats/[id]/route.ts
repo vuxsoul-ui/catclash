@@ -8,6 +8,17 @@ export const dynamic = "force-dynamic";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+function isRealCompletedMatch(match: {
+  status?: string | null;
+  winner_id?: string | null;
+  votes_a?: number | null;
+  votes_b?: number | null;
+}) {
+  const status = String(match.status || '').toLowerCase();
+  const totalVotes = Math.max(0, Number(match.votes_a || 0)) + Math.max(0, Number(match.votes_b || 0));
+  return (status === 'complete' || status === 'completed') && !!match.winner_id && totalVotes > 0;
+}
+
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -48,7 +59,7 @@ export async function GET(
       .from("tournament_matches")
       .select("id, round, votes_a, votes_b, winner_id, status, cat_a_id, cat_b_id, created_at")
       .or(`cat_a_id.eq.${cat.id},cat_b_id.eq.${cat.id}`)
-      .eq("status", "complete")
+      .in("status", ["complete", "completed"])
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -68,7 +79,9 @@ export async function GET(
       oppMap[o.id] = o.name;
     }
 
-    const battleHistory = (recentMatches || []).map((m) => {
+    const realRecentMatches = (recentMatches || []).filter(isRealCompletedMatch);
+
+    const battleHistory = realRecentMatches.map((m) => {
       const isA = m.cat_a_id === cat.id;
       const oppId = isA ? m.cat_b_id : m.cat_a_id;
       const won = m.winner_id === cat.id;
@@ -84,31 +97,17 @@ export async function GET(
 
     // Use match-derived totals to avoid stale/overcounted counters from legacy resolve flows.
     // Note: `.or(...)` is a single filter; keep winner logic *inside* each AND branch to avoid precedence surprises.
-    const [{ count: winsCount }, { count: lossesCount }] = await Promise.all([
-      supabase
-        .from('tournament_matches')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'complete')
-        .or(`and(cat_a_id.eq.${cat.id},winner_id.eq.${cat.id}),and(cat_b_id.eq.${cat.id},winner_id.eq.${cat.id})`),
-      supabase
-        .from('tournament_matches')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'complete')
-        .not('winner_id', 'is', null)
-        .or(`and(cat_a_id.eq.${cat.id},winner_id.neq.${cat.id}),and(cat_b_id.eq.${cat.id},winner_id.neq.${cat.id})`),
-    ]);
-
-    const safeWins = Math.max(0, Number(winsCount || 0));
-    const safeLosses = Math.max(0, Number(lossesCount || 0));
+    const safeWins = battleHistory.filter((match) => match.won).length;
+    const safeLosses = battleHistory.filter((match) => !match.won).length;
     const safeBattles = safeWins + safeLosses;
-    const winRate = safeBattles > 0 ? Math.round((safeWins / safeBattles) * 100) : 0;
+    const winRate = safeBattles > 0 ? Math.round((safeWins / safeBattles) * 100) : null;
 
     const totalPower =
       (cat.attack || 0) + (cat.defense || 0) + (cat.speed || 0) + (cat.charisma || 0) + (cat.chaos || 0);
 
     const [{ data: stanceRow }, { data: fanVotes }, { data: cheerRows }, { data: ownerTitleRow }] = await Promise.all([
       supabase.from('cat_stances').select('stance').eq('cat_id', cat.id).maybeSingle(),
-      supabase.from('votes').select('id').eq('voted_for', cat.id),
+      supabase.from('votes').select('id, user_agent').eq('voted_for', cat.id),
       supabase.from('match_tactics').select('id').eq('cat_id', cat.id).in('action_type', ['cheer', 'guard_break']),
       supabase
         .from('equipped_cosmetics')
@@ -122,10 +121,11 @@ export async function GET(
       ? await supabase.from('profiles').select('username').eq('id', cat.user_id).maybeSingle()
       : { data: null as { username?: string | null } | null };
 
-    const fanCount = (fanVotes || []).length + (cheerRows || []).length;
+    const organicFanVotes = (fanVotes || []).filter((vote) => String((vote as { user_agent?: string | null }).user_agent || '') !== 'seed-script');
+    const fanCount = organicFanVotes.length + (cheerRows || []).length;
 
     const oppCounter: Record<string, number> = {};
-    for (const m of recentMatches || []) {
+    for (const m of realRecentMatches) {
       const opp = m.cat_a_id === cat.id ? m.cat_b_id : m.cat_a_id;
       oppCounter[opp] = (oppCounter[opp] || 0) + 1;
     }

@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Flame, Sparkles, Loader2, Trophy, LogOut } from 'lucide-react';
-import SigilIcon from '../../components/icons/SigilIcon';
+import { ArrowLeft, Loader2, LogOut } from 'lucide-react';
 import CosmeticFrame from '../../components/cosmetics/CosmeticFrame';
 import CosmeticTitle from '../../components/cosmetics/CosmeticTitle';
 import CosmeticThemeProvider from '../../components/cosmetics/CosmeticThemeProvider';
@@ -42,6 +41,20 @@ interface ProfileResponse {
     created_at: string;
   }>;
   equipped_cosmetics: Array<{ slot: string; cosmetic: { slug: string; name: string; rarity: string; category: string } | null }>;
+  recruit_stats?: {
+    active_recruits: number;
+    direct_qualified: number;
+    claimable_sigils: number;
+    total_sigils_earned: number;
+  };
+  recent_receipts?: Array<{
+    slug: string;
+    name: string;
+    rarity: string;
+    power_rating: number;
+    image_url: string;
+    minted_at: string;
+  }>;
   rivalries?: Array<{ cat_id: string; cat_name: string; battles: number }>;
   most_supported_cat?: { id: string; name: string; fan_count: number } | null;
   signature_cat?: { id: string; name: string; image_url: string | null } | null;
@@ -139,6 +152,22 @@ export default function ProfilePage() {
     : data?.profile.guild === 'moon'
       ? 'Lunar Paw'
       : 'No guild pledged';
+  const usernameDisplay = data?.profile.username || `Player ${data?.profile.id.slice(0, 8)}`;
+  const shortUserId = data?.profile.id ? `${data.profile.id.slice(0, 8)}…${data.profile.id.slice(-4)}` : '';
+  const predictionCurrent = data?.prediction_stats?.current_streak || 0;
+  const predictionBest = Math.max(predictionCurrent, data?.prediction_stats?.best_streak || 0);
+  const predictionProgress = predictionBest > 0 ? Math.min(100, Math.round((predictionCurrent / predictionBest) * 100)) : 0;
+  const activityItems = data?.vote_history || [];
+  const showCosmeticsSection = (data?.equipped_cosmetics.length || 0) > 0 || (data?.is_owner && ownedCosmetics.length > 0);
+  const recentReceipts = data?.recent_receipts || [];
+  const statPills = [
+    { label: 'Level', value: String(data?.progress.level || 0), tone: 'profile-pill-value--violet' },
+    { label: 'XP', value: (data?.progress.xp || 0).toLocaleString(), tone: 'profile-pill-value--gold' },
+    { label: 'Sigils', value: (data?.progress.sigils || 0).toLocaleString(), tone: 'profile-pill-value--violet' },
+    { label: 'Cat Wins', value: totalWins.toLocaleString(), tone: totalWins > 0 ? 'profile-pill-value--violet' : 'profile-pill-value--dim' },
+    { label: 'Tactical', value: String(data?.profile.tactical_rating || 0), tone: 'profile-pill-value--dim' },
+    { label: 'Predict', value: String(predictionCurrent), tone: predictionCurrent > 0 ? 'profile-pill-value--teal' : 'profile-pill-value--dim' },
+  ];
 
   async function equipFromProfile(slug: string) {
     if (!data?.is_owner || equippingSlug) return;
@@ -255,7 +284,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
+    <div className="page-content min-h-screen bg-[#06050e] text-white pb-[72px] sm:pb-[72px]">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="mb-6 flex items-center justify-between gap-3">
           <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm">
@@ -274,230 +303,317 @@ export default function ProfilePage() {
         </div>
 
         <CosmeticThemeProvider colorSlug={activeColorSlug}>
-        <CosmeticFrame borderSlug={activeBorderSlug} className="bg-white/[0.02] p-5 mb-6">
-          <h1 className={`text-2xl font-bold mb-1 ${profileAccentClass}`}>{data.profile.username || `Player ${data.profile.id.slice(0, 8)}`}</h1>
-          {activeTitle && (
-            <p className="text-[11px] uppercase tracking-wider mb-2">
-              <CosmeticTitle title={activeTitle} titleSlug={activeTitleSlug} />
-            </p>
-          )}
-          <p className="text-white/40 text-sm mb-4">User ID: {data.profile.id}</p>
-          <p className="text-white/40 text-sm mb-4">Guild: <span className="text-white/80">{guildLabel}</span></p>
-          {activeColorSlug?.startsWith('vote-') && (
-            <p className="text-white/40 text-xs mb-3">Active vote effect: <span className="text-white/80">{activeColorSlug.replace(/-/g, ' ')}</span></p>
-          )}
-          {data.signature_cat && (
-            <div className="mb-4 rounded-xl bg-white/5 border border-white/10 p-3 flex items-center gap-3">
-              <img src={data.signature_cat.image_url || '/cat-placeholder.svg'} alt={data.signature_cat.name} className="w-10 h-10 rounded-lg object-cover" />
-              <div>
-                <p className="text-xs text-white/50">Signature Cat</p>
-                <Link href={`/cat/${data.signature_cat.id}`} className="font-bold hover:underline">{data.signature_cat.name}</Link>
+        <CosmeticFrame borderSlug={activeBorderSlug} className="profile-hero-shell mb-6 overflow-hidden p-0">
+          <div className="profile-hero">
+            <div className="profile-hero-bg" />
+            <div className="profile-hero-content">
+              <div className="profile-hero-avatar-wrap">
+                {data.signature_cat?.image_url ? (
+                  <img src={data.signature_cat.image_url} alt={data.signature_cat.name} className="profile-hero-avatar object-cover" />
+                ) : (
+                  <div className="profile-hero-avatar profile-hero-avatar--placeholder">
+                    {(usernameDisplay || 'P').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div className="profile-hero-avatar-orbit" />
+                <div className="profile-hero-level-badge">LVL {data.progress.level}</div>
               </div>
-            </div>
-          )}
-          {data.is_owner && (
-            <div className="mb-4 rounded-xl bg-white/5 border border-white/10 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-white/50">Customize titles/borders/colors in Shop</p>
-                <Link href="/shop" className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-300 text-xs font-bold hover:bg-yellow-500/30">Open Shop</Link>
-              </div>
-              {editingName ? (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    placeholder="username"
-                    className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm focus:outline-none focus:border-white/30"
-                  />
-                  <button
-                    onClick={saveUsername}
-                    disabled={savingName}
-                    className="px-4 py-2 rounded-lg bg-white text-black text-sm font-bold disabled:opacity-50"
-                  >
-                    {savingName ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => { setEditingName(false); setNewUsername(data.profile.username || ''); }}
-                    className="px-4 py-2 rounded-lg bg-white/10 text-sm"
-                  >
-                    Cancel
-                  </button>
+
+              <div className="min-w-0 flex-1">
+                <h1 className={`profile-hero-name ${profileAccentClass}`}>{usernameDisplay}</h1>
+                {activeTitle && (
+                  <p className="mt-1 text-[11px] uppercase tracking-wider">
+                    <CosmeticTitle title={activeTitle} titleSlug={activeTitleSlug} />
+                  </p>
+                )}
+                <p className="profile-hero-uid">UID {shortUserId}</p>
+                <div className="profile-hero-badges">
+                  <span className="profile-hero-chip">{guildLabel}</span>
+                  <span className="profile-hero-chip">XP {data.progress.xp.toLocaleString()}</span>
                 </div>
-              ) : (
-                <button
-                  onClick={() => setEditingName(true)}
-                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm"
-                >
-                  Edit Username
-                </button>
-              )}
-              {nameMessage && <p className="text-xs text-white/60 mt-2">{nameMessage}</p>}
-            </div>
-          )}
-          {showTip && (
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-3">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-xs text-white/65">Tips: equip titles/borders/colors here after buying in Shop.</p>
-                <button
-                  onClick={() => { localStorage.setItem('tip_profile_cosmetics_v1', '1'); setShowTip(false); }}
-                  className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
-                >
-                  Got it
-                </button>
+                {data.signature_cat && (
+                  <p className="mt-3 text-xs text-white/58">
+                    Signature Cat: <Link href={`/cat/${data.signature_cat.id}`} className="text-white hover:underline">{data.signature_cat.name}</Link>
+                  </p>
+                )}
               </div>
-            </div>
-          )}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">Level</p>
-              <p className="font-bold">{data.progress.level}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">XP</p>
-              <p className="font-bold">{data.progress.xp}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">Sigils</p>
-              <p className="font-bold inline-flex items-center gap-1"><SigilIcon className="w-3.5 h-3.5" glow />{data.progress.sigils}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">Streak</p>
-              <p className="font-bold inline-flex items-center gap-1"><Flame className="w-3.5 h-3.5 text-orange-400" />{data.streak.current_streak}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">Cat Wins</p>
-              <p className="font-bold inline-flex items-center gap-1"><Trophy className="w-3.5 h-3.5 text-yellow-400" />{totalWins}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3 col-span-2 md:col-span-1">
-              <p className="text-xs text-white/50 mb-1">Tactical Rating</p>
-              <p className="font-bold">{data.profile.tactical_rating || 0}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3 col-span-2 md:col-span-1">
-              <p className="text-xs text-white/50 mb-1">Prediction Streak</p>
-              <p className="font-bold">{data.prediction_stats?.current_streak || 0} <span className="text-white/40 text-xs">best {data.prediction_stats?.best_streak || 0}</span></p>
             </div>
           </div>
-          {data.most_supported_cat && (
-            <p className="text-xs text-white/50 mt-3">
-              Most Supported: <Link href={`/cat/${data.most_supported_cat.id}`} className="text-white hover:underline">{data.most_supported_cat.name}</Link> ({data.most_supported_cat.fan_count} fans)
-            </p>
-          )}
+
+          <div className="stat-pills">
+            {statPills.map((pill) => (
+              <div key={pill.label} className="stat-pill">
+                <span className={`stat-pill-value ${pill.tone}`}>{pill.value}</span>
+                <span className="stat-pill-label">{pill.label}</span>
+              </div>
+            ))}
+          </div>
         </CosmeticFrame>
         </CosmeticThemeProvider>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mb-6">
-          <h2 className="text-base font-bold mb-3">Account Info</h2>
-          <div className="grid sm:grid-cols-2 gap-2 text-sm">
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">User ID</p>
-              <p className="text-white/80 break-all">{data.profile.id}</p>
-            </div>
-            <div className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs text-white/50 mb-1">Submitted Cats</p>
-              <p className="text-white/80">{submittedCatCount}</p>
-            </div>
-          </div>
-        </section>
-
-        <div className="grid lg:grid-cols-2 gap-6">
-          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-            <h2 className="text-lg font-bold mb-2">Cats</h2>
-            <p className="text-xs text-white/50 mb-4">User-submitted cats are listed below.</p>
-            <div className="space-y-3 max-h-[420px] overflow-auto pr-1">
-              {data.submitted_cats.length === 0 && <p className="text-white/40 text-sm">No cats submitted yet.</p>}
-                {data.submitted_cats.map((cat) => (
-                <Link key={cat.id} href={`/cat/${cat.id}`} className={`block rounded-xl bg-white/5 border p-3 hover:bg-white/10 transition-colors ${cosmeticBorderClassFromSlug(activeBorderSlug)}`}>
-                  <div className="flex gap-3">
-                    <img
-                      src={cat.image_url || '/cat-placeholder.svg'}
-                      alt={cat.name}
-                      className="w-14 h-14 rounded-lg object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold truncate">{cat.name}</p>
-                      <p className="text-xs text-white/50">{cat.rarity} · {cat.status} · Lvl {cat.level}</p>
-                      <p className="text-xs text-white/40">W {cat.wins} / L {cat.losses} · Fans {cat.fan_count || 0}</p>
-                      {cat.stance && <p className="text-[10px] text-cyan-300 uppercase">Stance: {cat.stance}</p>}
-                    </div>
-                    {data.is_owner && (
-                      <button
-                        onClick={(e) => { e.preventDefault(); pinSignature(cat.id); }}
-                        disabled={!!pinningCatId}
-                        className="px-2 py-1 text-[10px] rounded-md bg-white/10 hover:bg-white/20"
-                      >
-                        {pinningCatId === cat.id ? 'Pinning...' : 'Pin'}
-                      </button>
-                    )}
+        <div className="grid gap-6">
+          <section className="profile-section-card">
+            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Trainer Identity</h2></div>
+            <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-xl bg-white/[0.03] p-4">
+                <div className="flex items-center gap-3 text-white/75">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200">✦</span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Public trainer identity</p>
+                    <p className="text-xs text-white/55">Public trainer pages and Battle Receipts turn this profile into a share target, not just a settings screen.</p>
                   </div>
-                </Link>
-              ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link href={`/r/${encodeURIComponent(data.profile.username || data.profile.id)}`} className="rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-400/15">
+                    Open Recruit Card
+                  </Link>
+                  {recentReceipts[0] ? (
+                    <Link href={`/c/${encodeURIComponent(recentReceipts[0].slug)}/share`} className="rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-xs font-bold text-violet-100 hover:bg-violet-400/15">
+                      Latest Battle Receipt
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-white/[0.03] p-4">
+                <p className="text-xs text-white/50">Guild</p>
+                <p className="mt-1 font-semibold text-white">{guildLabel}</p>
+                {data.most_supported_cat ? (
+                  <p className="mt-3 text-xs text-white/55">
+                    Most Supported: <Link href={`/cat/${data.most_supported_cat.id}`} className="text-white hover:underline">{data.most_supported_cat.name}</Link> ({data.most_supported_cat.fan_count} fans)
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            {data.is_owner && (
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs text-white/55">Edit your public trainer identity</p>
+                  <Link href="/shop" className="rounded-lg bg-yellow-500/20 px-2.5 py-1 text-xs font-bold text-yellow-300 hover:bg-yellow-500/30">Open Shop</Link>
+                </div>
+                {editingName ? (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      placeholder="username"
+                      className="flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm focus:outline-none focus:border-white/30"
+                    />
+                    <button onClick={saveUsername} disabled={savingName} className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-black disabled:opacity-50">
+                      {savingName ? 'Saving...' : 'Save'}
+                    </button>
+                    <button onClick={() => { setEditingName(false); setNewUsername(data.profile.username || ''); }} className="rounded-lg bg-white/10 px-4 py-2 text-sm">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setEditingName(true)} className="rounded-lg bg-white/10 px-3 py-2 text-sm hover:bg-white/15">
+                    Edit Username
+                  </button>
+                )}
+                {nameMessage && <p className="mt-2 text-xs text-white/60">{nameMessage}</p>}
+              </div>
+            )}
+          </section>
+
+          <section className="profile-section-card">
+            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Recruit Loop</h2></div>
+            <div className="grid gap-2 text-sm">
+              <div className="profile-stat-row"><span>Active recruits</span><span>{data.recruit_stats?.active_recruits || 0}</span></div>
+              <div className="profile-stat-row"><span>Qualified</span><span>{data.recruit_stats?.direct_qualified || 0}</span></div>
+              <div className="profile-stat-row"><span>Claimable sigils</span><span>{(data.recruit_stats?.claimable_sigils || 0).toLocaleString()}</span></div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-            <h2 className="text-lg font-bold mb-4">Vote History</h2>
-            <div className="space-y-2 max-h-[250px] overflow-auto pr-1 mb-5">
-              {data.vote_history.length === 0 && <p className="text-white/40 text-sm">No votes recorded yet.</p>}
-              {data.vote_history.map((v) => (
-                <div key={`${v.battle_id}-${v.created_at}`} className="rounded-lg bg-white/5 border border-white/5 p-2.5">
-                  <p className="text-sm">
-                    Voted for <span className="font-bold">{v.voted_for_name}</span>
-                    {v.against_name ? ` vs ${v.against_name}` : ''}
-                  </p>
-                  <p className="text-xs text-white/40">{new Date(v.created_at).toLocaleString()}</p>
-                </div>
-              ))}
-            </div>
-
-            <h3 className="text-sm font-bold mb-3">Equipped Cosmetics</h3>
-            <div className="space-y-2">
-              {data.equipped_cosmetics.length === 0 && <p className="text-white/40 text-sm">No cosmetics equipped.</p>}
-              {data.equipped_cosmetics.map((e, idx) => (
-                <div key={`${e.slot}-${idx}`} className="rounded-lg bg-white/5 border border-white/5 p-2.5 flex items-center justify-between">
-                  <p className="text-xs uppercase text-white/50">{e.slot}</p>
-                  <p className="text-sm">
-                    {e.cosmetic ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-                        {e.cosmetic.name}
-                      </span>
-                    ) : 'None'}
-                  </p>
-                </div>
-              ))}
-            </div>
-            {data.is_owner && (
-              <>
-                <h3 className="text-sm font-bold mt-5 mb-3">My Cosmetics</h3>
-                <div className="space-y-2 max-h-[220px] overflow-auto pr-1">
-                  {ownedCosmetics.length === 0 && <p className="text-white/40 text-sm">No owned cosmetics yet.</p>}
-                  {ownedCosmetics.map((c) => (
-                    <div key={c.id} className="rounded-lg bg-white/5 border border-white/5 p-2.5 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate">{c.name}</p>
-                        <p className="text-[11px] text-white/50">{cosmeticTypeLabel(c)} · {c.rarity}</p>
+          {showCosmeticsSection ? (
+            <section className="profile-section-card">
+              <div className="profile-section-title-wrap"><h2 className="profile-section-title">Cosmetics</h2></div>
+              <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-white">Equipped Slots</p>
+                    {data.is_owner ? <Link href="/shop" className="rounded-lg bg-white/10 px-2.5 py-1 text-xs hover:bg-white/15">Shop</Link> : null}
+                  </div>
+                  <div className="grid gap-2">
+                    {(data.equipped_cosmetics.length === 0 ? [
+                      { slot: 'Title', cosmetic: null },
+                      { slot: 'Border', cosmetic: null },
+                      { slot: 'Effect', cosmetic: null },
+                      { slot: 'Badge', cosmetic: null },
+                    ] : data.equipped_cosmetics).slice(0, 4).map((e, idx) => (
+                      <div key={`${e.slot}-${idx}`} className="rounded-lg border border-white/8 bg-white/[0.03] p-3 flex items-center justify-between">
+                        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">{e.slot}</p>
+                        <p className="text-sm text-white/78">{e.cosmetic?.name || 'Empty'}</p>
                       </div>
-                      <button
-                        onClick={() => equipFromProfile(c.slug)}
-                        disabled={!!equippingSlug || !!c.equipped_slot}
-                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs disabled:opacity-50"
-                      >
-                        {c.equipped_slot ? 'Equipped' : (equippingSlug === c.slug ? '...' : 'Equip')}
-                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  {showTip && (
+                    <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-xs text-white/65">Tips: equip titles, borders, colors, and effects here after buying them in Shop.</p>
+                        <button onClick={() => { localStorage.setItem('tip_profile_cosmetics_v1', '1'); setShowTip(false); }} className="rounded bg-white/10 px-2 py-1 text-xs hover:bg-white/20">
+                          Got it
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                  )}
+                  {data.is_owner ? (
+                    <div className="grid gap-2 max-h-[280px] overflow-auto pr-1">
+                      {ownedCosmetics.length === 0 ? (
+                        <div className="profile-empty-state">
+                          <p className="text-lg opacity-30">✨</p>
+                          <p>No cosmetics owned yet.</p>
+                          <p className="profile-empty-sub">Visit the shop to start building your look.</p>
+                        </div>
+                      ) : ownedCosmetics.map((c) => (
+                        <div key={c.id} className="rounded-lg border border-white/8 bg-white/[0.03] p-3 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{c.name}</p>
+                            <p className="text-[11px] text-white/50">{cosmeticTypeLabel(c)} · {c.rarity}</p>
+                          </div>
+                          <button onClick={() => equipFromProfile(c.slug)} disabled={!!equippingSlug || !!c.equipped_slot} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs disabled:opacity-50 hover:bg-white/20">
+                            {c.equipped_slot ? 'Equipped' : (equippingSlug === c.slug ? '...' : 'Equip')}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="profile-empty-state">
+                      <p className="text-lg opacity-30">🎴</p>
+                      <p>No cosmetics visible here.</p>
+                      <p className="profile-empty-sub">Owned cosmetics only appear for the account owner.</p>
+                    </div>
+                  )}
                 </div>
-              </>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="profile-section-card">
+            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Prediction Streak</h2></div>
+            <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs text-white/50">Current Streak</p>
+                  <p className="mt-1 text-4xl font-black text-white">{predictionCurrent}</p>
+                </div>
+                <div className="text-right text-xs text-white/50">
+                  <p>Best {predictionBest}</p>
+                  <p>Bonus Rolls {(data.prediction_stats?.bonus_rolls || 0).toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
+                <div className="h-full rounded-full bg-gradient-to-r from-cyan-400/70 to-violet-400/80" style={{ width: `${predictionProgress}%` }} />
+              </div>
+            </div>
+          </section>
+
+          <section className="profile-section-card">
+            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Activity</h2></div>
+            {activityItems.length === 0 ? (
+              <div className="profile-empty-state">
+                <p className="text-lg opacity-30">🌌</p>
+                <p>No battles recorded yet. Enter the Arena to start.</p>
+                <p className="profile-empty-sub">Recent activity will appear here once voting starts.</p>
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {activityItems.map((v) => (
+                  <div key={`${v.battle_id}-${v.created_at}`} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
+                    <p className="text-sm">
+                      Voted for <span className="font-bold">{v.voted_for_name}</span>
+                      {v.against_name ? ` vs ${v.against_name}` : ''}
+                    </p>
+                    <p className="mt-1 text-xs text-white/45">{new Date(v.created_at).toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
             )}
-            <h3 className="text-sm font-bold mt-5 mb-3">Top Rivalries</h3>
-            <div className="space-y-2">
-              {(data.rivalries || []).length === 0 && <p className="text-white/40 text-sm">No rivalries yet.</p>}
-              {(data.rivalries || []).map((r) => (
-                <div key={r.cat_id} className="rounded-lg bg-white/5 border border-white/5 p-2.5 flex items-center justify-between">
-                  <Link href={`/cat/${r.cat_id}`} className="text-sm hover:underline">{r.cat_name}</Link>
-                  <span className="text-xs text-white/50">{r.battles} clashes</span>
+          </section>
+
+          <section className="profile-section-card">
+            <div className="profile-section-title-wrap"><h2 className="profile-section-title">My Cats</h2></div>
+            {data.submitted_cats.length === 0 ? (
+              <div className="profile-empty-state">
+                <p className="text-lg opacity-30">🐾</p>
+                <p>No cats submitted yet.</p>
+                <p className="profile-empty-sub">Submit a cat to start building your roster.</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {data.submitted_cats.map((cat) => (
+                  <Link key={cat.id} href={`/cat/${cat.id}`} className={`block rounded-xl bg-white/5 border p-3 hover:bg-white/10 transition-colors ${cosmeticBorderClassFromSlug(activeBorderSlug)}`}>
+                    <div className="flex gap-3">
+                      <img src={cat.image_url || '/cat-placeholder.svg'} alt={cat.name} className="w-14 h-14 rounded-lg object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold truncate">{cat.name}</p>
+                        <p className="text-xs text-white/50">{cat.rarity} · {cat.status} · Lvl {cat.level}</p>
+                        <p className="text-xs text-white/40">W {cat.wins} / L {cat.losses} · Fans {cat.fan_count || 0}</p>
+                        {cat.stance ? <p className="text-[10px] uppercase text-cyan-300">Stance: {cat.stance}</p> : null}
+                      </div>
+                      {data.is_owner && (
+                        <button
+                          onClick={(e) => { e.preventDefault(); pinSignature(cat.id); }}
+                          disabled={!!pinningCatId}
+                          className="rounded-md bg-white/10 px-2 py-1 text-[10px] hover:bg-white/20"
+                        >
+                          {pinningCatId === cat.id ? 'Pinning...' : 'Pin'}
+                        </button>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="profile-section-card">
+            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Account</h2></div>
+            <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
+              <div className="grid gap-2 text-sm">
+                <div className="rounded-xl bg-white/[0.03] p-3">
+                  <p className="text-xs text-white/50 mb-1">User ID</p>
+                  <p className="break-all text-white/80">{data.profile.id}</p>
                 </div>
-              ))}
+                <div className="rounded-xl bg-white/[0.03] p-3">
+                  <p className="text-xs text-white/50 mb-1">Submitted Cats</p>
+                  <p className="text-white/80">{submittedCatCount}</p>
+                </div>
+              </div>
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-white">Battle Receipts</p>
+                  {recentReceipts[0] ? (
+                    <Link href={`/c/${encodeURIComponent(recentReceipts[0].slug)}/share`} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs hover:bg-white/15">
+                      Open Latest
+                    </Link>
+                  ) : null}
+                </div>
+                {recentReceipts.length === 0 ? (
+                  <div className="profile-empty-state">
+                    <p className="text-lg opacity-30">🧾</p>
+                    <p>No battle receipts yet.</p>
+                    <p className="profile-empty-sub">Mint a share card from any cat profile to start your receipt feed.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {recentReceipts.map((receipt) => (
+                      <Link key={receipt.slug} href={`/c/${encodeURIComponent(receipt.slug)}/share`} className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05]">
+                        <img src={receipt.image_url} alt={receipt.name} className="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+                        <div className="p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate font-bold text-white">{receipt.name}</p>
+                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/55">{receipt.rarity}</span>
+                          </div>
+                          <p className="mt-2 text-xs text-white/55">Power {receipt.power_rating} · {new Date(receipt.minted_at).toLocaleDateString()}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         </div>

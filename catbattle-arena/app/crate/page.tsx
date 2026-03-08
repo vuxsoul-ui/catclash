@@ -86,6 +86,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function CratePage() {
   const router = useRouter();
   const [stage, setStage] = useState<OpenStage>('idle');
+  const [isOpening, setIsOpening] = useState(false);
   const [reward, setReward] = useState<CrateReward | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -103,8 +104,11 @@ export default function CratePage() {
   const sequenceStartRef = useRef<number | null>(null);
   const sequenceTimingRef = useRef<RevealTiming>(getRevealTiming('Common', false));
   const PAID_CRATE_COST = 90;
-  const EPIC_CRATE_COST = 280;
+  const [epicCrateCost, setEpicCrateCost] = useState(280);
   const [epicLegendaryBoostIn, setEpicLegendaryBoostIn] = useState<number | null>(null);
+  const [epicOpensToday, setEpicOpensToday] = useState(0);
+  const [epicDailyCap, setEpicDailyCap] = useState(8);
+  const [nextResetAt, setNextResetAt] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
 
   const overlayActive = stage !== 'idle';
@@ -130,8 +134,25 @@ export default function CratePage() {
     }
   }, []);
 
+  const refreshEpicStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/crates/status?crate_type=epic', { cache: 'no-store' });
+      const data = await res.json().catch(() => null);
+      if (!data?.ok) return;
+      setSigils(Number(data.sigils || 0));
+      setEpicCrateCost(Number(data.paid_crate_cost || 280));
+      setEpicOpensToday(Number(data.opens_today || 0));
+      setEpicDailyCap(Number(data.daily_cap || 8));
+      setNextResetAt(String(data.next_reset_at || '') || null);
+      setEpicLegendaryBoostIn(Number(data.legendary_boost_in || 0));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     refreshSigils();
+    refreshEpicStatus();
     fetch('/api/me', { cache: 'no-store' })
       .then((r) => r.json().catch(() => ({})))
       .then((d) => {
@@ -139,7 +160,7 @@ export default function CratePage() {
         setViewerId(String(d?.guest_id || '').trim() || null);
       })
       .catch(() => {});
-  }, [refreshSigils]);
+  }, [refreshEpicStatus, refreshSigils]);
 
   useEffect(() => {
     fetch('/api/crates/latest', { cache: 'no-store' })
@@ -165,14 +186,29 @@ export default function CratePage() {
       .catch(() => {});
   }, [clearTimers]);
 
+  const [resetCountdown, setResetCountdown] = useState('00:00:00');
+
   useEffect(() => {
-    fetch('/api/crate/pity?crate_type=epic', { cache: 'no-store' })
-      .then((r) => r.json().catch(() => null))
-      .then((d) => {
-        if (d?.ok) setEpicLegendaryBoostIn(Number(d.legendary_boost_in || 0));
-      })
-      .catch(() => {});
-  }, []);
+    if (!nextResetAt) {
+      setResetCountdown('00:00:00');
+      return;
+    }
+    const update = () => {
+      const ms = new Date(nextResetAt).getTime() - Date.now();
+      if (ms <= 0) {
+        setResetCountdown('00:00:00');
+        return;
+      }
+      const totalSec = Math.floor(ms / 1000);
+      const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+      const ss = String(totalSec % 60).padStart(2, '0');
+      setResetCountdown(`${hh}:${mm}:${ss}`);
+    };
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [nextResetAt]);
 
   useEffect(() => {
     const hidden = localStorage.getItem('tip_crate_v2') === '1';
@@ -314,15 +350,38 @@ export default function CratePage() {
   }
 
   async function openCrate(mode: OpenMode) {
-    if (stage !== 'idle') return;
+    const currentCost = mode === 'epic' ? epicCrateCost : mode === 'paid' ? PAID_CRATE_COST : 0;
+    if (isOpening || stage !== 'idle') return;
+    if ((mode === 'paid' || mode === 'epic') && sigils < currentCost) {
+      setError(`Need ${currentCost} sigils for this crate.`);
+      return;
+    }
+    if (mode === 'epic' && epicOpensToday >= epicDailyCap) {
+      setError(`Epic crate daily cap reached. Resets in ${resetCountdown}.`);
+      return;
+    }
+
+    setIsOpening(true);
     setError(null);
     setNotice(null);
     setReward(null);
+    if (mode === 'paid' || mode === 'epic') {
+      setSigils((prev) => Math.max(0, prev - currentCost));
+    }
+    if (mode === 'epic') {
+      setEpicOpensToday((prev) => prev + 1);
+    }
     runSequence(getRevealTiming('Common', reducedMotion));
 
     try {
       const { status, data } = await requestReward(mode);
       if (!data.success && !data.ok) {
+        if (mode === 'paid' || mode === 'epic') {
+          setSigils((prev) => prev + currentCost);
+        }
+        if (mode === 'epic') {
+          setEpicOpensToday((prev) => Math.max(0, prev - 1));
+        }
         clearTimers();
         setStage('idle');
         if (status === 409 && data?.pending) {
@@ -334,17 +393,38 @@ export default function CratePage() {
       }
       setReward(data);
       setOpeningId(String(data?.opening?.id || ''));
+      if (typeof data?.sigils_after === 'number') {
+        setSigils(Number(data.sigils_after || 0));
+      }
+      if (typeof data?.opens_today === 'number') {
+        setEpicOpensToday(Number(data.opens_today || 0));
+      }
+      if (typeof data?.daily_cap === 'number') {
+        setEpicDailyCap(Number(data.daily_cap || 0));
+      }
+      if (data?.pity_status) {
+        const pityLegendary = Number(data?.pity_status?.streak_without_legendary_plus || 0);
+        setEpicLegendaryBoostIn(Math.max(0, 6 - pityLegendary));
+      }
       resyncSequenceForRarity(String(data?.rarity || 'Common'));
       if (data?.cat_drop_blocked_reason) {
         setNotice('Cat drop limit reached (resets at UTC midnight).');
       } else if (data?.cat_drop_converted) {
         setNotice('Duplicate ability -> converted to Chaos Bonus.');
       }
-      refreshSigils();
+      refreshEpicStatus();
     } catch {
+      if (mode === 'paid' || mode === 'epic') {
+        setSigils((prev) => prev + currentCost);
+      }
+      if (mode === 'epic') {
+        setEpicOpensToday((prev) => Math.max(0, prev - 1));
+      }
       clearTimers();
       setStage('idle');
       setError('Network error');
+    } finally {
+      setIsOpening(false);
     }
   }
 
@@ -429,6 +509,10 @@ export default function CratePage() {
     }
   }
 
+  const epicOpensLeft = Math.max(0, epicDailyCap - epicOpensToday);
+  const paidDisabled = isOpening || overlayActive || sigils < PAID_CRATE_COST;
+  const epicDisabled = isOpening || overlayActive || sigils < epicCrateCost || epicOpensToday >= epicDailyCap;
+
   return (
     <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
       <div className="max-w-lg mx-auto px-4 py-6">
@@ -459,26 +543,42 @@ export default function CratePage() {
           <div className="flex flex-col items-center gap-3">
             <button
               onClick={() => openCrate('daily')}
-              disabled={overlayActive}
+              disabled={isOpening || overlayActive}
               className="group relative w-48 h-48 rounded-2xl border-2 border-dashed border-yellow-500/30 bg-yellow-500/5 hover:bg-yellow-500/10 hover:border-yellow-500/50 transition-all hover:scale-[1.03] disabled:opacity-50 flex flex-col items-center justify-center gap-3"
             >
               <Gift className="w-16 h-16 text-yellow-400 group-hover:scale-110 transition-transform" />
-              <span className="text-sm font-bold text-yellow-400">Open Daily Crate</span>
+              <span className="text-sm font-bold text-yellow-400">{isOpening ? 'Opening...' : 'Open Daily Crate'}</span>
             </button>
             <button
               onClick={() => openCrate('paid')}
-              disabled={sigils < PAID_CRATE_COST || overlayActive}
-              className="px-4 py-2 rounded-lg bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-200 text-xs font-bold disabled:opacity-40"
+              disabled={paidDisabled}
+              className={`px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${sigils < PAID_CRATE_COST ? 'bg-amber-900/40 border border-amber-700/30 text-amber-300/60' : 'bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-200'}`}
             >
-              Buy Extra Crate ({PAID_CRATE_COST} sigils)
+              {isOpening ? 'Opening...' : sigils < PAID_CRATE_COST ? `Need ${PAID_CRATE_COST} sigils` : `Buy Extra Crate (${PAID_CRATE_COST} sigils)`}
             </button>
+            <div className="flex items-center gap-2 text-[11px] text-cyan-100/70">
+              <SigilIcon className="w-3.5 h-3.5" />
+              <span>{PAID_CRATE_COST} sigils</span>
+              {sigils < PAID_CRATE_COST ? <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">Insufficient</span> : null}
+            </div>
             <button
               onClick={() => openCrate('epic')}
-              disabled={sigils < EPIC_CRATE_COST || overlayActive}
-              className="px-4 py-2 rounded-lg border border-purple-300/35 bg-purple-500/20 hover:bg-purple-500/30 text-purple-100 text-xs font-bold disabled:opacity-40"
+              disabled={epicDisabled}
+              className={`px-4 py-2 rounded-lg border text-xs font-bold disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${epicOpensToday >= epicDailyCap ? 'border-purple-900/50 bg-purple-950/50 text-purple-200/55' : sigils < epicCrateCost ? 'border-amber-700/30 bg-amber-900/40 text-amber-300/60' : 'border-purple-300/35 bg-purple-500/20 hover:bg-purple-500/30 text-purple-100'}`}
             >
-              ⚡ Epic Chaos Crate ({EPIC_CRATE_COST} sigils)
+              {isOpening
+                ? 'Opening...'
+                : epicOpensToday >= epicDailyCap
+                  ? `Resets in ${resetCountdown}`
+                  : sigils < epicCrateCost
+                    ? `Need ${epicCrateCost} sigils`
+                    : `⚡ Epic Chaos Crate (${epicCrateCost} sigils)`}
             </button>
+            <div className="flex items-center gap-2 text-[11px] text-purple-100/75">
+              <SigilIcon className="w-3.5 h-3.5" />
+              <span>{epicCrateCost} sigils</span>
+              {sigils < epicCrateCost ? <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">Insufficient</span> : null}
+            </div>
             <p className="text-[11px] text-purple-200/85">High-Voltage Odds</p>
           </div>
         </div>
@@ -497,6 +597,9 @@ export default function CratePage() {
             <p className="mt-1 text-[11px] text-white/70">Daily cap: 8 Epic crates.</p>
             <p className="mt-1 text-[11px] text-white/70">
               Pity tracker: Legendary boost in {epicLegendaryBoostIn == null ? '…' : epicLegendaryBoostIn} crates
+            </p>
+            <p className={`mt-1 text-[11px] ${epicOpensLeft === 0 ? 'text-rose-200/75' : 'text-white/70'}`}>
+              {epicOpensLeft} opens left today · resets in {resetCountdown}
             </p>
           </details>
         </div>

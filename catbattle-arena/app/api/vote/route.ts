@@ -10,6 +10,7 @@ import { checkRateLimitManyPersistent, getClientIpPrefix, hashValue } from "../_
 import { markReferralQualifiedFromVote } from "../_lib/referrals";
 import { trackAppEvent } from "../_lib/telemetry";
 import { applyFeatureTesterBoost, isFeatureTesterId } from "../_lib/tester";
+import { computeVoteStats } from "../_lib/vote-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,8 @@ async function fetchMatchVotes(supabase: any, matchId: string) {
     if (!data) return null;
     const a = Number(data.votes_a || 0);
     const b = Number(data.votes_b || 0);
-    return { votes_a: a, votes_b: b, total_votes: a + b };
+    const stats = computeVoteStats(a, b);
+    return { votes_a: a, votes_b: b, ...stats };
   } catch {
     return null;
   }
@@ -159,6 +161,7 @@ export async function POST(req: NextRequest) {
         page_complete: false,
         voted_count: 0,
         page_size: 0,
+        ...(afterVotes || {}),
       });
     }
 
@@ -215,10 +218,18 @@ export async function POST(req: NextRequest) {
           ok: true,
           matchId,
           choice: votedFor,
+          ...(afterVotes || {}),
           ...pageVoteMeta,
         });
       }
-      return NextResponse.json({ ok: true, matchId, choice: votedFor, message: "Vote recorded", ...pageVoteMeta });
+      return NextResponse.json({
+        ok: true,
+        matchId,
+        choice: votedFor,
+        message: "Vote recorded",
+        ...(afterVotes || {}),
+        ...pageVoteMeta,
+      });
     }
 
     // RPC failed — fall back to direct insert
@@ -257,10 +268,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (existingVote) {
+      const afterVotes = await fetchMatchVotes(supabase, matchId);
       logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "duplicate" });
       const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
       return NextResponse.json(
-        { ok: true, alreadyVoted: true, matchId, choice: String((existingVote as any)?.voted_for || votedFor), ...pageVoteMeta },
+        { ok: true, alreadyVoted: true, matchId, choice: String((existingVote as any)?.voted_for || votedFor), ...(afterVotes || {}), ...pageVoteMeta },
         { status: 200 }
       );
     }
@@ -276,10 +288,11 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (ipVote) {
+        const afterVotes = await fetchMatchVotes(supabase, matchId);
         logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "duplicate", detail: "ip_hash" });
         const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
         return NextResponse.json(
-          { ok: true, alreadyVoted: true, matchId, choice: String((ipVote as any)?.voted_for || votedFor), ...pageVoteMeta },
+          { ok: true, alreadyVoted: true, matchId, choice: String((ipVote as any)?.voted_for || votedFor), ...(afterVotes || {}), ...pageVoteMeta },
           { status: 200 }
         );
       }
@@ -299,10 +312,11 @@ export async function POST(req: NextRequest) {
     if (insertErr) {
       // Unique constraint violation = duplicate vote
       if (insertErr.code === "23505") {
+        const afterVotes = await fetchMatchVotes(supabase, matchId);
         logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "duplicate", detail: "unique" });
         const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
         return NextResponse.json(
-          { ok: true, alreadyVoted: true, matchId, choice: votedFor, ...pageVoteMeta },
+          { ok: true, alreadyVoted: true, matchId, choice: votedFor, ...(afterVotes || {}), ...pageVoteMeta },
           { status: 200 }
         );
       }
@@ -443,6 +457,7 @@ export async function POST(req: NextRequest) {
       xp_earned: isRegistered ? earnedXp : 0,
       cat_xp_banked: pendingCatXp,
       rewards_locked: !isRegistered,
+      ...(afterVotes || {}),
       ...pageVoteMeta,
     });
   } catch (err: unknown) {

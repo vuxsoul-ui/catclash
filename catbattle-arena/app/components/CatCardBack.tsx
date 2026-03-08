@@ -43,6 +43,15 @@ function heatLabel(votes: number): string | null {
   return null;
 }
 
+function rarityTierClass(rarity: string): string {
+  const key = cleanText(rarity).toLowerCase();
+  if (key === 'rare') return 'tier-rare';
+  if (key === 'epic') return 'tier-epic';
+  if (key === 'legendary') return 'tier-legendary';
+  if (key === 'mythic') return 'tier-mythic';
+  return 'tier-common';
+}
+
 export default function CatCardBack({
   cat,
   role,
@@ -71,6 +80,7 @@ export default function CatCardBack({
   const heat = heatLabel(votes);
   const ability = cleanText(cat.ability);
   const abilityDesc = cleanText(cat.ability_description);
+  const tierClass = rarityTierClass(cat.rarity);
   const meta = [
     { k: 'Rarity', v: cat.rarity },
     { k: 'Level', v: String(Math.max(1, Number(cat.level || 1))) },
@@ -99,59 +109,89 @@ export default function CatCardBack({
   }, [cat.id]);
 
   return (
-    <div className={`arena-flip-face arena-flip-back arena-fighter-pane rounded-2xl border border-white/15 p-2 h-full min-h-0 flex flex-col overflow-hidden ${className || ''}`}>
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-[11px] font-semibold truncate">{displayName}</p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-[9px] px-1.5 py-0.5 rounded border border-white/20 bg-white/10 text-white/85"
-          aria-label={`Close ${displayName} details`}
-        >
-          Back
-        </button>
+    <div className={`arena-flip-face arena-flip-back arena-fighter-pane cat-card-back-shell ${tierClass} rounded-2xl h-full min-h-0 flex flex-col overflow-hidden ${className || ''}`}>
+      <div className="cat-card-back-accent" />
+
+      <div className="relative z-[1] flex items-center justify-between gap-2 px-3 pt-2.5">
+        <div className="min-w-0">
+          <p className="cat-card-back-name truncate">{displayName}</p>
+          <p className="cat-card-back-lore truncate">{desc}</p>
+        </div>
+        <span className="cat-card-back-tier-chip shrink-0">{cleanText(cat.rarity || 'Common').toUpperCase()}</span>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 [scrollbar-width:thin] [-webkit-overflow-scrolling:touch]">
-        <p className="text-[9px] text-white/78 leading-relaxed">{desc}</p>
+      <div className="relative z-[1] flex-1 min-h-0 overflow-y-auto px-3 pb-2 pt-2 [scrollbar-width:thin] [-webkit-overflow-scrolling:touch]">
+        <div className="cat-card-back-owner-row">
+          <span className="cat-card-back-owner-icon" aria-hidden="true" />
+          <span className="cat-card-back-owner-label">OWNER</span>
+          <span className="cat-card-back-owner-handle">{owner ? `@${owner}` : 'Unknown'}</span>
+        </div>
 
-        <Link
-          href={`/cat/${cat.id}`}
-          className="mt-1 flex items-center justify-between rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1 text-[9px]"
-        >
-          <span className="text-white/55">Owner</span>
-          <span className="text-cyan-100 truncate max-w-[60%] text-right">{owner ? `@${owner}` : 'Unknown'}</span>
-        </Link>
-
-        <div className="mt-1 grid grid-cols-2 gap-1 text-[8px]">
-          {meta.map((item) => (
-            <div key={item.k} className="rounded border border-white/12 bg-white/[0.04] px-1.5 py-1 min-w-0">
-              <p className="text-white/50 leading-none mb-0.5">{item.k}</p>
-              <p className="text-white/90 truncate leading-none">{item.v}</p>
-            </div>
-          ))}
+        <div className="cat-card-back-grid mt-2">
+          {meta.map((item) => {
+            const isRecord = item.k === 'Record';
+            const isTier = item.k === 'Rarity';
+            const isRoleMeta = item.k === 'Role' || item.k === 'Origin' || item.k === 'Faction';
+            return (
+              <div key={item.k} className="cat-card-back-cell min-w-0">
+                <p className="cat-card-back-cell-label">{item.k}</p>
+                <p className={`cat-card-back-cell-value truncate ${isTier ? 'cat-card-back-cell-value--tier' : ''} ${isRecord ? 'cat-card-back-cell-value--record' : ''} ${isRoleMeta ? 'cat-card-back-cell-value--meta' : ''}`}>
+                  {item.v}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
         {ability ? (
-          <div className="mt-1 rounded-lg border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 min-w-0">
-            <p className="text-[9px] text-cyan-100 font-semibold">Ability: {ability}</p>
-            {abilityDesc ? <p className="text-[8px] text-cyan-100/75">{abilityDesc}</p> : null}
+          <div className="cat-card-back-ability mt-2 min-w-0">
+            <p className="cat-card-back-ability-name">Ability: {ability}</p>
+            {abilityDesc ? <p className="cat-card-back-ability-desc">{abilityDesc}</p> : null}
           </div>
         ) : null}
 
-        <div className="mt-1 flex items-center justify-between text-[8px] pb-1">
-          <span className="text-white/65">Votes: {votes}</span>
-          {heat ? <span className="rounded-full border border-amber-300/35 bg-amber-500/12 px-1.5 py-0.5 text-amber-100">{heat}</span> : null}
+        <div className="cat-card-back-footer mt-2">
+          <div className="min-w-0 flex-1">
+            <div className="cat-card-back-footer-top">
+              <span>Vote Heat</span>
+              <span>{votes}</span>
+            </div>
+            <div className="cat-card-back-progress">
+              <div
+                className="cat-card-back-progress-fill"
+                style={{ width: `${Math.max(4, Math.min(100, Math.round(sharePct)))}%` }}
+              />
+            </div>
+            <div className="cat-card-back-footer-bottom">
+              <span>{Math.max(0, Math.min(100, Math.round(sharePct)))} / 100</span>
+              <span>{wins}-{losses}</span>
+            </div>
+          </div>
+          {heat ? <span className="cat-card-back-heat">{heat}</span> : null}
         </div>
       </div>
 
-      <div data-cat-back-actions={cat.id} className="pt-1 grid grid-cols-2 gap-1.5 items-stretch">
-        <Link href={`/cat/${cat.id}`} className="h-10 w-full rounded-md border border-cyan-300/30 bg-cyan-500/10 text-cyan-100 text-[10px] font-semibold inline-flex items-center justify-center whitespace-nowrap touch-manipulation">
-          Open Cat Profile
-        </Link>
-        <Link href={`/c/${cat.id}/share`} className="h-10 w-full rounded-md border border-white/20 bg-white/[0.06] text-white text-[10px] font-semibold inline-flex items-center justify-center whitespace-nowrap touch-manipulation">
-          Share Card
-        </Link>
+      <div className="relative z-[1] px-3 pb-3 pt-1">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cat-card-back-back-btn"
+            aria-label={`Close ${displayName} details`}
+          >
+            Back
+          </button>
+          <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">{role}</div>
+        </div>
+
+        <div data-cat-back-actions={cat.id} className="grid grid-cols-2 gap-1.5 items-stretch">
+          <Link href={`/cat/${cat.id}`} className="cat-card-back-action cat-card-back-action--primary h-10 w-full whitespace-nowrap touch-manipulation inline-flex items-center justify-center">
+            Open Cat Profile
+          </Link>
+          <Link href={`/c/${cat.id}/share`} className="cat-card-back-action cat-card-back-action--secondary h-10 w-full whitespace-nowrap touch-manipulation inline-flex items-center justify-center">
+            Share Card
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -25,7 +25,7 @@ interface CatProfile {
   wins: number;
   losses: number;
   battles_fought: number;
-  win_rate: number;
+  win_rate: number | null;
   stance?: string | null;
   fan_count?: number;
   rivalries?: Array<{ cat_id: string; cat_name: string; battles: number }>;
@@ -220,6 +220,10 @@ export default function CatProfilePage() {
   }
 
   const r = getRarity(cat.rarity);
+  const displayCount = (value: number) => (value > 0 ? value.toLocaleString() : '—');
+  const hasBattles = Number(cat.battles_fought || 0) > 0;
+  const winRateDisplay = hasBattles && typeof cat.win_rate === 'number' ? `${cat.win_rate}%` : '—';
+  const fans = Number(cat.fan_count || 0);
 
   return (
     <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
@@ -325,19 +329,19 @@ export default function CatProfilePage() {
             {/* Combat Record */}
             <div className="grid grid-cols-4 gap-3 text-center">
               <div className="rounded-xl bg-white/[0.03] p-3">
-                <div className="text-lg font-bold">{cat.battles_fought}</div>
+                <div className="text-lg font-bold">{displayCount(cat.battles_fought)}</div>
                 <div className="text-[10px] uppercase tracking-wider text-white/30">Battles</div>
               </div>
               <div className="rounded-xl bg-green-500/[0.06] p-3">
-                <div className="text-lg font-bold text-green-400">{cat.wins}</div>
+                <div className="text-lg font-bold text-green-400">{displayCount(cat.wins)}</div>
                 <div className="text-[10px] uppercase tracking-wider text-white/30">Wins</div>
               </div>
               <div className="rounded-xl bg-red-500/[0.06] p-3">
-                <div className="text-lg font-bold text-red-400">{cat.losses}</div>
+                <div className="text-lg font-bold text-red-400">{displayCount(cat.losses)}</div>
                 <div className="text-[10px] uppercase tracking-wider text-white/30">Losses</div>
               </div>
               <div className="rounded-xl bg-white/[0.03] p-3">
-                <div className="text-lg font-bold">{cat.win_rate}%</div>
+                <div className="text-lg font-bold">{winRateDisplay}</div>
                 <div className="text-[10px] uppercase tracking-wider text-white/30">WR</div>
               </div>
             </div>
@@ -358,7 +362,10 @@ export default function CatProfilePage() {
               </div>
               <div className="rounded-xl bg-white/[0.03] p-3">
                 <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Fans</div>
-                <div className="text-sm font-bold">{cat.fan_count || 0}</div>
+                <div className="text-sm font-bold">{fans}</div>
+                {fans === 0 && (
+                  <div className="mt-1 text-[10px] text-white/35">Be the first to fan this cat</div>
+                )}
               </div>
             </div>
             {viewerId && cat.owner_id === viewerId && (
@@ -397,11 +404,15 @@ export default function CatProfilePage() {
                 <div className="text-[10px] uppercase tracking-wider text-white/30 mb-0.5">Owner</div>
                 <div className="text-sm font-medium text-white/70">
                   {cat.owner_id ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/profile/${cat.owner_id}`} className="hover:text-white underline-offset-2 hover:underline">
                         {cat.owner_username || cat.owner_id.slice(0, 8)}
                       </Link>
-                      {cat.owner_title ? <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300">{cat.owner_title}</span> : null}
+                      {cat.owner_title ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 break-words whitespace-normal">
+                          {cat.owner_title}
+                        </span>
+                      ) : null}
                     </div>
                   ) : 'Unknown'}
                 </div>
@@ -434,13 +445,13 @@ export default function CatProfilePage() {
             ) : (
               <div className="text-center py-6 rounded-xl bg-white/[0.02]">
                 <Swords className="w-6 h-6 mx-auto mb-2 text-white/20" />
-                <p className="text-sm text-white/30">No battles yet. This cat is ready for war.</p>
+                <p className="text-sm text-white/30">No battles yet. Enter the Arena to start fighting.</p>
               </div>
             )}
 
-            {cat.rivalries && cat.rivalries.length > 0 && (
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-white/30 mb-3">Rivalries</h3>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-white/30 mb-3">Rivalries</h3>
+              {cat.rivalries && cat.rivalries.length > 0 ? (
                 <div className="space-y-1.5">
                   {cat.rivalries.map((rival) => (
                     <Link key={rival.cat_id} href={`/cat/${rival.cat_id}`} className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06]">
@@ -449,8 +460,10 @@ export default function CatProfilePage() {
                     </Link>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-white/30">No rivalries yet — keep battling to build them.</p>
+              )}
+            </div>
           </div>
         </div>
 

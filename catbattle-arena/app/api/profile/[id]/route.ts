@@ -32,6 +32,15 @@ type ProfileCatRow = {
   prestige_weight?: number | null;
 };
 
+type ShareReceiptRow = {
+  public_slug: string;
+  name: string | null;
+  rarity: string | null;
+  power_rating: number | null;
+  image_card_png_url: string | null;
+  minted_at: string;
+};
+
 function normalizeEquipSlot(slot: string): 'title' | 'border' | 'color' {
   const s = String(slot || '').toLowerCase();
   if (s === 'title' || s === 'cat_title' || s === 'badge') return 'title';
@@ -72,7 +81,7 @@ export async function GET(
     }
     const isOwner = !!viewerId && viewerId === userId;
 
-    const [{ data: profile }, { data: progress }, { data: streak }, { data: votes }, { data: predictionStats }] =
+    const [{ data: profile }, { data: progress }, { data: streak }, { data: votes }, { data: predictionStats }, { data: referrals }, { data: recentShareCards }] =
       await Promise.all([
         supabase.from('profiles').select('id, username, created_at, tactical_rating, signature_cat_id, guild').eq('id', userId).maybeSingle(),
         supabase.from('user_progress').select('xp, level, sigils').eq('user_id', userId).maybeSingle(),
@@ -84,6 +93,14 @@ export async function GET(
           .order('created_at', { ascending: false })
           .limit(20),
         supabase.from('user_prediction_stats').select('current_streak, best_streak, bonus_rolls').eq('user_id', userId).maybeSingle(),
+        supabase.from('social_referrals').select('recruit_user_id, claimable_sigils, total_sigils_earned, status').eq('referrer_user_id', userId),
+        supabase
+          .from('share_cards')
+          .select('public_slug, name, rarity, power_rating, image_card_png_url, minted_at')
+          .eq('owner_user_id', userId)
+          .eq('is_public', true)
+          .order('minted_at', { ascending: false })
+          .limit(6),
       ]);
 
     let cats: ProfileCatRow[] = [];
@@ -172,6 +189,19 @@ export async function GET(
     const tacticalRating = resolvedPredictions.length > 0
       ? Math.min(100, Math.round((wonPredictions / resolvedPredictions.length) * 70 + Math.min(tacticalActions, 50) * 0.6))
       : Math.min(100, Math.round(Math.min(tacticalActions, 50) * 0.8));
+
+    const directQualified = (referrals || []).filter((r) => String((r as { status?: string | null }).status || '') === 'qualified').length;
+    const activeRecruits = (referrals || []).filter((r) => !!String((r as { recruit_user_id?: string | null }).recruit_user_id || '')).length;
+    const claimableRecruitSigils = (referrals || []).reduce((sum, row) => sum + Math.max(0, Number((row as { claimable_sigils?: number | null }).claimable_sigils || 0)), 0);
+    const totalRecruitSigils = (referrals || []).reduce((sum, row) => sum + Math.max(0, Number((row as { total_sigils_earned?: number | null }).total_sigils_earned || 0)), 0);
+    const shareReceipts = ((recentShareCards || []) as ShareReceiptRow[]).map((row) => ({
+      slug: row.public_slug,
+      name: String(row.name || 'Unnamed Cat'),
+      rarity: String(row.rarity || 'Common'),
+      power_rating: Math.max(0, Number(row.power_rating || 0)),
+      image_url: String(row.image_card_png_url || `/api/cards/image/${encodeURIComponent(String(row.public_slug || ''))}`),
+      minted_at: row.minted_at,
+    }));
 
     let mostSupportedCat: { id: string; name: string; fan_count: number } | null = null;
 
@@ -268,6 +298,13 @@ export async function GET(
       submitted_cats: formattedCats,
       vote_history: voteHistory,
       equipped_cosmetics: equipped,
+      recruit_stats: {
+        active_recruits: activeRecruits,
+        direct_qualified: directQualified,
+        claimable_sigils: claimableRecruitSigils,
+        total_sigils_earned: totalRecruitSigils,
+      },
+      recent_receipts: shareReceipts,
       rivalries,
       most_supported_cat: mostSupportedCat,
       signature_cat: signatureCat

@@ -54,7 +54,7 @@ export default function DuelCardMini({ duel }: { duel: DuelRowData }) {
   }, [ctaLinkTestId, duel.id, openLinkTestId]);
 
   return (
-    <div className="group relative w-full overflow-hidden rounded-2xl border border-cyan-200/20 bg-[linear-gradient(165deg,rgba(12,23,40,0.88),rgba(12,16,24,0.92))] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.35)] transition-all duration-200 hover:border-cyan-300/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.16)]">
+    <div className="live-duel-card group relative w-full overflow-hidden rounded-2xl border border-cyan-200/20 bg-[linear-gradient(165deg,rgba(12,23,40,0.88),rgba(12,16,24,0.92))] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.35)] transition-all duration-200 hover:border-cyan-300/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.16)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_-10%,rgba(34,211,238,0.18),transparent_42%),radial-gradient(circle_at_10%_120%,rgba(249,115,22,0.12),transparent_36%)]" />
       <Link
         href={duelHref}
@@ -64,13 +64,13 @@ export default function DuelCardMini({ duel }: { duel: DuelRowData }) {
         aria-label={`Open live duel ${catA?.name || 'Cat A'} versus ${catB?.name || 'Cat B'}`}
       >
         <div className="flex items-center justify-between gap-2">
-          <div className="relative flex items-center -space-x-2.5">
+          <div className="live-duel-avatars relative flex items-center -space-x-2.5">
             <img
               src={safeThumb(catA?.image_url)}
               alt={catA?.name || 'Cat A'}
               width={40}
               height={40}
-              className="h-10 w-10 rounded-full object-cover border border-white/20"
+              className="live-duel-avatar live-duel-avatar-a h-10 w-10 rounded-full object-cover border border-white/20"
               loading="lazy"
             />
             <img
@@ -78,10 +78,10 @@ export default function DuelCardMini({ duel }: { duel: DuelRowData }) {
               alt={catB?.name || 'Cat B'}
               width={40}
               height={40}
-              className="h-10 w-10 rounded-full object-cover border border-white/20"
+              className="live-duel-avatar live-duel-avatar-b h-10 w-10 rounded-full object-cover border border-white/20"
               loading="lazy"
             />
-            <span className="absolute left-1/2 -translate-x-1/2 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-white/25 bg-black/55 px-1 text-[9px] font-black text-white/90">
+            <span className="live-duel-vs absolute left-1/2 -translate-x-1/2 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-white/25 bg-black/55 px-1 text-[9px] font-black text-white/90">
               VS
             </span>
           </div>
@@ -97,13 +97,13 @@ export default function DuelCardMini({ duel }: { duel: DuelRowData }) {
           <span className="truncate max-w-[44%]">{catA?.name || 'A'} {pctA}%</span>
           <span className="truncate max-w-[44%] text-right">{pctB}% {catB?.name || 'B'}</span>
         </div>
-        <div className="mt-1.5 h-2 rounded-full bg-white/10 overflow-hidden flex">
+        <div className="live-duel-votebar mt-1.5 h-2 rounded-full bg-white/10 overflow-hidden flex">
           <div
-            className="h-full bg-gradient-to-r from-orange-400 to-amber-300 transition-all duration-300"
+            className="live-duel-votebar-a h-full bg-gradient-to-r from-orange-400 to-amber-300 transition-all duration-300"
             style={{ width: `${Math.max(10, pctA)}%` }}
           />
           <div
-            className="h-full bg-gradient-to-r from-sky-400 to-cyan-300 transition-all duration-300"
+            className="live-duel-votebar-b h-full bg-gradient-to-r from-sky-400 to-cyan-300 transition-all duration-300"
             style={{ width: `${Math.max(10, pctB)}%` }}
           />
         </div>

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Cinzel, Rajdhani } from "next/font/google";
 import "./globals.css";
-import Nav from "./components/Nav";
 import GlobalToastHost from "./components/GlobalToastHost";
 import BuildStamp from "./components/BuildStamp";
 import { canonicalSiteOrigin } from "./lib/site-origin";
+import HeaderSystem from "./components/HeaderSystem";
 
 const inter = localFont({
   src: "./fonts/GeistVF.woff",
@@ -15,6 +16,20 @@ const inter = localFont({
 const spaceGrotesk = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-space",
+  display: "swap",
+});
+
+const cinzel = Cinzel({
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  variable: "--font-cinzel",
+  display: "swap",
+});
+
+const rajdhani = Rajdhani({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-rajdhani",
   display: "swap",
 });
 
@@ -42,11 +57,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} antialiased min-h-screen relative bg-black`}
+        className={`${inter.variable} ${spaceGrotesk.variable} ${cinzel.variable} ${rajdhani.variable} antialiased min-h-screen relative bg-black`}
       >
         <div className="noise-overlay" />
-        <Nav />
-        <div className="pt-[calc(var(--header-h)+env(safe-area-inset-top))] safe-bottom-pad sm:pb-0">{children}</div>
+        <HeaderSystem>
+          <div className="safe-bottom-pad sm:pb-0">{children}</div>
+        </HeaderSystem>
         <GlobalToastHost />
         <BuildStamp />
         <div className="vuxsolia-watermark" aria-hidden="true">Property of Vuxsolia.</div>

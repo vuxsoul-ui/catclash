@@ -765,6 +765,7 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
   for (const match of resolvable) {
     const rawA = match.votes_a || 0;
     const rawB = match.votes_b || 0;
+    const hasRealVotes = rawA + rawB > 0;
     const profileA = catStatsMap[match.cat_a_id];
     const profileB = catStatsMap[match.cat_b_id];
     const stanceA = stanceBonus(stanceMap[match.cat_a_id], profileA || {}, profileB || {});
@@ -797,26 +798,28 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
 
     const loser = winner === match.cat_a_id ? match.cat_b_id : match.cat_a_id;
 
-    const { data: winnerCat } = await supabase.from('cats').select('wins, battles_fought').eq('id', winner).maybeSingle();
-    if (winnerCat) {
-      await supabase
-        .from('cats')
-        .update({
-          wins: (winnerCat.wins || 0) + 1,
-          battles_fought: (winnerCat.battles_fought || 0) + 1,
-        })
-        .eq('id', winner);
-    }
-    if (loser && loser !== winner) {
-      const { data: loserCat } = await supabase.from('cats').select('losses, battles_fought').eq('id', loser).maybeSingle();
-      if (loserCat) {
+    if (hasRealVotes) {
+      const { data: winnerCat } = await supabase.from('cats').select('wins, battles_fought').eq('id', winner).maybeSingle();
+      if (winnerCat) {
         await supabase
           .from('cats')
           .update({
-            losses: (loserCat.losses || 0) + 1,
-            battles_fought: (loserCat.battles_fought || 0) + 1,
+            wins: (winnerCat.wins || 0) + 1,
+            battles_fought: (winnerCat.battles_fought || 0) + 1,
           })
-          .eq('id', loser);
+          .eq('id', winner);
+      }
+      if (loser && loser !== winner) {
+        const { data: loserCat } = await supabase.from('cats').select('losses, battles_fought').eq('id', loser).maybeSingle();
+        if (loserCat) {
+          await supabase
+            .from('cats')
+            .update({
+              losses: (loserCat.losses || 0) + 1,
+              battles_fought: (loserCat.battles_fought || 0) + 1,
+            })
+            .eq('id', loser);
+        }
       }
     }
   }

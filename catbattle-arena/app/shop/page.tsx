@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Sparkles, Check, Eye, UserRound, Shield } from 'lucide-react';
 import SigilIcon from '../components/icons/SigilIcon';
-import SigilBalanceChip from '../components/SigilBalanceChip';
+import SigilWidget from '../components/SigilWidget';
 import CosmeticPreview from '../components/cosmetics/CosmeticPreview';
 import CosmeticPreviewSheet from '../components/cosmetics/CosmeticPreviewSheet';
 import CosmeticFrame from '../components/cosmetics/CosmeticFrame';
@@ -430,7 +430,7 @@ export default function ShopPage() {
           <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
-          <SigilBalanceChip balance={sigils} size="sm" />
+          <SigilWidget balance={sigils} size="shop" />
         </div>
 
         <h1 className="text-2xl sm:text-3xl font-bold mb-1">Cosmetics Shop</h1>

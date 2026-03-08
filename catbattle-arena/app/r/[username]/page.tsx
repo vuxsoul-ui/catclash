@@ -156,6 +156,14 @@ export default function RecruitSharePage() {
                 Join Arena
               </Link>
             </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Link href={`/profile/${encodeURIComponent(data.recruiter.username)}`} className="h-10 rounded-xl border border-violet-300/20 bg-violet-400/10 text-xs font-bold text-violet-100 inline-flex items-center justify-center">
+                View Trainer Profile
+              </Link>
+              <Link href={`/social?recruit=${encodeURIComponent(data.recruiter.username)}`} className="h-10 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white/80 inline-flex items-center justify-center">
+                Recruit Loop
+              </Link>
+            </div>
           </>
         )}
       </div>

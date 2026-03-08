@@ -29,6 +29,8 @@ const ALLOWED = new Set([
   'recruit_share_opened',
   'recruit_shared',
   'recruit_qualified',
+  'battle_receipt_shared',
+  'battle_receipt_copied',
   'shop_item_preview_opened',
   'shop_item_preview_interacted',
   'shop_item_purchased',

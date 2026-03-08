@@ -115,6 +115,10 @@ async function fetchRandomCatUrl(
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Seed script cannot run in production.');
+    process.exit(1);
+  }
   if (process.env.ARE_YOU_SURE !== 'true') {
     console.error('Refusing to run. Set ARE_YOU_SURE=true');
     process.exit(1);
@@ -125,6 +129,7 @@ async function main() {
   const ownerId = (process.env.SEED_OWNER_USER_ID || '').trim();
   const catApiKey = (process.env.CAT_API_KEY || process.env.THECATAPI_API_KEY || '').trim() || null;
   const npcMode = String(process.env.SEED_NPC_MODE || '').toLowerCase() === 'true';
+  const seedFakeBattles = String(process.env.SEED_FAKE_BATTLES || '').toLowerCase() === 'true';
   const effectiveOwnerId = npcMode ? NPC_USER_ID : ownerId;
 
   if (!supabaseUrl || !serviceKey) {
@@ -184,7 +189,7 @@ async function main() {
 
   const pickedNames = new Set<string>();
   const pickedImages = new Set<string>();
-  const created: Array<{ id: string; name: string; rarity: string; wins: number; losses: number }> = [];
+  const created: Array<{ id: string; name: string; rarity: string }> = [];
   let imageRetries = 0;
   let imageSkips = 0;
 
@@ -224,9 +229,6 @@ async function main() {
       continue;
     }
 
-    const wins = randInt(0, 6);
-    const losses = randInt(0, 6);
-    const battles = wins + losses;
     const createdAt = randomIsoWithinLastDays(5, 10);
 
     const candidate: Record<string, unknown> = {
@@ -249,9 +251,9 @@ async function main() {
       level: randInt(1, 5),
       cat_level: randInt(1, 5),
       evolution: 'Kitten',
-      wins,
-      losses,
-      battles_fought: battles,
+      wins: 0,
+      losses: 0,
+      battles_fought: 0,
       power: 0,
       origin: npcMode ? 'npc' : 'submitted',
       prestige_weight: 1.0,
@@ -288,35 +290,33 @@ async function main() {
       id: String((inserted as Record<string, unknown>).id || ''),
       name: String((inserted as Record<string, unknown>).name || finalName),
       rarity: String((inserted as Record<string, unknown>).rarity || rarity),
-      wins: Number((inserted as Record<string, unknown>).wins || wins),
-      losses: Number((inserted as Record<string, unknown>).losses || losses),
     });
   }
 
-  // Organic vote history: small, spread timestamps.
-  const { data: matches } = await sb
-    .from('tournament_matches')
-    .select('id')
-    .limit(20);
-  const matchIds = (matches || []).map((m: Record<string, unknown>) => String(m.id || '')).filter(Boolean);
-
   let seededVotes = 0;
-  for (const cat of created) {
-    if (cat.wins <= 0) continue;
-    const votesTarget = randInt(5, 30);
-    const rows: Array<Record<string, unknown>> = [];
-    for (let i = 0; i < votesTarget; i += 1) {
-      rows.push({
-        battle_id: matchIds.length ? matchIds[randInt(0, matchIds.length - 1)] : null,
-        voter_user_id: null,
-        ip_hash: crypto.createHash('sha256').update(`seed:${cat.id}:${i}:${Date.now()}`).digest('hex'),
-        user_agent: 'seed-script',
-        voted_for: cat.id,
-        created_at: randomIsoWithinLastDays(1, 10),
-      });
+  if (seedFakeBattles) {
+    const { data: matches } = await sb
+      .from('tournament_matches')
+      .select('id')
+      .limit(20);
+    const matchIds = (matches || []).map((m: Record<string, unknown>) => String(m.id || '')).filter(Boolean);
+
+    for (const cat of created) {
+      const votesTarget = randInt(5, 30);
+      const rows: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < votesTarget; i += 1) {
+        rows.push({
+          battle_id: matchIds.length ? matchIds[randInt(0, matchIds.length - 1)] : null,
+          voter_user_id: null,
+          ip_hash: crypto.createHash('sha256').update(`seed:${cat.id}:${i}:${Date.now()}`).digest('hex'),
+          user_agent: 'seed-script',
+          voted_for: cat.id,
+          created_at: randomIsoWithinLastDays(1, 10),
+        });
+      }
+      const { error: voteErr } = await sb.from('votes').insert(rows);
+      if (!voteErr) seededVotes += rows.length;
     }
-    const { error: voteErr } = await sb.from('votes').insert(rows);
-    if (!voteErr) seededVotes += rows.length;
   }
 
   const byRarity = created.reduce<Record<string, number>>((acc, c) => {
@@ -324,15 +324,13 @@ async function main() {
     return acc;
   }, {});
 
-  const top5 = [...created].sort((a, b) => b.wins - a.wins).slice(0, 5);
-
   console.log('--- Seed Summary ---');
   console.log(`Mode: ${npcMode ? 'NPC' : 'Owner/Submited'}`);
   console.log(`Owner user id: ${effectiveOwnerId}`);
   console.log(`Total cats created: ${created.length}`);
   console.log('Rarity breakdown:', byRarity);
-  console.log('Top 5 by wins:', top5.map((c) => `${c.name}(${c.wins})`).join(', '));
-  console.log(`Organic votes inserted: ${seededVotes}`);
+  console.log(`Fake battle votes inserted: ${seededVotes}`);
+  console.log(`SEED_FAKE_BATTLES: ${seedFakeBattles}`);
   console.log(`Image retries: ${imageRetries}`);
   console.log(`Image skips (dup/type/size): ${imageSkips}`);
   console.log(`Cleanup hint: delete from cats where user_id='${effectiveOwnerId}' and description ilike '%[${SEED_TAG}]%'`);

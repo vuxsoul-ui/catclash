@@ -158,7 +158,7 @@ export default function ArenaFlameCard({
   }
 
   return (
-    <div className={`rounded-2xl border ${compact ? 'p-3 min-h-[210px]' : 'p-4 min-h-[232px]'} shadow-[0_12px_34px_rgba(0,0,0,0.28)] ${toneClass} ${className}`}>
+    <div className={`arena-flame-card rounded-2xl border ${compact ? 'p-3 min-h-[210px]' : 'p-4 min-h-[232px]'} shadow-[0_12px_34px_rgba(0,0,0,0.28)] ${toneClass} ${className}`}>
       <p className="text-sm font-bold text-white/95 inline-flex items-center gap-1.5">
         <Flame className={`w-4 h-4 ${viewState === 'fading' ? 'text-red-300 animate-pulse' : viewState === 'active' ? 'text-orange-300 flame-flicker' : 'text-zinc-400'}`} />
         Arena Flame
@@ -182,19 +182,19 @@ export default function ArenaFlameCard({
         <div className={`grid mt-3 ${compact ? 'grid-cols-1 gap-1.5' : 'grid-cols-3 gap-2'}`}>
           <button
             onClick={goVote}
-            className={`min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
+            className={`arena-flame-task-row min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
           >
             <span className={`block ${compact ? '' : 'truncate'}`}>Vote ({votesToday}/5)</span>
           </button>
           <button
             onClick={goPredict}
-            className={`min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
+            className={`arena-flame-task-row min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
           >
             <span className={`block ${compact ? '' : 'truncate'}`}>Predict ({predictionsToday}/1)</span>
           </button>
           <button
             onClick={goSubmit}
-            className={`min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
+            className={`arena-flame-task-row min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
           >
             <span className={`block ${compact ? '' : 'truncate'}`}>{compact ? `Submit (${catsToday}/1)` : `Submit (${catsToday}/1)`}</span>
           </button>
@@ -203,7 +203,7 @@ export default function ArenaFlameCard({
 
       <button
         onClick={primaryAction}
-        className={`mt-3 ${compact ? 'h-10' : 'h-11'} w-full rounded-xl bg-white text-black text-sm font-extrabold active:scale-[0.99] transition-transform`}
+        className={`arena-flame-cta mt-3 ${compact ? 'h-10' : 'h-11'} w-full rounded-xl bg-white text-black text-sm font-extrabold active:scale-[0.99] transition-transform`}
       >
         {primaryCta}
       </button>

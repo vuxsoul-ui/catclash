@@ -32,6 +32,8 @@ import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
 import { canonicalThumbForCat } from "./lib/cat-images";
 import DebugControls from "./components/DebugControls";
 import DebugWidget from "./components/DebugWidget";
+import CosmicStatsBar from "./components/CosmicStatsBar";
+import { useHeaderExtension } from "./components/HeaderSystem";
 
 // Types
 interface UserProgress {
@@ -77,6 +79,14 @@ export interface ArenaMatch {
   is_close_match?: boolean;
   user_prediction?: { predicted_cat_id: string; bet_sigils: number } | null;
 }
+
+type VoteSnapshot = {
+  votes_a: number;
+  votes_b: number;
+  total_votes: number;
+  percent_a: number;
+  percent_b: number;
+};
 
 interface MatchComment {
   id: string;
@@ -224,15 +234,19 @@ function getCatDisplayName(cat: Partial<ArenaCat> | null | undefined): string {
   return 'Unnamed Cat';
 }
 
-function getVotePercent(match: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'>): [number, number] {
-  const pA = Number(match.percent_a);
-  const pB = Number(match.percent_b);
+function getVotePercent(
+  match: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'>,
+  snapshot?: VoteSnapshot | null
+): [number, number] {
+  const source = snapshot || match;
+  const pA = Number(source.percent_a);
+  const pB = Number(source.percent_b);
   if (Number.isFinite(pA) && Number.isFinite(pB) && pA >= 0 && pB >= 0) {
     return [Math.max(0, Math.min(100, Math.round(pA))), Math.max(0, Math.min(100, Math.round(pB)))];
   }
-  const total = Number(match.votes_a || 0) + Number(match.votes_b || 0);
+  const total = Number(source.votes_a || 0) + Number(source.votes_b || 0);
   if (total === 0) return [50, 50];
-  const aPct = Math.round((Number(match.votes_a || 0) / total) * 100);
+  const aPct = Math.round((Number(source.votes_a || 0) / total) * 100);
   return [aPct, Math.max(0, 100 - aPct)];
 }
 
@@ -347,11 +361,11 @@ function LiveDuelsModule({
     }, 220);
   };
   return (
-    <Card className={`relative overflow-hidden border-cyan-300/25 bg-[linear-gradient(160deg,rgba(14,28,48,0.55),rgba(8,16,28,0.88))] ${compact ? 'p-2' : 'p-2.5'}`}>
+    <Card className={`live-duels-shell relative overflow-hidden border-cyan-300/25 bg-[linear-gradient(160deg,rgba(14,28,48,0.55),rgba(8,16,28,0.88))] ${compact ? 'p-2' : 'p-2.5'}`}>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_-20%,rgba(34,211,238,0.2),transparent_42%),radial-gradient(circle_at_88%_110%,rgba(59,130,246,0.16),transparent_40%)]" />
       <SectionHeader className="mb-1.5">
-        <h3 className="relative z-10 text-[12px] font-semibold text-cyan-100 inline-flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+        <h3 className="home-subsection-title relative z-10 text-[12px] font-semibold text-cyan-100 inline-flex items-center gap-1.5">
+          <span className="live-duels-dot w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
           Live Duels
           {visibleDuels.length > 0 && (
             <span className="inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/15 px-1.5 py-0.5 text-[9px] font-bold text-cyan-100">
@@ -428,7 +442,7 @@ const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
   isRefilling = false, resetFlipSignal = '',
-  debugMode = false,
+  debugMode = false, voteSnapshot = null,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -447,11 +461,12 @@ const MatchCard = React.memo(function MatchCard({
   isRefilling?: boolean;
   resetFlipSignal?: string;
   debugMode?: boolean;
+  voteSnapshot?: VoteSnapshot | null;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
 }) {
-  const [pctA, pctB] = getVotePercent(match);
+  const [pctA, pctB] = getVotePercent(match, voteSnapshot);
   const isComplete = String(match.status || '').toLowerCase() === "complete" || String(match.status || '').toLowerCase() === "completed";
   const hasVoted = !!voted;
   const [votePending, setVotePending] = useState(false);
@@ -1077,7 +1092,7 @@ const MatchCard = React.memo(function MatchCard({
             <div className={`arena-flip-card ${flipA && !forceFront ? 'is-flipped' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'b' ? 'opacity-75' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : dragIntent === 'b' ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
+                  <span className={`rarity-badge px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20 rarity-badge--rare' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20 rarity-badge--epic' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20 rarity-badge--legendary' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20 rarity-badge--common'}`}>
                     {match.cat_a.rarity}
                   </span>
                   <div className="flex items-center gap-1">
@@ -1129,9 +1144,7 @@ const MatchCard = React.memo(function MatchCard({
         </div>
 
         <div className="pt-12 flex flex-col items-center justify-center gap-1">
-          <span className="w-6 h-[2px] rounded-full bg-gradient-to-r from-cyan-300/25 to-orange-300/25" />
-          <div className="text-[9px] text-white/65 font-bold tracking-[0.12em]">VS</div>
-          <span className="w-6 h-[2px] rounded-full bg-gradient-to-r from-orange-300/25 to-cyan-300/25" />
+          <div className="arena-vs-separator text-[9px] text-white/65 font-bold tracking-[0.12em]">VS</div>
         </div>
 
         <div className="min-w-0">
@@ -1139,7 +1152,7 @@ const MatchCard = React.memo(function MatchCard({
             <div className={`arena-flip-card ${flipB && !forceFront ? 'is-flipped' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'a' ? 'opacity-75' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : dragIntent === 'a' ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className={`px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20'}`}>
+                  <span className={`rarity-badge px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20 rarity-badge--rare' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20 rarity-badge--epic' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20 rarity-badge--legendary' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20 rarity-badge--common'}`}>
                     {match.cat_b.rarity}
                   </span>
                   <div className="flex items-center gap-1">
@@ -1197,9 +1210,9 @@ const MatchCard = React.memo(function MatchCard({
           aria-label={`Vote for ${catAName}`}
           data-testid="vote-a"
           disabled={!canVote}
-          className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
+          className={`arena-vote-btn arena-vote-btn-a relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
+          <span className="arena-vote-dot arena-vote-dot-a inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
           {voteStage === 'pending' && liveSide === 'a' ? 'Submitting…' : voted === match.cat_a.id ? 'Voted A' : (isVoting ? "Voting..." : "Vote A")}
         </button>
         <button
@@ -1207,9 +1220,9 @@ const MatchCard = React.memo(function MatchCard({
           aria-label={`Vote for ${catBName}`}
           data-testid="vote-b"
           disabled={!canVote}
-          className={`arena-vote-btn relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
+          className={`arena-vote-btn arena-vote-btn-b relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
+          <span className="arena-vote-dot arena-vote-dot-b inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
           {voteStage === 'pending' && liveSide === 'b' ? 'Submitting…' : voted === match.cat_b.id ? 'Voted B' : (isVoting ? "Voting..." : "Vote B")}
         </button>
       </div>
@@ -1222,16 +1235,16 @@ const MatchCard = React.memo(function MatchCard({
             Edge: {strongerA ? 'A' : 'B'} +{edgePct}%
           </span>
         )}
-        <span className="tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
+        <span className="arena-vote-pct tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
       </div>
 
-      <div className="mt-1 relative h-1.5 rounded-full overflow-hidden bg-white/8 border border-white/10">
+      <div className="arena-vote-split mt-1 relative h-1.5 rounded-full overflow-hidden bg-white/8 border border-white/10">
         <div
-          className={`absolute left-0 top-0 h-full bg-blue-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'a' ? 'shadow-[0_0_12px_rgba(59,130,246,0.55)]' : ''}`}
+          className={`arena-vote-split-a absolute left-0 top-0 h-full bg-blue-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'a' ? 'shadow-[0_0_12px_rgba(59,130,246,0.55)]' : ''}`}
           style={{ width: `${Math.max(0, Math.min(100, displayPct.a))}%` }}
         />
         <div
-          className={`absolute right-0 top-0 h-full bg-red-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'b' ? 'shadow-[0_0_12px_rgba(239,68,68,0.55)]' : ''}`}
+          className={`arena-vote-split-b absolute right-0 top-0 h-full bg-red-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'b' ? 'shadow-[0_0_12px_rgba(239,68,68,0.55)]' : ''}`}
           style={{ width: `${Math.max(0, Math.min(100, displayPct.b))}%` }}
         />
         <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
@@ -1540,9 +1553,10 @@ const MatchCard = React.memo(function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false,
+  arena, votedMatches, voteSnapshotByMatchId, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
+  voteSnapshotByMatchId: Record<string, VoteSnapshot>;
   votingMatch: string | null;
   predictBusyMatch: string | null;
   calloutBusyMatch: string | null;
@@ -2844,6 +2858,7 @@ function ArenaSection({
                     resetFlipSignal={flipResetSignal}
                     voteQueued={!!queuedVotes[topVotingSlot.match.match_id]}
                     showNextUp={nextUpId === topVotingSlot.match.match_id}
+                    voteSnapshot={voteSnapshotByMatchId[topVotingSlot.match.match_id] || null}
                     onRefreshQueued={handleRefreshQueued}
                     onVote={stableVote}
                     onVoteAccepted={handleVoteAccepted}
@@ -2885,6 +2900,7 @@ function ArenaSection({
                 voteStreak={voteStreak}
                 voteQueued={!!queuedVotes[match.match_id]}
                 showNextUp={nextUpId === match.match_id}
+                voteSnapshot={voteSnapshotByMatchId[match.match_id] || null}
                 onRefreshQueued={handleRefreshQueued}
                 onVote={stableVote}
                 onVoteAccepted={handleVoteAccepted}
@@ -3057,6 +3073,7 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [arenas, setArenas] = useState<Arena[]>([]);
+  const [voteSnapshotByMatchId, setVoteSnapshotByMatchId] = useState<Record<string, VoteSnapshot>>({});
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
   const [votingMatch, setVotingMatch] = useState<string | null>(null);
   const [predictBusyMatch, setPredictBusyMatch] = useState<string | null>(null);
@@ -3127,6 +3144,50 @@ export default function Page() {
     sigils: number;
     nextHint: string;
   }>(null);
+
+  const statsStrip = useMemo(() => (
+    <div className="stats-strip-shell hidden sm:block">
+      <div className={`stats-strip-inner max-w-4xl mx-auto px-3 ${hudCompact ? 'pt-0.5' : 'pt-2'} transition-all duration-200`}>
+        <div className={hudPulseKey ? 'stats-strip-pulse hud-pulse rounded-2xl' : 'stats-strip-pulse'}>
+          <CosmicStatsBar
+            cells={[
+              {
+                key: 'flame',
+                label: 'Flame',
+                value: displayStats.streak,
+                detail: 'Consecutive daily battle participation.',
+                tagline: 'Unbox. Battle. Evolve.',
+                onClick: () => setHudDetail({ title: 'Battle Flame', detail: 'Consecutive daily battle participation.' }),
+              },
+              {
+                key: 'energy',
+                label: 'Energy',
+                value: displayStats.xp,
+                detail: `Energy ${displayStats.xp} · Level ${progress?.level || 1}`,
+                onClick: () => setHudDetail({ title: 'Energy', detail: `Energy ${displayStats.xp} · Level ${progress?.level || 1}` }),
+              },
+              {
+                key: 'sigils',
+                label: 'Sigils',
+                value: displayStats.sigils,
+                detail: 'Premium currency used for rerolls, crates, and cosmetics.',
+                onClick: () => setHudDetail({ title: 'Sigils', detail: 'Premium currency used for rerolls, crates, and cosmetics.' }),
+              },
+              {
+                key: 'predict',
+                label: 'Predict',
+                value: displayStats.pred,
+                detail: 'Correct winner predictions in a row.',
+                onClick: () => setHudDetail({ title: 'Prediction', detail: 'Correct winner predictions in a row.' }),
+              },
+            ]}
+          />
+        </div>
+      </div>
+    </div>
+  ), [displayStats.pred, displayStats.sigils, displayStats.streak, displayStats.xp, hudCompact, hudPulseKey, progress?.level]);
+
+  useHeaderExtension(statsStrip);
   const [showBookmarkMissionBanner, setShowBookmarkMissionBanner] = useState(false);
   const [bookmarkMissionBusy, setBookmarkMissionBusy] = useState(false);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
@@ -3918,9 +3979,9 @@ export default function Page() {
       showToast("Too fast — take a breath 😼");
       return false;
     }
-    const matchedMatch = arenas
-      .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
-      .find((m) => m.match_id === matchId);
+      const matchedMatch = arenas
+        .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
+        .find((m) => m.match_id === matchId);
   const matchedArenaType = arenas.find((a) =>
     (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
   )?.type as 'main' | 'rookie' | undefined;
@@ -3943,6 +4004,37 @@ export default function Page() {
         body: JSON.stringify({ match_id: matchId, voted_for: catId }),
       });
       const data = await r.json().catch(() => null);
+      const applyServerVoteSnapshot = (payload: any) => {
+        if (!payload || !matchedArenaType) return;
+        const snapshot: VoteSnapshot = {
+          votes_a: Number(payload.votes_a || matchedMatch?.votes_a || 0),
+          votes_b: Number(payload.votes_b || matchedMatch?.votes_b || 0),
+          total_votes: Number(payload.total_votes || 0),
+          percent_a: Number(payload.percent_a || 0),
+          percent_b: Number(payload.percent_b || 0),
+        };
+        setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: snapshot }));
+        setArenas((prev) => prev.map((arena) => {
+          if (arena.type !== matchedArenaType) return arena;
+          return {
+            ...arena,
+            rounds: (arena.rounds || []).map((round) => ({
+              ...round,
+              matches: (round.matches || []).map((m) => {
+                if (String(m.match_id || '') !== String(matchId || '')) return m;
+                  return {
+                    ...m,
+                    votes_a: snapshot.votes_a,
+                    votes_b: snapshot.votes_b,
+                    total_votes: snapshot.total_votes || m.total_votes || 0,
+                    percent_a: snapshot.percent_a,
+                    percent_b: snapshot.percent_b,
+                  };
+                }),
+              })),
+          };
+        }));
+      };
       if (r.status === 429) {
         voteCooldownUntilRef.current = Date.now() + 1200;
         if (voteCooldownTimerRef.current !== null) {
@@ -3973,6 +4065,7 @@ export default function Page() {
           incomingChoice === 'a' ? String(matchedMatch?.cat_a?.id || catId)
           : incomingChoice === 'b' ? String(matchedMatch?.cat_b?.id || catId)
           : String(catId || incomingChoice || 'already');
+        applyServerVoteSnapshot(data);
         setVotedMatches((prev) => {
           const next = upsertVotedMatch(prev, matchId, resolvedChoice || 'already');
           writeVotedMatchesToStorage(next, voteStateScope);
@@ -4007,6 +4100,7 @@ export default function Page() {
           return next;
         });
         setLastVoteAtMs(nowMs);
+        applyServerVoteSnapshot(data);
         if (hasCredentials && !hasProfileUsername) {
           try {
             const k = 'guest_vote_count';
@@ -4050,7 +4144,9 @@ export default function Page() {
           fetch(`/api/arena/updates?arena=${matchedArenaType}&tab=voting&page=${globalPageInfo[matchedArenaType].pageIndex}`, { cache: 'no-store' })
             .then((r) => r.json().catch(() => null))
             .then((payload) => {
-              const updates = Array.isArray(payload?.updates) ? payload.updates : [];
+              const updates = Array.isArray(payload?.updates)
+                ? (payload.updates as Array<{ matchId: string; votesA?: number; votesB?: number; totalVotes?: number; percentA?: number; percentB?: number }>)
+                : [];
               if (!updates.length) return;
               const updateMap = new Map(updates.map((u: any) => [String(u.matchId || ''), u]));
               setArenas((prev) => prev.map((arena) => {
@@ -4495,27 +4591,30 @@ export default function Page() {
   async function handleClaimCrate() {
     if (claimingCrate) return;
     setClaimingCrate(true);
-    const result = await apiClaimCrate();
-    if (result.error) setError(result.error);
-    else if (!result.success) setError(result.message || "Already claimed");
-    else {
-      setCrateMeta({
-        rarity_tier: result?.rarity_tier,
-        near_miss_tier: result?.near_miss_tier,
-        secondary_reward_applied: !!result?.secondary_reward_applied,
-        pity_status: result?.pity_status || null,
-      });
-      setProgress((p) => p ? {
-        ...p,
-        xp: p.xp + Number(result.xp_gained || 0),
-        sigils: p.sigils + Number(result.sigils_gained || 0),
-        catXpPool: p.catXpPool + Number(result.cat_xp_banked || 0),
-      } : null);
-      if (Number(result.cat_xp_banked || 0) > 0) {
-        showToast(`Crate: +${result.cat_xp_banked} cat XP banked`);
+    try {
+      const result = await apiClaimCrate();
+      if (result.error) setError(result.error);
+      else if (!result.success) setError(result.message || "Already claimed");
+      else {
+        setCrateMeta({
+          rarity_tier: result?.rarity_tier,
+          near_miss_tier: result?.near_miss_tier,
+          secondary_reward_applied: !!result?.secondary_reward_applied,
+          pity_status: result?.pity_status || null,
+        });
+        setProgress((p) => p ? {
+          ...p,
+          xp: p.xp + Number(result.xp_gained || 0),
+          sigils: p.sigils + Number(result.sigils_gained || 0),
+          catXpPool: p.catXpPool + Number(result.cat_xp_banked || 0),
+        } : null);
+        if (Number(result.cat_xp_banked || 0) > 0) {
+          showToast(`Crate: +${result.cat_xp_banked} cat XP banked`);
+        }
       }
+    } finally {
+      setClaimingCrate(false);
     }
-    setClaimingCrate(false);
   }
 
   async function handleBookmarkMissionComplete() {
@@ -4648,68 +4747,6 @@ export default function Page() {
         </div>
       )}
 
-      {/* Stats Bar */}
-      <div className="fixed top-16 left-0 right-0 z-30 hidden sm:block">
-        <div className={`max-w-4xl mx-auto px-3 ${hudCompact ? 'pt-0.5' : 'pt-2'} transition-all duration-200`}>
-          <div
-            className={`rounded-2xl bg-neutral-950/94 backdrop-blur-xl shadow-[0_14px_34px_rgba(0,0,0,0.46)] transition-all duration-200 ${
-              hudCompact ? 'p-1' : 'p-1.5'
-            }`}
-          >
-            <div className="grid grid-cols-4 gap-1.5">
-              <button
-                onClick={() => setHudDetail({ title: 'Battle Flame', detail: 'Consecutive daily battle participation.' })}
-                className={`hud-capsule rounded-xl inline-flex flex-col items-start justify-center transition-all duration-200 ${
-                  hudCompact ? 'h-9 px-2' : 'h-12 px-2.5'
-                } ${hudPulseKey ? 'hud-pulse' : ''}`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <Flame className={`${hudCompact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-orange-400 ${displayStats.streak > 0 ? 'flame-flicker' : ''}`} />
-                  <span className={`hud-value ${hudCompact ? 'text-xs' : 'text-sm'} font-extrabold text-white`}>{displayStats.streak}</span>
-                </span>
-                <span className={`${hudCompact ? 'text-[8px]' : 'text-[9px]'} uppercase tracking-wide text-white/55`}>Flame</span>
-              </button>
-              <button
-                onClick={() => setHudDetail({ title: 'Energy', detail: `Energy ${displayStats.xp} · Level ${progress?.level || 1}` })}
-                className={`hud-capsule rounded-xl inline-flex flex-col items-start justify-center transition-all duration-200 ${
-                  hudCompact ? 'h-9 px-2' : 'h-12 px-2.5'
-                } ${hudPulseKey ? 'hud-pulse' : ''}`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <Zap className={`${hudCompact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-yellow-300`} />
-                  <span className={`hud-value ${hudCompact ? 'text-xs' : 'text-sm'} font-extrabold text-white`}>{displayStats.xp}</span>
-                </span>
-                <span className={`${hudCompact ? 'text-[8px]' : 'text-[9px]'} uppercase tracking-wide text-white/55`}>Energy</span>
-              </button>
-              <button
-                onClick={() => setHudDetail({ title: 'Sigils', detail: 'Premium currency used for rerolls, crates, and cosmetics.' })}
-                className={`hud-capsule rounded-xl inline-flex flex-col items-start justify-center transition-all duration-200 ${
-                  hudCompact ? 'h-9 px-2' : 'h-12 px-2.5'
-                } ${hudPulseKey ? 'hud-pulse' : ''}`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <SigilIcon className={hudCompact ? 'w-3 h-3' : 'w-3.5 h-3.5'} glow />
-                  <span className={`hud-value ${hudCompact ? 'text-xs' : 'text-sm'} font-extrabold text-cyan-100`}>{displayStats.sigils}</span>
-                </span>
-                <span className={`${hudCompact ? 'text-[8px]' : 'text-[9px]'} uppercase tracking-wide text-white/55`}>Sigils</span>
-              </button>
-              <button
-                onClick={() => setHudDetail({ title: 'Prediction', detail: 'Correct winner predictions in a row.' })}
-                className={`hud-capsule rounded-xl inline-flex flex-col items-start justify-center transition-all duration-200 ${
-                  hudCompact ? 'h-9 px-2' : 'h-12 px-2.5'
-                } ${hudPulseKey ? 'hud-pulse' : ''}`}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <Crosshair className={`${hudCompact ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-cyan-300 ${displayStats.pred > 0 ? 'animate-pulse' : ''}`} />
-                  <span className={`hud-value ${hudCompact ? 'text-xs' : 'text-sm'} font-extrabold text-white`}>{displayStats.pred}</span>
-                </span>
-                <span className={`${hudCompact ? 'text-[8px]' : 'text-[9px]'} uppercase tracking-wide text-white/55`}>Predict</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Hero */}
       <Suspense fallback={null}>
         <DebugWidget arenaType={arenaTypeTab} onHydrate={handleDebugWidgetHydrate} />
@@ -4722,8 +4759,8 @@ export default function Page() {
           </div>
           <div className="mt-2.5 flex items-end justify-between gap-2">
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white">Today&apos;s Arenas</h1>
-              <p className="text-[11px] text-white/55">Vote fast, stack streaks, and catch the next Pulse.</p>
+              <h1 className="home-page-title text-lg font-bold tracking-tight text-white">Today&apos;s Arenas</h1>
+              <p className="home-page-subtitle text-[11px] text-white/55">Vote fast, stack streaks, and catch the next Pulse.</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
@@ -4818,7 +4855,7 @@ export default function Page() {
       {gettingStarted && !gettingStarted.completion.complete && (
         <section className="px-4 mb-4">
           <div className="max-w-md mx-auto">
-            <div id="mission-board" className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-2.5 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
+            <div id="mission-board" className="arena-entry-card rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-2.5 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div>
                   <h3 className="text-[13px] font-bold text-emerald-200">{gettingStarted.title || 'Enter the Arena'}</h3>
@@ -4828,12 +4865,12 @@ export default function Page() {
                   {gettingStarted.progress.completed}/{gettingStarted.progress.total}
                 </span>
               </div>
-              <div className="h-2 rounded-full bg-black/30 overflow-hidden mb-1.5">
-                <div className="h-full bg-gradient-to-r from-emerald-300 to-cyan-300 transition-all duration-500" style={{ width: `${gettingStarted.progress.pct}%` }} />
+              <div className="arena-entry-progress h-2 rounded-full bg-black/30 overflow-hidden mb-1.5">
+                <div className="arena-entry-progress-fill h-full bg-gradient-to-r from-emerald-300 to-cyan-300 transition-all duration-500" style={{ width: `${gettingStarted.progress.pct}%` }} />
               </div>
               <button
                 onClick={handleMissionPrimaryAction}
-                className="h-10 w-full px-3 rounded-xl bg-emerald-300 text-black text-sm font-bold active:scale-[0.99] transition-transform"
+                className="arena-start-voting-btn h-10 w-full px-3 rounded-xl bg-emerald-300 text-black text-sm font-bold active:scale-[0.99] transition-transform"
               >
                 Start Voting
               </button>
@@ -4954,7 +4991,7 @@ export default function Page() {
       <section className="px-4 mb-4">
         <div className="max-w-md mx-auto">
           <div className="mb-1.5 flex items-center justify-between">
-            <h2 className="text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
+            <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
           </div>
         </div>
         <div className="max-w-md mx-auto grid grid-cols-2 gap-2">
@@ -4966,9 +5003,9 @@ export default function Page() {
             compact
             className="h-full"
           />
-          <div className="glass rounded-2xl p-3 min-h-[210px] h-full flex flex-col">
+          <div className="daily-crate-card glass rounded-2xl p-3 min-h-[210px] h-full flex flex-col">
             <div className="flex items-center justify-center gap-2 mb-1.5">
-              <SigilIcon className="w-4 h-4" glow />
+              <SigilIcon className="daily-crate-icon w-4 h-4" glow />
               <h3 className="font-bold text-sm">Crate</h3>
             </div>
 
@@ -4984,14 +5021,14 @@ export default function Page() {
                 <button
                   onClick={handleClaimCrate}
                   disabled={claimingCrate}
-                  className="h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                  className="crate-open-btn h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                 >
                   {claimingCrate ? <Loader2 className="w-3 h-3 animate-spin" /> : "Open"}
                 </button>
                 <button
                   type="button"
                   onClick={() => router.push('/crate')}
-                  className="h-8 w-full px-3 rounded-lg border border-yellow-300/35 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-100 text-[11px] font-semibold"
+                  className="crate-view-btn h-8 w-full px-3 rounded-lg border border-yellow-300/35 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-100 text-[11px] font-semibold"
                 >
                   View Crates
                 </button>
@@ -5072,7 +5109,7 @@ export default function Page() {
           ) : (
             <div className="space-y-4">
               {displayedArenas.map((arena) => (
-                <ArenaSection key={`${arena.tournament_id}:${debugDeckNonce}`} arena={arena} votedMatches={votedMatches}
+                <ArenaSection key={`${arena.tournament_id}:${debugDeckNonce}`} arena={arena} votedMatches={votedMatches} voteSnapshotByMatchId={voteSnapshotByMatchId}
                   votingMatch={votingMatch}
                   predictBusyMatch={predictBusyMatch}
                   calloutBusyMatch={calloutBusyMatch}

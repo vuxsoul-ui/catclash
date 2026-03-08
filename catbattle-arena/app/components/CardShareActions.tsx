@@ -112,6 +112,14 @@ export default function CardShareActions({
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(shareUrl);
+      fetch('/api/telemetry/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'battle_receipt_copied',
+          payload: { slug: card.slug, cat_id: card.catId || null, owner_user_id: card.ownerUserId || null, rarity: card.rarity },
+        }),
+      }).catch(() => null);
       showToast('Challenge link copied');
       window.setTimeout(() => {
         claimShareReward('copy');
@@ -132,6 +140,14 @@ export default function CardShareActions({
         text: `Power ${card.powerRating} • Level ${card.level} • Can your cat beat this?`,
         url: shareUrl,
       });
+      fetch('/api/telemetry/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'battle_receipt_shared',
+          payload: { slug: card.slug, cat_id: card.catId || null, owner_user_id: card.ownerUserId || null, rarity: card.rarity },
+        }),
+      }).catch(() => null);
       await claimShareReward('share');
     } catch {
       // no-op
