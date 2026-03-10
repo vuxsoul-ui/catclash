@@ -3,7 +3,7 @@
 import type { MouseEvent } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Swords, Cat, User, Home, Trophy, Users, Images, Star, ShoppingBag } from 'lucide-react';
+import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
 import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
@@ -85,28 +85,32 @@ export default function Nav() {
     return installBottomNavInterceptionDiagnostics('[data-nav-root="mobile"]');
   }, [pathname]);
 
-  const desktopLinks = [
+  const desktopLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/submit', label: 'Submit', icon: SparklessFallback, emphasis: true },
-    { href: '/gallery', label: 'Gallery', icon: Images },
+    { href: '/gallery', label: 'Gallery', icon: Cat },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
   ];
 
-  const topActionLinks = [
+  const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnlyMobile?: boolean; hideBelow340?: boolean }> = [
+    { href: '/submit', label: 'Submit', icon: Plus },
     { href: '/social', label: 'Social', icon: Users },
-    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnlyMobile: true },
   ];
 
-  const mobilePrimaryLinks = [
+  const mobilePrimaryLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/arena', label: 'Arena', icon: Star },
-    { href: '/submit', label: 'Submit', icon: SparklessFallback },
+    { href: '/arena', label: 'Arena', icon: Trophy },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
-    { href: '/gallery', label: 'Gallery', icon: Images },
     { href: myProfileHref, label: 'Profile', icon: User },
   ];
+
+  const isActiveHref = (href: string) => {
+    if (href === '/') return pathname === '/';
+    if (href.startsWith('/profile')) return pathname.startsWith('/profile');
+    return pathname === href;
+  };
 
   const withNavFallback = (href: string) => (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.defaultPrevented) return;
@@ -138,16 +142,16 @@ export default function Nav() {
 
             <nav className="nav-tabs top-nav-links flex items-center justify-start min-w-0">
               {desktopLinks.map((link) => {
-                const active = pathname === link.href;
+                const active = isActiveHref(link.href);
                 const duelBadge = link.href === '/duel' && pendingDuelCount > 0;
                 const Icon = link.icon;
-                const mobileDuplicate = ['/', '/duel', '/gallery', '/shop'].includes(link.href);
+                const mobileDuplicate = ['/', '/duel', '/shop'].includes(link.href);
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
                     onClick={withNavFallback(link.href)}
-                    className={`nav-tab top-nav-tab relative h-9 px-3 rounded-full border text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${active ? 'active' : ''} ${mobileDuplicate ? 'top-nav-tab--mobile-duplicate' : 'top-nav-tab--mobile-keep'} ${link.emphasis ? 'top-nav-submit' : ''}`}
+                    className={`nav-tab top-nav-tab relative h-9 px-3 rounded-full border text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${active ? 'active' : ''} ${mobileDuplicate ? 'top-nav-tab--mobile-duplicate' : 'top-nav-tab--mobile-keep'}`}
                   >
                     <Icon className="h-[11px] w-[11px]" />
                     {link.label}
@@ -162,17 +166,21 @@ export default function Nav() {
             </nav>
             <div className="top-nav-actions top-nav-pill-wrap flex items-center gap-1.5 sm:gap-2 ml-auto">
               {topActionLinks.map((link) => {
-                const active = pathname === link.href;
+                const active = isActiveHref(link.href);
                 const Icon = link.icon;
+                const isSubmit = link.href === '/submit';
+                const actionClass = isSubmit
+                  ? 'header-submit-btn top-nav-submit'
+                  : `nav-pill top-nav-pill inline-flex items-center ${active ? 'active' : ''} ${link.href === '/social' ? 'header-social-pill' : ''} ${link.href === '/leaderboard' ? 'header-lb-pill' : ''}`;
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
                     onClick={withNavFallback(link.href)}
-                    className={`nav-pill top-nav-pill inline-flex items-center ${active ? 'active' : ''}`}
+                    className={actionClass}
                   >
                     <Icon className="h-[11px] w-[11px]" />
-                    {link.label}
+                    <span className="pill-label">{link.label}</span>
                   </Link>
                 );
               })}
@@ -190,22 +198,19 @@ export default function Nav() {
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-200/40 to-transparent pointer-events-none" />
         <div className="relative flex h-[58px] items-stretch gap-1">
           {mobilePrimaryLinks.map((link) => {
-            const active = pathname === link.href;
+            const active = isActiveHref(link.href);
             const Icon = link.icon;
             const duelBadge = link.href === '/duel' && pendingDuelCount > 0;
-    const isSubmit = link.href === '/submit';
                 const testId =
               link.href === '/'
                 ? 'nav-home'
                 : link.href === '/duel'
                   ? 'nav-duel'
-              : link.href === '/gallery'
-                      ? 'nav-gallery'
                 : link.href === '/arena'
                         ? 'nav-arena'
-                  : link.href === '/submit'
-                          ? 'nav-submit'
-                  : 'nav-profile';
+                  : link.href === '/shop'
+                    ? 'nav-shop'
+                    : 'nav-profile';
             return (
               <Link
                 key={link.href}
@@ -213,7 +218,7 @@ export default function Nav() {
                 onClick={withNavFallback(link.href)}
                 data-testid={testId}
                 aria-current={active ? 'page' : undefined}
-                className={`bn-tab ${isSubmit ? 'bn-submit' : ''} ${active ? 'active' : ''} nav-tab relative z-10 h-full flex-1 text-[0.45rem] font-semibold rounded-xl px-[2px] inline-flex flex-col items-center justify-center gap-0.5 leading-none active:scale-[0.98] touch-manipulation`}
+                className={`bn-tab ${active ? 'active' : ''} nav-tab relative z-10 h-full flex-1 text-[0.45rem] font-semibold rounded-xl px-[2px] inline-flex flex-col items-center justify-center gap-0.5 leading-none active:scale-[0.98] touch-manipulation`}
               >
                 <span className={`bn-icon ${link.href === '/arena' ? 'bn-icon--arena' : ''}`}>
                   <Icon />
@@ -230,19 +235,5 @@ export default function Nav() {
         </div>
       </nav>
     </>
-  );
-}
-
-function SparklessFallback(props: React.ComponentProps<typeof SparklesIcon>) {
-  return <SparklesIcon {...props} />;
-}
-
-function SparklesIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z" />
-      <path d="M18.5 15.5 19 17l1.5.5L19 18l-.5 1.5L18 18l-1.5-.5 1.5-.5.5-1.5Z" />
-      <path d="M5.5 14 6 15.5l1.5.5L6 16.5 5.5 18 5 16.5 3.5 16l1.5-.5.5-1.5Z" />
-    </svg>
   );
 }

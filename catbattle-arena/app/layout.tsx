@@ -7,6 +7,10 @@ import BuildStamp from "./components/BuildStamp";
 import { canonicalSiteOrigin } from "./lib/site-origin";
 import HeaderSystem from "./components/HeaderSystem";
 
+export const viewport = {
+  themeColor: "#06050e",
+};
+
 const inter = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-inter",
@@ -37,8 +41,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(canonicalSiteOrigin()),
   title: "CatClash Arena | Rate the Ultimate Cat",
   description: "Vote on the cutest, funniest, and most chaotic cats. The ultimate feline showdown.",
+  manifest: "/manifest.json",
   icons: {
     icon: "/favicon.ico",
+    apple: "/icons/icon-192.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "CatClash",
+    statusBarStyle: "black-translucent",
   },
   openGraph: {
     title: "CatClash Arena | Rate the Ultimate Cat",
@@ -56,6 +67,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#06050e" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="CatClash" />
+        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        <link
+          rel="apple-touch-startup-image"
+          href="/splash/splash-1179x2556.png"
+          media="(device-width:393px) and (device-height:852px) and (-webkit-device-pixel-ratio:3)"
+        />
+      </head>
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} ${cinzel.variable} ${rajdhani.variable} antialiased min-h-screen relative bg-black`}
       >

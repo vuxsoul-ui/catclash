@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Gift, ArrowLeft, Sparkles, Zap, Star, Crown } from 'lucide-react';
+import { Gift, ArrowLeft, Sparkles, Zap, Star, Crown, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 import SigilIcon from '../components/icons/SigilIcon';
 import SigilBalanceChip from '../components/SigilBalanceChip';
 import { useRouter } from 'next/navigation';
 import CrateReveal from '../components/CrateReveal';
+import CrateOddsSheet from '../components/crates/CrateOddsSheet';
 
 interface CrateReward {
   ok: boolean;
@@ -91,9 +92,7 @@ export default function CratePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sigils, setSigils] = useState(0);
-  const [showTip, setShowTip] = useState(false);
   const [canClaim, setCanClaim] = useState(false);
-  const [cardFace, setCardFace] = useState<'front' | 'back'>('back');
   const [shakeScreen, setShakeScreen] = useState(false);
   const [sparkBursts, setSparkBursts] = useState<{ id: number; x: number; y: number; d: number }[]>([]);
   const [pledgedGuild, setPledgedGuild] = useState<'sun' | 'moon' | null>(null);
@@ -110,12 +109,11 @@ export default function CratePage() {
   const [epicDailyCap, setEpicDailyCap] = useState(8);
   const [nextResetAt, setNextResetAt] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [oddsPanelOpen, setOddsPanelOpen] = useState(false);
 
   const overlayActive = stage !== 'idle';
   const rarityStyle = reward ? getStyle(reward.rarity) : getStyle('Common');
   const isBigHit = reward ? ['Epic', 'Legendary', 'Mythic', 'God-Tier'].includes(reward.rarity) : false;
-  const isCommonHit = reward ? ['Common', 'xp_sigils', 'duplicate'].includes(reward.rarity) : false;
-  const shouldFlip = Boolean(reward?.cosmetic && reward?.reward_type !== 'duplicate');
   const rarityForFx = reward?.rarity || 'Common';
   const fx = getFxIntensity(rarityForFx);
 
@@ -162,30 +160,6 @@ export default function CratePage() {
       .catch(() => {});
   }, [refreshEpicStatus, refreshSigils]);
 
-  useEffect(() => {
-    fetch('/api/crates/latest', { cache: 'no-store' })
-      .then((r) => r.json().catch(() => null))
-      .then((d) => {
-        if (!d?.ok || !d?.opening || !d?.reward) return;
-        const savedReward = d.reward as CrateReward;
-        setOpeningId(String(d.opening.id || ''));
-        setReward(savedReward);
-        setError(null);
-        clearTimers();
-        setStage('reveal');
-        setSkipReady(true);
-        setCanClaim(false);
-        setCardFace('back');
-        const flipTimer = window.setTimeout(() => setCardFace('front'), 180);
-        const settleTimer = window.setTimeout(() => {
-          setStage('settle');
-          setCanClaim(true);
-        }, 260);
-        timersRef.current.push(flipTimer, settleTimer);
-      })
-      .catch(() => {});
-  }, [clearTimers]);
-
   const [resetCountdown, setResetCountdown] = useState('00:00:00');
 
   useEffect(() => {
@@ -209,11 +183,6 @@ export default function CratePage() {
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
   }, [nextResetAt]);
-
-  useEffect(() => {
-    const hidden = localStorage.getItem('tip_crate_v2') === '1';
-    setShowTip(!hidden);
-  }, []);
 
   useEffect(() => {
     return () => clearTimers();
@@ -253,7 +222,6 @@ export default function CratePage() {
     setStage('opening');
     setSkipReady(false);
     setCanClaim(false);
-    setCardFace('back');
     spawnSparks(timing.totalMs >= 1800 ? 28 : 16);
 
     timersRef.current.push(window.setTimeout(() => {
@@ -317,20 +285,6 @@ export default function CratePage() {
   }, [clearTimers, reducedMotion, spawnSparks, stage]);
 
   useEffect(() => {
-    if (stage !== 'reveal' || !reward) return;
-    const landingTimer = window.setTimeout(() => {
-      if (shouldFlip) {
-        setCardFace('back');
-        const flipTimer = window.setTimeout(() => setCardFace('front'), 320);
-        timersRef.current.push(flipTimer);
-      } else {
-        setCardFace('front');
-      }
-    }, 120);
-    timersRef.current.push(landingTimer);
-  }, [stage, reward, shouldFlip]);
-
-  useEffect(() => {
     if (stage !== 'settle') return;
     setCanClaim(true);
   }, [stage]);
@@ -352,6 +306,7 @@ export default function CratePage() {
   async function openCrate(mode: OpenMode) {
     const currentCost = mode === 'epic' ? epicCrateCost : mode === 'paid' ? PAID_CRATE_COST : 0;
     if (isOpening || stage !== 'idle') return;
+    setOddsPanelOpen(false);
     if ((mode === 'paid' || mode === 'epic') && sigils < currentCost) {
       setError(`Need ${currentCost} sigils for this crate.`);
       return;
@@ -433,13 +388,6 @@ export default function CratePage() {
     clearTimers();
     setStage('reveal');
     if (reward) {
-      if (shouldFlip) {
-        setCardFace('back');
-        const t = window.setTimeout(() => setCardFace('front'), 180);
-        timersRef.current.push(t);
-      } else {
-        setCardFace('front');
-      }
       const c = window.setTimeout(() => {
         setStage('settle');
         setCanClaim(true);
@@ -463,7 +411,6 @@ export default function CratePage() {
     setReward(null);
     setOpeningId(null);
     setCanClaim(false);
-    setCardFace('back');
     setShakeScreen(false);
   }
 
@@ -525,19 +472,6 @@ export default function CratePage() {
 
         <h1 className="text-2xl font-bold text-center mb-2">Daily Crate</h1>
         <p className="text-center text-white/40 text-sm mb-8">Open once per day. Cosmetics, XP, and Sigils await.</p>
-        {showTip && (
-          <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-xs text-white/65">Tips: prediction streak milestones can grant bonus rolls that bypass the daily crate lock.</p>
-              <button
-                onClick={() => { localStorage.setItem('tip_crate_v2', '1'); setShowTip(false); }}
-                className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        )}
 
         <div className="relative flex items-center justify-center" style={{ minHeight: 320 }}>
           <div className="flex flex-col items-center gap-3">
@@ -549,37 +483,45 @@ export default function CratePage() {
               <Gift className="w-16 h-16 text-yellow-400 group-hover:scale-110 transition-transform" />
               <span className="text-sm font-bold text-yellow-400">{isOpening ? 'Opening...' : 'Open Daily Crate'}</span>
             </button>
-            <button
-              onClick={() => openCrate('paid')}
-              disabled={paidDisabled}
-              className={`px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${sigils < PAID_CRATE_COST ? 'bg-amber-900/40 border border-amber-700/30 text-amber-300/60' : 'bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-200'}`}
-            >
-              {isOpening ? 'Opening...' : sigils < PAID_CRATE_COST ? `Need ${PAID_CRATE_COST} sigils` : `Buy Extra Crate (${PAID_CRATE_COST} sigils)`}
-            </button>
-            <div className="flex items-center gap-2 text-[11px] text-cyan-100/70">
-              <SigilIcon className="w-3.5 h-3.5" />
-              <span>{PAID_CRATE_COST} sigils</span>
-              {sigils < PAID_CRATE_COST ? <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">Insufficient</span> : null}
+            <div className="grid w-full max-w-[260px] gap-3">
+              <button
+                onClick={() => openCrate('paid')}
+                disabled={paidDisabled}
+                className={`rounded-2xl border px-4 py-3 text-left transition-all disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${sigils < PAID_CRATE_COST ? 'border-amber-700/30 bg-amber-950/40 text-amber-300/60' : 'border-cyan-300/25 bg-cyan-500/10 hover:bg-cyan-500/16 text-cyan-100'}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-200/60">90 Sigils</p>
+                    <p className="mt-1 text-sm font-bold">Sigil Crate</p>
+                    <p className="mt-1 text-[11px] text-white/55">Balanced extra crate with XP, sigils, and cosmetic drops.</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-xl border border-cyan-200/20 bg-cyan-400/10 shadow-[inset_0_0_18px_rgba(34,211,238,0.12)]" />
+                </div>
+              </button>
+              <button
+                onClick={() => openCrate('epic')}
+                disabled={epicDisabled}
+                className={`rounded-2xl border px-4 py-3 text-left transition-all disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${epicOpensToday >= epicDailyCap ? 'border-purple-900/50 bg-purple-950/50 text-purple-200/55' : sigils < epicCrateCost ? 'border-amber-700/30 bg-amber-900/40 text-amber-300/60' : 'border-purple-300/35 bg-purple-500/12 hover:bg-purple-500/18 text-purple-100'}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-purple-200/65">280 Sigils</p>
+                    <p className="mt-1 text-sm font-bold">Chaos Crate</p>
+                    <p className="mt-1 text-[11px] text-white/55">Higher-voltage cosmetic crate with stronger rare-to-god odds.</p>
+                  </div>
+                  <div className="h-12 w-12 rounded-xl border border-purple-200/20 bg-purple-400/10 shadow-[inset_0_0_18px_rgba(168,85,247,0.14)]" />
+                </div>
+              </button>
             </div>
+            <p className="text-[11px] text-white/40">Daily resets in {resetCountdown} · Epic opens left today: {epicOpensLeft}</p>
             <button
-              onClick={() => openCrate('epic')}
-              disabled={epicDisabled}
-              className={`px-4 py-2 rounded-lg border text-xs font-bold disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${epicOpensToday >= epicDailyCap ? 'border-purple-900/50 bg-purple-950/50 text-purple-200/55' : sigils < epicCrateCost ? 'border-amber-700/30 bg-amber-900/40 text-amber-300/60' : 'border-purple-300/35 bg-purple-500/20 hover:bg-purple-500/30 text-purple-100'}`}
+              type="button"
+              onClick={() => setOddsPanelOpen(true)}
+              className="view-odds-btn mt-1 inline-flex w-52 items-center justify-center gap-1.5 rounded-[10px] border border-[rgba(185,118,8,0.22)] bg-white/[0.02] px-3 py-2 text-[0.75rem] font-bold tracking-[0.07em] text-[rgba(218,165,28,0.68)] transition-all hover:border-[rgba(218,165,28,0.35)] hover:bg-[rgba(185,118,8,0.08)] hover:text-[rgba(238,185,28,0.85)]"
             >
-              {isOpening
-                ? 'Opening...'
-                : epicOpensToday >= epicDailyCap
-                  ? `Resets in ${resetCountdown}`
-                  : sigils < epicCrateCost
-                    ? `Need ${epicCrateCost} sigils`
-                    : `⚡ Epic Chaos Crate (${epicCrateCost} sigils)`}
+              <LayoutGrid className="h-[13px] w-[13px] opacity-70" />
+              View Rewards &amp; Odds
             </button>
-            <div className="flex items-center gap-2 text-[11px] text-purple-100/75">
-              <SigilIcon className="w-3.5 h-3.5" />
-              <span>{epicCrateCost} sigils</span>
-              {sigils < epicCrateCost ? <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200">Insufficient</span> : null}
-            </div>
-            <p className="text-[11px] text-purple-200/85">High-Voltage Odds</p>
           </div>
         </div>
 
@@ -588,22 +530,19 @@ export default function CratePage() {
         )}
 
         <div className="mt-8 text-center space-y-1">
-          <p className="text-xs text-white/25">Daily rates: 62% XP/Sigils · 20% Common · 10% Rare · 5% Epic · 2% Legendary · 0.8% Mythic · 0.2% God-Tier</p>
-          <p className="text-xs text-cyan-300/55">Paid rates: 45% XP/Sigils · 24% Common · 16% Rare · 9% Epic · 4.5% Legendary · 1.2% Mythic · 0.3% God-Tier</p>
-          <details className="mx-auto mt-2 max-w-md text-left rounded-lg border border-purple-300/20 bg-purple-500/10 px-3 py-2">
-            <summary className="cursor-pointer text-xs font-semibold text-purple-100">Epic Chaos Crate Odds / Drop Table</summary>
-            <p className="mt-1 text-[11px] text-purple-100/85">30% Common · 28% Rare · 20% Epic · 12% Legendary · 7% Mythic · 3% God-Tier</p>
-            <p className="mt-1 text-[11px] text-white/70">Value floor: Rare+ cosmetic minimum or equivalent bundle.</p>
-            <p className="mt-1 text-[11px] text-white/70">Daily cap: 8 Epic crates.</p>
-            <p className="mt-1 text-[11px] text-white/70">
-              Pity tracker: Legendary boost in {epicLegendaryBoostIn == null ? '…' : epicLegendaryBoostIn} crates
-            </p>
-            <p className={`mt-1 text-[11px] ${epicOpensLeft === 0 ? 'text-rose-200/75' : 'text-white/70'}`}>
-              {epicOpensLeft} opens left today · resets in {resetCountdown}
-            </p>
-          </details>
+          <p className="text-xs text-white/40">Daily resets in {resetCountdown}</p>
+          <p className={`text-[11px] ${epicOpensLeft === 0 ? 'text-rose-200/75' : 'text-white/65'}`}>
+            Epic opens left today: {epicOpensLeft} · Legendary boost in {epicLegendaryBoostIn == null ? '…' : epicLegendaryBoostIn}
+          </p>
         </div>
       </div>
+
+      <CrateOddsSheet
+        open={oddsPanelOpen}
+        onClose={() => setOddsPanelOpen(false)}
+        crateType="daily"
+        title="Daily Crate"
+      />
 
       <CrateReveal
         active={overlayActive}
@@ -614,7 +553,22 @@ export default function CratePage() {
         onSkip={skipSequence}
       >
             {(stage === 'opening' || stage === 'burst') && (
-              <div className="relative w-[220px] h-[220px] flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="crate-unseal-shell">
+                  <p className="crate-unseal-eyebrow">CATCLASH LOOT</p>
+                  <svg className="crate-unseal-rays" viewBox="0 0 100 100" aria-hidden="true">
+                    {Array.from({ length: 16 }).map((_, idx) => {
+                      const angle = (Math.PI * 2 * idx) / 16;
+                      const x2 = 50 + Math.cos(angle) * 38;
+                      const y2 = 50 + Math.sin(angle) * 38;
+                      return <line key={idx} x1="50" y1="50" x2={x2} y2={y2} />;
+                    })}
+                  </svg>
+                  <div className="crate-unseal-icon">
+                    <Gift className="h-12 w-12 text-amber-200" />
+                  </div>
+                  <p className="crate-unseal-label">UNSEALING...</p>
+                </div>
                 {sparkBursts.map((p) => (
                   <div
                     key={p.id}
@@ -633,83 +587,83 @@ export default function CratePage() {
             )}
 
             {(stage === 'reveal' || stage === 'settle') && (
-              <div className="relative w-full max-w-sm">
-                <div
-                  className="sunburst"
-                  style={{ ['--ray-color' as string]: rarityStyle.rays }}
-                />
+              <div className="absolute inset-x-0 bottom-0 z-[130] mx-auto w-full max-w-[430px] px-4 pb-[max(env(safe-area-inset-bottom),16px)]">
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 top-0">
+                  <div
+                    className="sunburst"
+                    style={{ ['--ray-color' as string]: rarityStyle.rays }}
+                  />
+                </div>
 
                 {isBigHit && (
-                  <div className="absolute inset-0 pointer-events-none">
+                  <div className="pointer-events-none absolute inset-0">
                     {Array.from({ length: fx.confettiCount }).map((_, i) => (
                       <span key={i} className="confetti" style={{ left: `${8 + Math.random() * 84}%`, animationDelay: `${Math.random() * 0.35}s` }} />
                     ))}
                   </div>
                 )}
 
-                <div className={`loot-card-wrap ${canClaim ? 'landed' : 'rising'} ${isCommonHit ? 'common-shimmer' : ''}`}>
-                  <div className={`loot-card-flip ${cardFace === 'front' ? 'flip-front' : ''}`}>
-                    <div className="loot-card-face loot-card-back">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">CatClash Loot</p>
-                      <Gift className="w-10 h-10 text-yellow-300 mt-2" />
-                      <p className="text-xs text-white/70 mt-2">Unsealing...</p>
-                    </div>
-
-                    <div className={`loot-card-face loot-card-front border-2 ${rarityStyle.border} ${rarityStyle.bg} ${rarityStyle.glow}`}>
-                      {!reward ? (
-                        <div className="h-full grid place-items-center text-sm text-white/70">Finalizing reward...</div>
-                      ) : (
-                        <div className="p-5 text-center h-full flex flex-col justify-between">
-                          <div>
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${rarityStyle.text} ${rarityStyle.border} border`}>
-                              {reward.rarity === 'Legendary' && <Crown className="w-3 h-3" />}
-                              {reward.rarity === 'Epic' && <Star className="w-3 h-3" />}
-                              {reward.rarity === 'Rare' && <Zap className="w-3 h-3" />}
-                              {(reward.rarity === 'xp_sigils' || reward.rarity === 'duplicate') ? 'BONUS' : reward.rarity}
-                            </span>
-                            {isCommonHit && <p className="mt-1 text-[10px] text-white/60 uppercase tracking-wide">Quick pop reveal</p>}
-                            {reward.cosmetic && (
-                              <div className="mt-3">
-                                <h3 className={`text-xl font-black ${rarityStyle.text}`}>{reward.cosmetic.name}</h3>
-                                <p className="text-xs text-white/55 mt-1">{CATEGORY_LABELS[reward.cosmetic.category] || reward.cosmetic.category}</p>
-                                <p className="text-sm text-white/60 mt-2 line-clamp-2">{reward.cosmetic.description}</p>
-                              </div>
-                            )}
-                            {reward.cat_drop && (
-                              <div className="mt-3 rounded-xl border border-white/20 bg-black/25 p-2.5 text-left">
-                                <div className="flex items-center gap-2">
-                                  <img src={reward.cat_drop.image_url || '/cat-placeholder.svg'} alt={reward.cat_drop.name} className="w-11 h-11 rounded-lg object-cover border border-white/20" />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-black truncate">{reward.cat_drop.name} {reward.cat_drop.is_new ? <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-emerald-400/20 text-emerald-200">NEW</span> : null}</p>
-                                    <p className="text-[10px] text-white/65 uppercase tracking-wide">{reward.cat_drop.guild_affinity === 'sun' ? 'Solar Affinity' : reward.cat_drop.guild_affinity === 'moon' ? 'Lunar Affinity' : 'Arena Affinity'}</p>
-                                  </div>
-                                </div>
-                                <div className="mt-2 rounded-lg border border-cyan-300/30 bg-cyan-500/10 px-2 py-1.5">
-                                  <p className="text-[10px] text-cyan-100/85 uppercase tracking-wider">Special Ability</p>
-                                  <p className="text-xs font-bold text-cyan-100 mt-0.5">{reward.cat_drop.special_ability_name || 'Unknown Ability'}</p>
-                                  <p className="text-[11px] text-white/75 mt-0.5">{reward.cat_drop.special_ability_description || 'Ability data unavailable.'}</p>
-                                </div>
-                              </div>
-                            )}
+                <div className={`loot-sheet ${canClaim ? 'landed' : 'rising'} border ${rarityStyle.border} ${rarityStyle.bg} ${rarityStyle.glow}`}>
+                  {!reward ? (
+                    <div className="grid h-[240px] place-items-center text-sm text-white/70">Finalizing reward...</div>
+                  ) : (
+                    <div className="p-5">
+                      <div className="loot-sheet-shimmer" style={{ ['--ray-color' as string]: rarityStyle.rays }} />
+                      <div className="loot-preview-shell">
+                        {reward.cat_drop ? (
+                          <img src={reward.cat_drop.image_url || '/cat-placeholder.svg'} alt={reward.cat_drop.name} className="h-20 w-20 rounded-2xl border border-white/15 object-cover shadow-[0_0_26px_rgba(0,0,0,0.3)]" />
+                        ) : reward.cosmetic ? (
+                          <div className="loot-preview-text">
+                            <Sparkles className="h-7 w-7 text-amber-200" />
+                            <span>{reward.cosmetic.name}</span>
                           </div>
-
-                          <div className="flex items-center justify-center gap-3 mt-4">
-                            {reward.xp_gained > 0 && (
-                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5">
-                                <Zap className="w-4 h-4 text-blue-400" />
-                                <span className="text-sm font-bold text-blue-300">+{reward.xp_gained} XP</span>
-                              </div>
-                            )}
-                            {reward.sigils_gained > 0 && (
-                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5">
-                                <span className="text-sm font-bold text-cyan-100 inline-flex items-center gap-1"><SigilIcon className="w-3.5 h-3.5" />+{reward.sigils_gained}</span>
-                              </div>
-                            )}
+                        ) : (
+                          <div className="loot-preview-text">
+                            <span className="text-3xl font-black text-amber-100">+{reward.xp_gained > 0 ? reward.xp_gained : reward.sigils_gained}</span>
+                            <span>{reward.xp_gained > 0 ? 'XP' : 'SIGILS'}</span>
                           </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 text-center">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${rarityStyle.text} ${rarityStyle.border}`}>
+                          {reward.rarity === 'Legendary' && <Crown className="h-3 w-3" />}
+                          {reward.rarity === 'Epic' && <Star className="h-3 w-3" />}
+                          {reward.rarity === 'Rare' && <Zap className="h-3 w-3" />}
+                          {(reward.rarity === 'xp_sigils' || reward.rarity === 'duplicate') ? 'BONUS' : reward.rarity}
+                        </span>
+                        <h3 className={`mt-3 text-xl font-black ${rarityStyle.text}`}>
+                          {reward.cosmetic?.name || reward.cat_drop?.name || (reward.xp_gained > 0 ? `+${reward.xp_gained} XP` : `+${reward.sigils_gained} Sigils`)}
+                        </h3>
+                        <p className="mt-1 text-xs text-white/60">
+                          Awarded from {reward.reward_type === 'paid_crate' ? 'Paid Crate' : 'Daily Crate'} · {new Date().toLocaleDateString()}
+                        </p>
+                        {reward.cosmetic ? (
+                          <p className="mx-auto mt-2 max-w-xs text-sm text-white/70">{reward.cosmetic.description}</p>
+                        ) : null}
+                        {reward.cat_drop ? (
+                          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-left">
+                            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/75">Special Ability</p>
+                            <p className="mt-1 text-sm font-bold text-cyan-100">{reward.cat_drop.special_ability_name || 'Unknown Ability'}</p>
+                            <p className="mt-1 text-[11px] text-white/70">{reward.cat_drop.special_ability_description || 'Ability data unavailable.'}</p>
+                          </div>
+                        ) : null}
+                        <div className="mt-4 flex items-center justify-center gap-3">
+                          {reward.xp_gained > 0 ? (
+                            <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+                              <Zap className="h-4 w-4 text-blue-400" />
+                              <span className="text-sm font-bold text-blue-300">+{reward.xp_gained} XP</span>
+                            </div>
+                          ) : null}
+                          {reward.sigils_gained > 0 ? (
+                            <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+                              <span className="inline-flex items-center gap-1 text-sm font-bold text-cyan-100"><SigilIcon className="h-3.5 w-3.5" />+{reward.sigils_gained}</span>
+                            </div>
+                          ) : null}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="mt-4 text-center">
@@ -779,6 +733,55 @@ export default function CratePage() {
           transform: translate(-50%, -50%) scale(0.65);
           opacity: 0;
           animation: sparkOut var(--fx-spark-duration, 760ms) ease-out forwards;
+        }
+
+        .crate-unseal-shell {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          pointer-events: none;
+        }
+
+        .crate-unseal-eyebrow {
+          font-size: 0.52rem;
+          font-weight: 700;
+          letter-spacing: 0.22em;
+          color: rgba(138, 108, 185, 0.45);
+        }
+
+        .crate-unseal-rays {
+          position: absolute;
+          width: 320px;
+          height: 320px;
+          stroke: rgba(218, 165, 28, 0.45);
+          stroke-width: 0.8;
+          fill: none;
+          animation: raysSpin 9s linear infinite;
+        }
+
+        .crate-unseal-icon {
+          position: relative;
+          z-index: 2;
+          display: grid;
+          place-items: center;
+          filter: drop-shadow(0 0 12px rgba(218, 165, 28, 0.65));
+          animation: unsealPulse 1.2s ease-in-out infinite;
+        }
+
+        .crate-unseal-label {
+          position: relative;
+          z-index: 2;
+          margin-top: 8px;
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.15em;
+          color: rgba(218, 165, 28, 0.7);
+          text-shadow: 0 0 12px rgba(218, 165, 28, 0.5);
+          animation: labelFade 1.2s ease-in-out infinite;
         }
 
         .crate-3d {
@@ -862,7 +865,7 @@ export default function CratePage() {
         .sunburst {
           position: absolute;
           left: 50%;
-          top: 42%;
+          top: 44%;
           width: 280px;
           height: 280px;
           transform: translate(-50%, -50%);
@@ -878,60 +881,56 @@ export default function CratePage() {
           pointer-events: none;
         }
 
-        .loot-card-wrap {
+        .loot-sheet {
           position: relative;
-          z-index: 2;
-          perspective: 1000px;
-        }
-
-        .loot-card-wrap.rising {
-          transform: scale(0.65) translateY(70px);
+          overflow: hidden;
+          border-radius: 18px 18px 0 0;
+          background: rgba(8, 10, 20, 0.96);
+          transform: translateY(100%);
           opacity: 0;
-          animation: cardBurst 560ms cubic-bezier(0.2, 0.9, 0.25, 1.08) forwards;
+          box-shadow: 0 -24px 60px rgba(0, 0, 0, 0.45);
         }
 
-        .loot-card-wrap.landed {
-          transform: scale(1) translateY(0);
+        .loot-sheet.rising {
+          animation: rewardRise 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        .loot-sheet.landed {
+          transform: translateY(0);
           opacity: 1;
         }
 
-        .loot-card-flip {
-          position: relative;
-          width: 100%;
-          height: 340px;
-          transform-style: preserve-3d;
-          transition: transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-
-        .loot-card-flip.flip-front {
-          transform: rotateY(180deg);
-        }
-
-        .loot-card-face {
+        .loot-sheet-shimmer {
           position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          border-radius: 18px;
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
+          left: 0;
+          right: 0;
+          top: 0;
+          height: 2px;
+          background: linear-gradient(
+            to right,
+            transparent,
+            color-mix(in oklab, var(--ray-color), white 18%),
+            transparent
+          );
         }
 
-        .loot-card-back {
-          border: 2px solid rgba(255, 255, 255, 0.28);
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
-          display: grid;
-          place-content: center;
-          text-align: center;
+        .loot-preview-shell {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 96px;
+          border-radius: 16px;
+          background: radial-gradient(circle at 50% 40%, color-mix(in oklab, var(--ray-color), transparent 68%) 0%, transparent 72%), rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .loot-card-front {
-          transform: rotateY(180deg);
-          overflow: hidden;
-        }
-
-        .common-shimmer .loot-card-front {
-          animation: commonShimmer 460ms ease-out both;
+        .loot-preview-text {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          color: rgba(255, 244, 200, 0.95);
         }
 
         .confetti {
@@ -982,6 +981,11 @@ export default function CratePage() {
           100% { transform: scale(1) translateY(0); opacity: 1; }
         }
 
+        @keyframes rewardRise {
+          0% { transform: translateY(100%); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+
         @keyframes commonShimmer {
           0% { box-shadow: 0 0 0 rgba(255,255,255,0); }
           50% { box-shadow: 0 0 28px rgba(244,244,245,0.22); }
@@ -998,6 +1002,22 @@ export default function CratePage() {
           100% { transform: translateY(260px) rotate(240deg); opacity: 0; }
         }
 
+        @keyframes unsealPulse {
+          0%, 100% {
+            transform: scale(1);
+            filter: drop-shadow(0 0 10px rgba(218, 165, 28, 0.55));
+          }
+          50% {
+            transform: scale(1.1);
+            filter: drop-shadow(0 0 22px rgba(238, 185, 55, 0.88));
+          }
+        }
+
+        @keyframes labelFade {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .screen-shake,
           .crate-rumble,
@@ -1005,10 +1025,10 @@ export default function CratePage() {
           .lid-fly,
           .spark-particle,
           .sunburst,
-          .loot-card-wrap.rising,
-          .loot-card-flip,
+          .loot-sheet.rising,
           .confetti,
-          .common-shimmer .loot-card-front {
+          .crate-unseal-icon,
+          .crate-unseal-label {
             animation: none !important;
             transition: none !important;
           }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, LogOut } from 'lucide-react';
 import CosmeticFrame from '../../components/cosmetics/CosmeticFrame';
@@ -81,7 +81,9 @@ function cosmeticTypeLabel(c: OwnedCosmetic): string {
 export default function ProfilePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const profileId = params?.id as string;
+  const [activeSection, setActiveSection] = useState<'overview' | 'cats' | 'history'>('overview');
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +121,19 @@ export default function ProfilePage() {
     const hidden = localStorage.getItem('tip_profile_cosmetics_v1') === '1';
     setShowTip(!hidden);
   }, []);
+
+  useEffect(() => {
+    const tab = String(searchParams?.get('tab') || '').trim().toLowerCase();
+    if (tab === 'cats') {
+      setActiveSection('cats');
+      return;
+    }
+    if (tab === 'history') {
+      setActiveSection('history');
+      return;
+    }
+    setActiveSection('overview');
+  }, [searchParams]);
 
   useEffect(() => {
     if (!data?.is_owner) return;
@@ -160,6 +175,9 @@ export default function ProfilePage() {
   const activityItems = data?.vote_history || [];
   const showCosmeticsSection = (data?.equipped_cosmetics.length || 0) > 0 || (data?.is_owner && ownedCosmetics.length > 0);
   const recentReceipts = data?.recent_receipts || [];
+  const showOverview = activeSection === 'overview';
+  const showCats = activeSection === 'cats';
+  const showHistory = activeSection === 'history';
   const statPills = [
     { label: 'Level', value: String(data?.progress.level || 0), tone: 'profile-pill-value--violet' },
     { label: 'XP', value: (data?.progress.xp || 0).toLocaleString(), tone: 'profile-pill-value--gold' },
@@ -351,7 +369,33 @@ export default function ProfilePage() {
         </CosmeticFrame>
         </CosmeticThemeProvider>
 
+        <div className="profile-sections">
+          <button
+            type="button"
+            className={`ps-tab ${showOverview ? 'active' : ''}`}
+            onClick={() => setActiveSection('overview')}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            className={`ps-tab ${showCats ? 'active' : ''}`}
+            onClick={() => setActiveSection('cats')}
+          >
+            My Cats
+          </button>
+          <button
+            type="button"
+            className={`ps-tab ${showHistory ? 'active' : ''}`}
+            onClick={() => setActiveSection('history')}
+          >
+            History
+          </button>
+        </div>
+
         <div className="grid gap-6">
+          {showOverview ? (
+            <>
           <section className="profile-section-card">
             <div className="profile-section-title-wrap"><h2 className="profile-section-title">Trainer Identity</h2></div>
             <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
@@ -509,7 +553,10 @@ export default function ProfilePage() {
               </div>
             </div>
           </section>
+            </>
+          ) : null}
 
+          {(showOverview || showHistory) ? (
           <section className="profile-section-card">
             <div className="profile-section-title-wrap"><h2 className="profile-section-title">Activity</h2></div>
             {activityItems.length === 0 ? (
@@ -532,9 +579,18 @@ export default function ProfilePage() {
               </div>
             )}
           </section>
+          ) : null}
 
+          {(showOverview || showCats) ? (
           <section className="profile-section-card">
             <div className="profile-section-title-wrap"><h2 className="profile-section-title">My Cats</h2></div>
+            {data.is_owner ? (
+              <div className="mb-3 flex items-center justify-end">
+                <Link href="/submit" className="rounded-lg border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-xs font-bold text-violet-100 hover:bg-violet-400/15">
+                  Submit a Cat
+                </Link>
+              </div>
+            ) : null}
             {data.submitted_cats.length === 0 ? (
               <div className="profile-empty-state">
                 <p className="text-lg opacity-30">🐾</p>
@@ -568,7 +624,9 @@ export default function ProfilePage() {
               </div>
             )}
           </section>
+          ) : null}
 
+          {showOverview ? (
           <section className="profile-section-card">
             <div className="profile-section-title-wrap"><h2 className="profile-section-title">Account</h2></div>
             <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
@@ -616,6 +674,7 @@ export default function ProfilePage() {
               </div>
             </div>
           </section>
+          ) : null}
         </div>
       </div>
     </div>

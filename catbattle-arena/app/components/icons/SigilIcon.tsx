@@ -9,31 +9,39 @@ export default function SigilIcon({
 }) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="0 0 32 32"
       fill="none"
       aria-hidden="true"
       className={`${className} ${glow ? 'sigil-aura' : ''}`}
     >
       <defs>
-        <linearGradient id="sigil_ring" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#22d3ee" />
-          <stop offset="1" stopColor="#a78bfa" />
-        </linearGradient>
-        <linearGradient id="sigil_glyph" x1="8" y1="6" x2="16" y2="18" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#ffffff" stopOpacity="0.96" />
-          <stop offset="1" stopColor="#67e8f9" stopOpacity="0.96" />
+        <linearGradient id="sigil_star_outer" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop stopColor="rgba(180,100,255,0.95)" />
+          <stop offset="1" stopColor="rgba(120,50,220,0.9)" />
         </linearGradient>
       </defs>
-      <circle cx="12" cy="12" r="8.75" stroke="url(#sigil_ring)" strokeOpacity="0.95" strokeWidth="1.7" />
-      <circle cx="12" cy="12" r="6.2" className="stroke-cyan-200/45" strokeWidth="0.9" />
-      <path d="M10.2 5.9V8.1M13.8 15.9V18.1" className="stroke-cyan-100/90" strokeWidth="1.15" strokeLinecap="round" />
-      <path
-        d="M14.7 8.2C14.7 7.2 13.8 6.4 12.3 6.4C10.8 6.4 9.8 7.2 9.8 8.2C9.8 9.2 10.6 9.8 12.2 10.1C13.9 10.4 14.7 11.1 14.7 12.2C14.7 13.4 13.7 14.2 12.1 14.2C10.6 14.2 9.6 13.4 9.6 12.2"
-        stroke="url(#sigil_glyph)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
+      <polygon
+        points="16,2 17.8,13 28,8 19.6,15.2 28,22 17.8,19 16,30 14.2,19 4,22 12.4,15.2 4,8 14.2,13"
+        fill="none"
+        stroke="url(#sigil_star_outer)"
+        strokeWidth="0.8"
       />
-      <circle cx="12" cy="12" r="0.7" className="fill-cyan-100/95" />
+      <polygon
+        points="16,4.6 17.2,12.2 25.2,8.8 19,14.3 25.2,19.6 17.2,17 16,24.6 14.8,17 6.8,19.6 13,14.3 6.8,8.8 14.8,12.2"
+        fill="rgba(140,60,220,0.25)"
+        stroke="rgba(210,150,255,0.7)"
+        strokeWidth="0.6"
+      />
+      <polygon
+        points="16,12 18,15.2 16,18.4 14,15.2"
+        fill="rgba(200,140,255,0.6)"
+        stroke="rgba(230,180,255,0.9)"
+        strokeWidth="0.7"
+      />
+      <g opacity="0.3" stroke="rgba(200,160,255,0.7)" strokeWidth="0.5">
+        <line x1="16" y1="6" x2="16" y2="26" />
+        <line x1="6" y1="16" x2="26" y2="16" />
+      </g>
     </svg>
   );
 }

@@ -34,7 +34,7 @@ export default function CrateReveal({
   if (!active) return null;
   return (
     <div
-      className={`fixed inset-0 z-[120] bg-black/80 backdrop-blur-[2px] ${shakeScreen ? 'screen-shake' : ''}`}
+      className={`fixed inset-0 z-[120] bg-[rgba(5,4,12,0.92)] backdrop-blur-[18px] ${shakeScreen ? 'screen-shake' : ''}`}
       onClick={onSkip}
       style={{
         ['--fx-shake-x' as string]: `${fx.screenShakePx}px`,
@@ -46,6 +46,13 @@ export default function CrateReveal({
         ['--fx-confetti-duration' as string]: `${fx.confettiDurationMs}ms`,
       }}
     >
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(ellipse 55% 55% at 50% 50%, rgba(185,118,8,0.14) 0%, transparent 65%)',
+        }}
+      />
       {stage !== 'settle' && (
         <button
           onClick={(e) => { e.stopPropagation(); onSkip(); }}
@@ -60,7 +67,7 @@ export default function CrateReveal({
           Tap anywhere to speed up
         </div>
       )}
-      <div className="absolute inset-0 flex items-center justify-center px-4" onClick={(e) => e.stopPropagation()}>
+      <div className="absolute inset-0 px-4" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>

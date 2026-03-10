@@ -175,7 +175,7 @@ export default function ArenaFlameCard({
   return (
     <div className={`arena-flame-card rounded-2xl border ${compact ? 'p-3 min-h-[210px]' : 'p-4 min-h-[232px]'} shadow-[0_12px_34px_rgba(0,0,0,0.28)] ${toneClass} ${className}`}>
       <p className="text-sm font-bold text-white/95 inline-flex items-center gap-1.5">
-        <Flame className={`w-4 h-4 ${viewState === 'fading' ? 'text-red-300 animate-pulse' : viewState === 'active' ? 'text-orange-300 flame-flicker' : 'text-zinc-400'}`} />
+        <Flame className={`w-5 h-5 ${viewState === 'fading' ? 'text-red-300 animate-pulse' : viewState === 'active' ? 'text-orange-300 flame-flicker' : 'text-zinc-400'}`} />
         Arena Flame
       </p>
       <p className={`${compact ? 'text-2xl' : 'text-3xl'} font-extrabold text-white mt-1`}>Day {dayNumber}</p>

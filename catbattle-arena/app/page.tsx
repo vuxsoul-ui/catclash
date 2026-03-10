@@ -1099,7 +1099,7 @@ const MatchCard = React.memo(function MatchCard({
         <div className="min-w-0">
           <div className="arena-flip-scene h-[220px] md:h-[300px]">
             <div className={`arena-flip-card ${flipA && !forceFront ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/15 p-1.5 transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/15 p-1.5 ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`rarity-badge rarity-badge--${tierA} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_a.rarity}
@@ -1130,7 +1130,7 @@ const MatchCard = React.memo(function MatchCard({
                 >
                   <div className={`arena-card-image arena-card-image--${tierA} w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15`}>
                     <div className={`arena-card-shimmer arena-card-shimmer--${tierA}`} />
-                    <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
+                    <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="arena-card-photo w-full h-full object-cover" />
                   </div>
                 </button>
                 <div className="mt-1">
@@ -1162,7 +1162,7 @@ const MatchCard = React.memo(function MatchCard({
         <div className="min-w-0">
           <div className="arena-flip-scene h-[220px] md:h-[300px]">
             <div className={`arena-flip-card ${flipB && !forceFront ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/15 p-1.5 transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/15 p-1.5 ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`rarity-badge rarity-badge--${tierB} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_b.rarity}
@@ -1193,7 +1193,7 @@ const MatchCard = React.memo(function MatchCard({
                 >
                   <div className={`arena-card-image arena-card-image--${tierB} w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15`}>
                     <div className={`arena-card-shimmer arena-card-shimmer--${tierB}`} />
-                    <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
+                    <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="arena-card-photo w-full h-full object-cover" />
                   </div>
                 </button>
                 <div className="mt-1">
@@ -3091,13 +3091,6 @@ async function fetchHomeDashboard() {
   }
 }
 
-async function apiClaimCrate() {
-  try {
-    const res = await fetch("/api/crates/open", { method: "POST", headers: { "Content-Type": "application/json" } });
-    return await res.json();
-  } catch (e) { return { error: e instanceof Error ? e.message : "Error" }; }
-}
-
 // ── Main Page ──
 export default function Page() {
   const router = useRouter();
@@ -3112,7 +3105,6 @@ export default function Page() {
   const [votingMatch, setVotingMatch] = useState<string | null>(null);
   const [predictBusyMatch, setPredictBusyMatch] = useState<string | null>(null);
   const [calloutBusyMatch, setCalloutBusyMatch] = useState<string | null>(null);
-  const [claimingCrate, setClaimingCrate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = useState(true);
@@ -3157,16 +3149,6 @@ export default function Page() {
   const missionNudgeKeyRef = useRef<string>('');
   const [missionNudge, setMissionNudge] = useState<null | { key: string; title: string; cta: string; href: string }>(null);
   const [crateCountdown, setCrateCountdown] = useState('00:00:00');
-  const [crateMeta, setCrateMeta] = useState<null | {
-    rarity_tier?: string;
-    near_miss_tier?: string;
-    secondary_reward_applied?: boolean;
-    pity_status?: {
-      streak_without_epic_plus?: number;
-      streak_without_legendary_plus?: number;
-      streak_without_god?: number;
-    };
-  }>(null);
   const [hudPulseKey, setHudPulseKey] = useState('');
   const [displayStats, setDisplayStats] = useState({ streak: 0, xp: 0, sigils: 0, pred: 0 });
   const displayStatsRef = useRef(displayStats);
@@ -4651,34 +4633,13 @@ export default function Page() {
     runMissionCta(active);
   }
 
-  async function handleClaimCrate() {
-    if (claimingCrate) return;
-    setClaimingCrate(true);
-    try {
-      const result = await apiClaimCrate();
-      if (result.error) setError(result.error);
-      else if (!result.success) setError(result.message || "Already claimed");
-      else {
-        setCrateMeta({
-          rarity_tier: result?.rarity_tier,
-          near_miss_tier: result?.near_miss_tier,
-          secondary_reward_applied: !!result?.secondary_reward_applied,
-          pity_status: result?.pity_status || null,
-        });
-        setProgress((p) => p ? {
-          ...p,
-          xp: p.xp + Number(result.xp_gained || 0),
-          sigils: p.sigils + Number(result.sigils_gained || 0),
-          catXpPool: p.catXpPool + Number(result.cat_xp_banked || 0),
-        } : null);
-        if (Number(result.cat_xp_banked || 0) > 0) {
-          showToast(`Crate: +${result.cat_xp_banked} cat XP banked`);
-        }
-      }
-    } finally {
-      setClaimingCrate(false);
-    }
-  }
+  const activeMissionCtaLabel = useMemo(() => {
+    if (!gettingStarted) return 'Start Voting';
+    const active = gettingStarted.missions.find((m) => m.status === 'active');
+    if (active?.cta?.trim()) return active.cta.trim();
+    const fallback = gettingStarted.missions.find((m) => m.status !== 'complete');
+    return fallback?.cta?.trim() || 'Start Voting';
+  }, [gettingStarted]);
 
   async function handleBookmarkMissionComplete() {
     if (bookmarkMissionBusy) return;
@@ -4935,7 +4896,7 @@ export default function Page() {
                 onClick={handleMissionPrimaryAction}
                 className="arena-start-voting-btn h-10 w-full px-3 rounded-xl bg-emerald-300 text-black text-sm font-bold active:scale-[0.99] transition-transform"
               >
-                Start Voting
+                {activeMissionCtaLabel}
               </button>
               <button
                 onClick={() => setMissionBoardOpen((v) => !v)}
@@ -5069,13 +5030,12 @@ export default function Page() {
           />
           <div className="daily-crate-card glass rounded-2xl p-3 min-h-[210px] h-full flex flex-col">
             <div className="flex items-center justify-center gap-2 mb-1.5">
-              <SigilIcon className="daily-crate-icon w-4 h-4" glow />
               <h3 className="font-bold text-sm">Crate</h3>
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center text-center">
               <div className="crate-hero mb-1.5">
-                <div className={`crate-visual ${claimingCrate ? 'opening' : ''}`}>
+                <div className="crate-visual">
                   <div className="crate-lid" />
                   <div className="crate-box" />
                   <div className="crate-glow" />
@@ -5083,16 +5043,9 @@ export default function Page() {
               </div>
               <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
                 <button
-                  onClick={handleClaimCrate}
-                  disabled={claimingCrate}
-                  className="crate-open-btn h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                >
-                  {claimingCrate ? <Loader2 className="w-3 h-3 animate-spin" /> : "Open"}
-                </button>
-                <button
                   type="button"
                   onClick={() => router.push('/crate')}
-                  className="crate-view-btn h-8 w-full px-3 rounded-lg border border-yellow-300/35 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-100 text-[11px] font-semibold"
+                  className="crate-open-btn h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                 >
                   View Crates
                 </button>
@@ -5110,9 +5063,7 @@ export default function Page() {
                 <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
               </div>
               <p className="text-[10px] text-white/60 min-h-[14px]">
-                {crateMeta?.pity_status
-                  ? `Pity: ${Math.max(0, 10 - Number(crateMeta.pity_status.streak_without_epic_plus || 0))} to Epic+`
-                  : 'Every open builds pity toward Epic+'}
+                Every open builds pity toward Epic+
               </p>
             </div>
           </div>
