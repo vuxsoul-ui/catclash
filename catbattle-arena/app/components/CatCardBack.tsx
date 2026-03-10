@@ -29,14 +29,6 @@ function cleanText(value: unknown): string {
   return s;
 }
 
-function originLabel(origin: string | null | undefined): string {
-  const v = cleanText(origin).toLowerCase();
-  if (v === 'adopted') return 'Adopted';
-  if (v === 'crate' || v === 'crate-drop') return 'Crate-drop';
-  if (v === 'submitted') return 'Submitted';
-  return 'Submitted';
-}
-
 function heatLabel(votes: number): string | null {
   if (votes >= 16) return 'HOT';
   if (votes >= 8) return 'HEATING';
@@ -85,7 +77,6 @@ export default function CatCardBack({
     { k: 'Rarity', v: cat.rarity },
     { k: 'Level', v: String(Math.max(1, Number(cat.level || 1))) },
     { k: 'Faction', v: guild || 'Unaligned' },
-    { k: 'Origin', v: originLabel(cat.origin || null) },
     { k: 'Role', v: role },
     { k: 'Record', v: `${wins}-${losses}` },
     { k: 'Share', v: `${Math.max(0, Math.min(100, Math.round(sharePct)))}%` },
@@ -131,7 +122,7 @@ export default function CatCardBack({
           {meta.map((item) => {
             const isRecord = item.k === 'Record';
             const isTier = item.k === 'Rarity';
-            const isRoleMeta = item.k === 'Role' || item.k === 'Origin' || item.k === 'Faction';
+            const isRoleMeta = item.k === 'Role' || item.k === 'Faction';
             return (
               <div key={item.k} className="cat-card-back-cell min-w-0">
                 <p className="cat-card-back-cell-label">{item.k}</p>

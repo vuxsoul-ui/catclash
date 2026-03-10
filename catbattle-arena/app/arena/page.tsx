@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Loader2, PlusCircle, Swords, Zap } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Loader2, PlusCircle, Play, Swords, Zap } from 'lucide-react';
 import { showGlobalToast } from '../lib/global-toast';
 
 type MyCat = {
@@ -181,6 +181,8 @@ export default function WhiskerArenaPage() {
   const [selectedReplay, setSelectedReplay] = useState<string | null>(null);
   const [replayEvents, setReplayEvents] = useState<ReplayEvent[]>([]);
   const [dailyBoss, setDailyBoss] = useState<DailyBoss | null>(null);
+  const [snapshotPanelOpen, setSnapshotPanelOpen] = useState(false);
+  const [moveFlash, setMoveFlash] = useState<{ id: number; label: string } | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -212,6 +214,18 @@ export default function WhiskerArenaPage() {
   const unlockedSpecialButtons = useMemo(() => {
     return SPECIAL_UNLOCKS.filter((s) => activeCatLevel >= s.level).map((s) => s.action);
   }, [activeCatLevel]);
+
+  const hasActiveMatch = Boolean(activeMatchId);
+  const filteredRecent = matches.filter((m) => m.status !== 'active');
+  const momentumPct = useMemo(() => {
+    if (!battleState) return 50;
+    const momentum = battleState.fighter_a.momentum;
+    return Math.max(0, Math.min(100, Math.round(((momentum + 5) / 10) * 100)));
+  }, [battleState]);
+
+  function onMoveFlashComplete(id: number) {
+    setMoveFlash((current) => (current?.id === id ? null : current));
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -412,6 +426,9 @@ export default function WhiskerArenaPage() {
 
     setBattleBusy(true);
     setError(null);
+    const flash = { id: Date.now(), label: ACTION_META[action].label };
+    setMoveFlash(flash);
+    setTimeout(() => onMoveFlashComplete(flash.id), 740);
 
     try {
       const res = await fetch(`/api/arena/match/${activeMatchId}/action`, {
@@ -474,339 +491,344 @@ export default function WhiskerArenaPage() {
 
   return (
     <main className="min-h-screen bg-[#08090d] text-white pt-4 pb-8 px-3 sm:px-4">
-
       <div className="max-w-5xl mx-auto">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white mb-3">
           <ArrowLeft className="w-4 h-4" />
           Home
         </Link>
 
-        <section className="rounded-2xl border border-cyan-400/20 bg-gradient-to-b from-cyan-500/15 to-transparent p-4 mb-4">
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Whisker Arena</h1>
-          <p className="text-xs sm:text-sm text-white/70 mt-1">Turn-based 1v1. Pick actions each turn, manage energy, and outplay NPCs or snapshots.</p>
+        <section className="arena-hero-shell">
+          <div className="arena-hero-top">
+            <div>
+              <p className="arena-hero-eyebrow">⚔ BATTLE MODE</p>
+              <h1 className="arena-hero-title">Whisker Arena</h1>
+              <p className="arena-hero-subtitle">Turn-based 1v1. Outplay NPCs or rival snapshots.</p>
+            </div>
+            <div className="arena-tier-pill">Tier {String(rating.tier || 'bronze').toUpperCase()}</div>
+          </div>
+
           {activeModifier && (
-            <div className="mt-3 rounded-lg border border-cyan-300/25 bg-cyan-500/10 px-3 py-2">
-              <p className="text-xs font-bold text-cyan-100">{activeModifier.label}</p>
-              <p className="text-[11px] text-cyan-100/80">{activeModifier.description}</p>
+            <div className="arena-week-buff mt-3">
+              <span className="arena-week-dot" />
+              <div>
+                <p className="arena-week-label">{activeModifier.label}</p>
+                <p className="arena-week-desc">{activeModifier.description}</p>
+              </div>
             </div>
           )}
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-            <div className="rounded-lg bg-white/10 px-2.5 py-1.5">Rating <span className="font-bold">{rating.rating}</span></div>
-            <div className="rounded-lg bg-white/10 px-2.5 py-1.5">Tier <span className="font-bold capitalize">{rating.tier}</span></div>
-            <div className="rounded-lg bg-white/10 px-2.5 py-1.5">W/L <span className="font-bold">{rating.wins}/{rating.losses}</span></div>
-            <div className="rounded-lg bg-white/10 px-2.5 py-1.5">Turn Cap <span className="font-bold">12</span></div>
+
+          <div className="arena-stats-grid mt-3">
+            <div className="arena-stat-cell">
+              <p className="arena-stat-label">W / L</p>
+              <p className="arena-stat-value">{rating.wins} / {rating.losses}</p>
+            </div>
+            <div className="arena-stat-cell">
+              <p className="arena-stat-label">TURN CAP</p>
+              <p className="arena-stat-value">12</p>
+            </div>
+            <div className="arena-stat-cell">
+              <p className="arena-stat-label">RATING</p>
+              <p className="arena-stat-value">{rating.rating}</p>
+            </div>
+            <div className="arena-stat-cell">
+              <p className="arena-stat-label">ELO RATING</p>
+              <p className="arena-stat-value">{rating.tier}</p>
+            </div>
           </div>
         </section>
 
+        <section className="arena-section-shell">
+          <div className="arena-section-head">
+            <p className="arena-section-title">Quick Match</p>
+            <button
+              disabled={!preferredSnapshotId || battleBusy || uninitialized || hasActiveMatch}
+              onClick={() => startBattle(preferredSnapshotId)}
+              className="arena-start-match-btn"
+            >
+              <Play className="w-3.5 h-3.5" />
+              Start Match
+            </button>
+          </div>
+          {!preferredSnapshotId && <p className="arena-helper-text">Select a snapshot in configuration first.</p>}
+          {hasActiveMatch && <p className="arena-helper-text mt-1">Match in progress.</p>}
+        </section>
+
         {dailyBoss?.boss && (
-          <section className="rounded-2xl border border-amber-300/25 bg-amber-500/10 p-3 sm:p-4 mb-4">
-            <h2 className="font-bold mb-2">Daily Boss Cat</h2>
-            <div className="flex items-center gap-3">
-              <img src={dailyBoss.boss.image_url || '/cat-placeholder.svg'} alt={dailyBoss.boss.name} className="w-16 h-16 rounded-lg object-cover" />
-              <div className="flex-1">
-                <p className="font-bold">{dailyBoss.boss.name}</p>
-                <p className="text-xs text-white/70">{dailyBoss.boss.rarity} · Reward {dailyBoss.reward_sigils} sigils + bonus roll + XP</p>
-                <p className="text-[11px] text-white/55">{dailyBoss.claimed ? 'Reward claimed today' : 'Defeat this boss once today for daily rewards.'}</p>
-                {(dailyBoss.boss_modifier || (dailyBoss.clear_streak || 0) > 0) && (
-                  <p className="text-[11px] text-white/55">
-                    Modifier: {String(dailyBoss.boss_modifier || 'none').replace(/_/g, ' ')} · Streak: {dailyBoss.clear_streak || 0}
-                  </p>
-                )}
+          <section className="arena-boss-card">
+            <div className="arena-boss-row">
+              <div className="arena-boss-avatar-wrap">
+                <img src={dailyBoss.boss.image_url || '/cat-placeholder.svg'} alt={dailyBoss.boss.name} className="arena-boss-avatar" />
+              </div>
+              <div className="arena-boss-copy">
+                <p className="arena-boss-name">{dailyBoss.boss.name}</p>
+                <p className="arena-boss-meta">{dailyBoss.boss.rarity} · Reward {dailyBoss.reward_sigils} sigils</p>
+                {dailyBoss.boss_modifier && <p className="arena-boss-meta">Modifier: {dailyBoss.boss_modifier.replace(/_/g, ' ')}</p>}
+                <p className="arena-boss-meta">Streak: {dailyBoss.clear_streak || 0}</p>
               </div>
             </div>
             <button
-              disabled={!preferredSnapshotId || battleBusy || uninitialized}
+              disabled={!preferredSnapshotId || battleBusy || uninitialized || hasActiveMatch || dailyBoss.claimed}
               onClick={() => startBossBattle(preferredSnapshotId)}
-              className="mt-3 px-3 py-2 rounded-lg bg-amber-300 text-black text-xs font-bold disabled:opacity-50"
+              className="arena-boss-btn"
             >
-              Challenge Daily Boss
+              {dailyBoss.claimed ? '✓ Completed' : 'Challenge Daily Boss'}
             </button>
           </section>
         )}
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 mb-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold">Start Match</p>
-              <p className="text-[11px] text-white/60">Fast queue into snapshots or NPCs.</p>
-            </div>
-            <button
-              disabled={!preferredSnapshotId || battleBusy || uninitialized}
-              onClick={() => startBattle(preferredSnapshotId)}
-              className="px-3 py-2 rounded-lg bg-cyan-300 text-black text-xs font-black disabled:opacity-50 inline-flex items-center gap-1"
-            >
-              <Swords className="w-3.5 h-3.5" />
-              Start Match
-            </button>
-          </div>
-        </section>
-
-        <details className="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4">
-          <summary className="cursor-pointer text-sm font-bold">Whisker Tutorial</summary>
-          <div className="mt-3 grid gap-2 text-xs text-white/80">
-            <div className="rounded-lg bg-white/5 p-2.5"><span className="font-bold text-cyan-200">1. Publish Snapshot:</span> choose one cat, AI style, and move priority. That frozen build is your arena version.</div>
-            <div className="rounded-lg bg-white/5 p-2.5"><span className="font-bold text-emerald-200">2. Start Match:</span> optionally target an NPC. Both cats begin at 3 energy and gain +2 each turn.</div>
-            <div className="rounded-lg bg-white/5 p-2.5"><span className="font-bold text-amber-200">3. Choose Action + Stance:</span> set Neutral/Aggro/Guard each turn, then play Strike, Guard, Control, or Burst.</div>
-            <div className="rounded-lg bg-white/5 p-2.5"><span className="font-bold text-sky-200">Combat Model:</span> HP = Defense x 10. Momentum swings from interactions (Strike &gt; Control, Control &gt; Guard, Guard &gt; Strike).</div>
-          </div>
-        </details>
-
         {uninitialized && (
-          <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 mb-4 text-sm text-red-100">
-            Whisker Arena tables are not initialized yet. Run migration `016_whisker_arena_phase1.sql` and `020_whisker_snapshot_version.sql`.
-          </div>
+          <div className="arena-error-box">Whisker Arena tables are not initialized yet. Run migration `016_whisker_arena_phase1.sql` and `020_whisker_snapshot_version.sql`.</div>
         )}
 
-        {error && <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 mb-4 text-sm text-red-100">{error}</div>}
+        {error && <div className="arena-error-box">{error}</div>}
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 mb-4">
-          <h2 className="font-bold mb-3">Snapshot Builder</h2>
-          {cats.length === 0 ? (
-            <div className="text-sm text-white/60">
-              No cats yet. <Link href="/submit" className="text-cyan-300 underline">Submit or adopt a cat first</Link>.
-            </div>
-          ) : (
-            <>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-                <label>
-                  <span className="text-white/60 block mb-1">Cat</span>
-                  <select value={catId} onChange={(e) => setCatId(e.target.value)} className="w-full bg-black/70 border border-white/20 rounded-lg p-2">
-                    {cats.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.rarity})</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span className="text-white/60 block mb-1">AI Behavior</span>
-                  <select value={behavior} onChange={(e) => setBehavior(e.target.value as Snapshot['ai_behavior'])} className="w-full bg-black/70 border border-white/20 rounded-lg p-2">
-                    {AI_BEHAVIORS.map((b) => <option key={b} value={b}>{behaviorLabel(b)}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span className="text-white/60 block mb-1">Move Preset</span>
-                  <select value={priorityPreset} onChange={(e) => setPriorityPreset(e.target.value as keyof typeof PRIORITY_PRESETS)} className="w-full bg-black/70 border border-white/20 rounded-lg p-2">
-                    <option value="balanced">Balanced</option>
-                    <option value="pressure">Pressure</option>
-                    <option value="fortress">Fortress</option>
-                    <option value="chaos">Chaos</option>
-                  </select>
-                </label>
-                <label>
-                  <span className="text-white/60 block mb-1">NPC Target (optional)</span>
-                  <select value={selectedNpcId} onChange={(e) => setSelectedNpcId(e.target.value)} className="w-full bg-black/70 border border-white/20 rounded-lg p-2">
-                    <option value="">Random NPC / Snapshot</option>
-                    {npcCats.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.rarity})</option>)}
-                  </select>
-                </label>
+        <section className="arena-section-shell">
+          <button className="arena-snapshot-header" onClick={() => setSnapshotPanelOpen((v) => !v)} type="button">
+            <p>
+              Snapshot Config
+              <span className="arena-snapshot-sub">{snapshotPanelOpen ? 'Click to hide' : 'Click to expand'}</span>
+            </p>
+            <ChevronDown className={`w-4 h-4 transition-transform ${snapshotPanelOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {!snapshotPanelOpen && (
+            <p className="arena-helper-text">{preferredSnapshotId ? `Current snapshot configured` : 'No snapshot configured'}</p>
+          )}
+
+          {!preferredSnapshotId && (
+            <div className="arena-submit-guide">
+              <div>
+                <p className="arena-submit-guide-title">Need a fighter first?</p>
+                <p className="arena-submit-guide-copy">Submit a cat, then come back here to publish your snapshot and enter Arena battles.</p>
               </div>
+              <div className="arena-submit-guide-actions">
+                <Link href="/submit" className="arena-submit-guide-primary">Submit Cat</Link>
+              </div>
+            </div>
+          )}
 
-              {selectedNpc && (
-                <div className="mt-2 rounded-lg border border-white/10 bg-white/5 p-2.5 flex items-center gap-2">
-                  <img src={selectedNpc.image_url || fallbackCatUrl(`npc-${selectedNpc.id}`)} alt={selectedNpc.name} className="w-10 h-10 rounded object-cover" />
-                  <p className="text-xs text-white/80">Targeting <span className="font-bold">{selectedNpc.name}</span> ({selectedNpc.rarity})</p>
+          {snapshotPanelOpen && (
+            <>
+              {cats.length === 0 ? (
+                <div className="arena-helper-text">
+                  No cats ready for snapshots yet. Use the submit path above, then return here to configure behavior and queue into matches.
                 </div>
-              )}
+              ) : (
+                <>
+                  <div className="arena-snapshot-grid">
+                    <label>
+                      <span className="arena-form-label">Cat</span>
+                      <select value={catId} onChange={(e) => setCatId(e.target.value)} className="styled-select">
+                        {cats.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.rarity})</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="arena-form-label">AI Behavior</span>
+                      <select value={behavior} onChange={(e) => setBehavior(e.target.value as Snapshot['ai_behavior'])} className="styled-select">
+                        {AI_BEHAVIORS.map((b) => <option key={b} value={b}>{behaviorLabel(b)}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="arena-form-label">Move Preset</span>
+                      <select value={priorityPreset} onChange={(e) => setPriorityPreset(e.target.value as keyof typeof PRIORITY_PRESETS)} className="styled-select">
+                        <option value="balanced">Balanced</option>
+                        <option value="pressure">Pressure</option>
+                        <option value="fortress">Fortress</option>
+                        <option value="chaos">Chaos</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span className="arena-form-label">NPC Target (optional)</span>
+                      <select value={selectedNpcId} onChange={(e) => setSelectedNpcId(e.target.value)} className="styled-select">
+                        <option value="">Random NPC / Snapshot</option>
+                        {npcCats.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.rarity})</option>)}
+                      </select>
+                    </label>
+                  </div>
 
-              <button
-                disabled={!catId || busy || uninitialized}
-                onClick={createSnapshot}
-                className="mt-3 px-3 py-2 rounded-lg bg-emerald-300 text-black text-sm font-bold disabled:opacity-50 inline-flex items-center gap-1"
-              >
-                <PlusCircle className="w-4 h-4" />
-                Publish Snapshot
-              </button>
+                  {selectedNpc && (
+                    <div className="arena-selected-npc">
+                      <img src={selectedNpc.image_url || fallbackCatUrl(`npc-${selectedNpc.id}`)} alt={selectedNpc.name} className="arena-npc-avatar" />
+                      <p>Targeting <span className="font-bold">{selectedNpc.name}</span> ({selectedNpc.rarity})</p>
+                    </div>
+                  )}
+
+                  <button
+                    disabled={!catId || busy || uninitialized}
+                    onClick={createSnapshot}
+                    className="arena-primary-btn mt-3"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Publish Snapshot
+                  </button>
+                </>
+              )}
             </>
           )}
         </section>
 
-        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 mb-4">
-            <h2 className="font-bold mb-3">Turn Battle</h2>
-            {!battleState ? (
-              <p className="text-sm text-white/50">Start a match from your snapshot list.</p>
-            ) : (
-              <>
-                <div className="rounded-xl border border-white/10 bg-gradient-to-b from-[#121826] to-[#0f1014] p-3">
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="rounded-lg bg-cyan-500/10 border border-cyan-300/20 p-2">
-                      <p className="font-bold truncate">{battleState.fighter_a.label}</p>
-                      <p className="text-[11px] text-white/70">HP {battleState.fighter_a.hp}/{battleState.fighter_a.maxHp}</p>
-                      <div className="h-2 rounded bg-white/10 overflow-hidden mt-1"><div className="h-full bg-emerald-400" style={{ width: `${pct(battleState.fighter_a.hp, battleState.fighter_a.maxHp)}%` }} /></div>
-                      <p className="text-[11px] text-white/70 mt-1">Shield {battleState.fighter_a.shield} · Energy {battleState.fighter_a.energy}</p>
-                      <div className="mt-1">
-                        <p className="text-[10px] text-white/60">Momentum</p>
-                        <div className="h-1.5 rounded bg-white/10 overflow-hidden"><div className={`h-full ${battleState.fighter_a.momentum >= 5 ? 'bg-amber-300' : battleState.fighter_a.momentum >= 3 ? 'bg-cyan-300' : 'bg-white/40'}`} style={{ width: `${pct(battleState.fighter_a.momentum, 6)}%` }} /></div>
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-rose-500/10 border border-rose-300/20 p-2">
-                      <p className="font-bold truncate">{battleState.fighter_b.label}</p>
-                      <p className="text-[11px] text-white/70">HP {battleState.fighter_b.hp}/{battleState.fighter_b.maxHp}</p>
-                      <div className="h-2 rounded bg-white/10 overflow-hidden mt-1"><div className="h-full bg-rose-400" style={{ width: `${pct(battleState.fighter_b.hp, battleState.fighter_b.maxHp)}%` }} /></div>
-                      <p className="text-[11px] text-white/70 mt-1">Shield {battleState.fighter_b.shield} · Energy {battleState.fighter_b.energy}</p>
-                      <div className="mt-1">
-                        <p className="text-[10px] text-white/60">Momentum</p>
-                        <div className="h-1.5 rounded bg-white/10 overflow-hidden"><div className={`h-full ${battleState.fighter_b.momentum >= 5 ? 'bg-amber-300' : battleState.fighter_b.momentum >= 3 ? 'bg-cyan-300' : 'bg-white/40'}`} style={{ width: `${pct(battleState.fighter_b.momentum, 6)}%` }} /></div>
-                      </div>
-                    </div>
-                  </div>
+        {hasActiveMatch && battleState && (
+          <section className="arena-section-shell">
+            <div className="arena-section-head">
+              <p className="arena-section-title">Battle</p>
+              <p className="arena-helper-text">Turn {battleState.turn}/{battleState.max_turns}</p>
+            </div>
 
-                  <div className="rounded-lg bg-white/5 border border-white/10 p-2 mb-2">
-                    <p className="text-[11px] text-white/70">Turn {battleState.turn}/{battleState.max_turns}</p>
-                    <div className="h-2 rounded bg-white/10 overflow-hidden mt-1">
-                      <div className="h-full bg-cyan-300 transition-all" style={{ width: `${pct(energyA, 6)}%` }} />
-                    </div>
-                    <p className="text-[11px] text-white/60 mt-1">Your Energy {energyA}/6</p>
-                  </div>
-
-                  <div className="rounded-lg bg-white/5 border border-white/10 p-2 mb-2">
-                    <p className="text-[11px] text-white/70 mb-1">Stance</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['neutral', 'aggro', 'guard'] as const).map((stance) => (
-                        <button
-                          key={stance}
-                          type="button"
-                          onClick={() => setSelectedStance(stance)}
-                          className={`rounded-md px-2 py-1.5 text-[11px] font-bold uppercase border ${
-                            selectedStance === stance
-                              ? 'bg-cyan-300/20 border-cyan-200/50 text-cyan-100'
-                              : 'bg-white/5 border-white/15 text-white/70'
-                          }`}
-                        >
-                          {stance}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-white/50 mt-1">Aggro: +damage / less mitigation. Guard: less taken / less dealt.</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {baseActionButtons.map((action) => {
-                      const meta = ACTION_META[action];
-                      const disabled = battleBusy || energyA < meta.cost || !!battleState.winner_slot;
-                      return (
-                        <button
-                          key={action}
-                          disabled={disabled}
-                          onClick={() => playAction(action)}
-                          className={`rounded-lg border p-2 text-left text-xs ${meta.color} disabled:opacity-40`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold uppercase tracking-wide">{meta.label}</span>
-                            <span className="inline-flex items-center gap-0.5 text-[11px]"><Zap className="w-3 h-3" />{meta.cost}</span>
-                          </div>
-                          <p className="text-[11px] opacity-85 mt-0.5">{meta.hint}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {unlockedSpecialButtons.length > 0 && (
-                    <>
-                      <p className="text-[11px] text-white/60 mt-2 mb-1">Unlocked Specials (Cat Lv {activeCatLevel})</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {unlockedSpecialButtons.map((action) => {
-                          const meta = ACTION_META[action];
-                          const disabled = battleBusy || energyA < meta.cost || !!battleState.winner_slot;
-                          return (
-                            <button
-                              key={action}
-                              disabled={disabled}
-                              onClick={() => playAction(action)}
-                              className={`rounded-lg border p-2 text-left text-[11px] ${meta.color} disabled:opacity-40`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold uppercase tracking-wide">{meta.label}</span>
-                                <span className="inline-flex items-center gap-0.5 text-[10px]"><Zap className="w-3 h-3" />{meta.cost}</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                  {unlockedSpecialButtons.length === 0 && (
-                    <p className="text-[11px] text-white/45 mt-2">Unlock specials with cat levels: Heal Lv3, Bleed Lv5, Stun Lv8.</p>
-                  )}
-                </div>
-
-                <details className="mt-2 rounded-lg border border-white/10 bg-white/5 p-2">
-                  <summary className="cursor-pointer text-xs font-bold">Combat Log</summary>
-                  <div className="max-h-40 overflow-auto mt-1">
-                    {battleLog.length === 0 && <p className="text-xs text-white/50">Action log appears here.</p>}
-                    {battleLog.slice().reverse().map((ev, idx) => (
-                      <div key={`${ev.turn_no}-${idx}`} className="py-0.5">
-                        <p className="text-[11px] text-white/80">
-                          T{ev.turn_no} · {ev.actor_slot.toUpperCase()} used <span className="font-bold uppercase">{ev.action_type}</span> {ev.value > 0 ? `(${ev.value})` : ''}
-                        </p>
-                        {ev.payload?.interaction_message && (
-                          <p className="text-[10px] text-cyan-200/80 uppercase tracking-wide">{ev.payload.interaction_message}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-
-                {battleState.winner_slot && (
-                  <div className="mt-2 rounded-lg border border-yellow-300/30 bg-yellow-500/10 p-2 text-xs">
-                    <p className="font-bold">{battleState.winner_slot === 'a' ? 'You win the duel!' : 'Defeat. Tune your snapshot and retry.'}</p>
-                  </div>
-                )}
-              </>
-            )}
-        </section>
-
-        <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 mb-4">
-          <summary className="cursor-pointer font-bold text-sm">My Snapshots</summary>
-          <div className="mt-3 space-y-2">
-            {sortedSnapshots.length === 0 && <p className="text-sm text-white/50">No snapshots yet.</p>}
-            {sortedSnapshots.map((s) => (
-              <div key={s.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
-                <p className="text-sm font-bold">{s.cat_name} <span className="text-[11px] text-cyan-300">v{s.snapshot_version || 1}</span></p>
-                <p className="text-xs text-white/60">{behaviorLabel(s.ai_behavior)} · {s.skill_priority.join(' > ')}</p>
-                <div className="mt-2 flex justify-between items-center gap-2">
-                  <span className="text-[11px] text-white/40">{new Date(s.created_at).toLocaleString()}</span>
-                  <button
-                    disabled={battleBusy || uninitialized}
-                    onClick={() => startBattle(s.id)}
-                    className="px-2.5 py-1.5 rounded-lg bg-cyan-300 text-black text-xs font-bold disabled:opacity-50 inline-flex items-center gap-1"
-                  >
-                    <Swords className="w-3.5 h-3.5" />
-                    Start Match
-                  </button>
-                </div>
+            <div className="arena-fighters-grid">
+              <div className="arena-fighter-cell arena-player-cell">
+                <p className="arena-fighter-label">{battleState.fighter_a.label}</p>
+                <p className="arena-fighter-meta">HP {battleState.fighter_a.hp}/{battleState.fighter_a.maxHp}</p>
+                <div className="arena-hp-track"><div className="arena-hp-fill arena-hp-fill-player" style={{ width: `${pct(battleState.fighter_a.hp, battleState.fighter_a.maxHp)}%` }} /></div>
+                <p className="arena-fighter-meta">Shield {battleState.fighter_a.shield} · Energy {battleState.fighter_a.energy}</p>
               </div>
-            ))}
-          </div>
-        </details>
 
-        <details className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
-          <summary className="cursor-pointer font-bold text-sm">Recent Results</summary>
-          <div className="mt-3 space-y-2">
-            {matches.filter((m) => m.status !== 'active').length === 0 && <p className="text-sm text-white/50">No completed matches yet.</p>}
-            {matches.filter((m) => m.status !== 'active').map((m) => {
-              const won = !!m.snapshot_a_id && m.winner_snapshot_id === m.snapshot_a_id;
-              return (
-                <div key={m.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
-                  <p className="text-sm font-bold">vs {m.opponent_name || 'Unknown'}</p>
-                  <p className="text-xs text-white/60">{won ? 'Win' : 'Loss'} · Turns {m.turns} · Rating {m.rating_delta > 0 ? `+${m.rating_delta}` : m.rating_delta}</p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-white/40">{new Date(m.created_at).toLocaleString()}</span>
-                    <button onClick={() => loadReplay(m.id)} className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs">Replay Log</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              <div className="arena-fighter-cell arena-opponent-cell">
+                <p className="arena-fighter-label">{battleState.fighter_b.label}</p>
+                <p className="arena-fighter-meta">HP {battleState.fighter_b.hp}/{battleState.fighter_b.maxHp}</p>
+                <div className="arena-hp-track"><div className="arena-hp-fill arena-hp-fill-opponent" style={{ width: `${pct(battleState.fighter_b.hp, battleState.fighter_b.maxHp)}%` }} /></div>
+                <p className="arena-fighter-meta">Shield {battleState.fighter_b.shield} · Energy {battleState.fighter_b.energy}</p>
+              </div>
 
-          {selectedReplay && (
-            <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-2.5">
-              <p className="text-xs text-white/60 mb-2">Replay {selectedReplay}</p>
-              <div className="space-y-1.5 max-h-52 overflow-auto">
-                {replayEvents.length === 0 && <p className="text-xs text-white/50">Loading...</p>}
-                {replayEvents.map((ev, idx) => (
-                  <div key={`${ev.turn_no}-${idx}`} className="rounded bg-white/5 border border-white/10 px-2 py-1.5 text-xs">
-                    Turn {ev.turn_no} · {ev.actor_slot.toUpperCase()} used {ev.action_type.toUpperCase()} {ev.value > 0 ? `(${ev.value})` : ''}
+              <div className="arena-momentum-bar"><div className={`arena-momentum-fill ${momentumPct >= 60 ? 'arena-momentum-player' : momentumPct <= 40 ? 'arena-momentum-opponent' : ''}`} style={{ width: `${momentumPct}%` }} /></div>
+            </div>
+
+            <div className="arena-energy-row">
+              <p className="arena-helper-text">Your Energy {energyA}/6</p>
+              <div className="arena-energy-track"><div className="arena-energy-fill" style={{ width: `${pct(energyA, 6)}%` }} /></div>
+            </div>
+
+            <div className="arena-stance-row">
+              {(['neutral', 'aggro', 'guard'] as const).map((stance) => (
+                <button
+                  key={stance}
+                  type="button"
+                  onClick={() => setSelectedStance(stance)}
+                  className={`arena-stance-btn ${selectedStance === stance ? 'arena-stance-btn-active' : ''}`}
+                >
+                  {stance}
+                </button>
+              ))}
+            </div>
+
+            <div className="arena-move-grid mb-2">
+              {baseActionButtons.map((action) => {
+                const meta = ACTION_META[action];
+                const disabled = battleBusy || energyA < meta.cost || !!battleState.winner_slot;
+                return (
+                  <button
+                    key={action}
+                    disabled={disabled}
+                    onClick={() => playAction(action)}
+                    className={`arena-move-btn ${disabled ? 'arena-move-btn-disabled' : ''}`}
+                  >
+                    <div className="arena-move-top">
+                      <span className="arena-move-name">{meta.label}</span>
+                      <span className="arena-move-cost"><Zap className="w-3 h-3" /> {meta.cost}</span>
+                    </div>
+                    <p className="arena-move-hint">{meta.hint}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {unlockedSpecialButtons.length > 0 && (
+              <div className="arena-move-grid">
+                {unlockedSpecialButtons.map((action) => {
+                  const meta = ACTION_META[action];
+                  const disabled = battleBusy || energyA < meta.cost || !!battleState.winner_slot;
+                  return (
+                    <button
+                      key={action}
+                      disabled={disabled}
+                      onClick={() => playAction(action)}
+                      className={`arena-move-btn ${disabled ? 'arena-move-btn-disabled' : ''}`}
+                    >
+                      <div className="arena-move-top">
+                        <span className="arena-move-name">{meta.label}</span>
+                        <span className="arena-move-cost"><Zap className="w-3 h-3" /> {meta.cost}</span>
+                      </div>
+                      <p className="arena-move-hint">{meta.hint}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <details className="arena-combat-log">
+              <summary>Combat Log</summary>
+              <div>
+                {battleLog.length === 0 && <p>No combat updates yet.</p>}
+                {battleLog.slice().reverse().map((ev, idx) => (
+                  <div key={`${ev.turn_no}-${idx}`} className="arena-log-row">
+                    <p>
+                      T{ev.turn_no} · {ev.actor_slot.toUpperCase()} used <span className="font-bold uppercase">{ev.action_type}</span> {ev.value > 0 ? `(${ev.value})` : ''}
+                    </p>
+                    {ev.payload?.interaction_message && <p>{ev.payload.interaction_message}</p>}
                   </div>
                 ))}
               </div>
+            </details>
+
+            {battleState.winner_slot && <p className="arena-helper-text">{battleState.winner_slot === 'a' ? 'You win the duel.' : 'Defeat. Tune your snapshot and retry.'}</p>}
+            {moveFlash && <span key={moveFlash.id} className="arena-move-flash">{moveFlash.label}</span>}
+          </section>
+        )}
+
+        <section className="arena-section-shell">
+          <p className="arena-section-title">Top Snapshots</p>
+          <div className="arena-compact-list">
+            {sortedSnapshots.slice(0, 3).map((s) => (
+              <div key={s.id} className="arena-compact-row">
+                <p className="arena-compact-main">{s.cat_name}</p>
+                <p className="arena-compact-sub">{behaviorLabel(s.ai_behavior)} · v{s.snapshot_version || 1}</p>
+                <button type="button" onClick={() => startBattle(s.id)} className="arena-mini-btn">Fight</button>
+              </div>
+            ))}
+            {sortedSnapshots.length === 0 && <p className="arena-empty">No snapshots published yet.</p>}
+          </div>
+        </section>
+
+        {filteredRecent.length > 0 && (
+          <section className="arena-section-shell">
+            <p className="arena-section-title">Recent Results</p>
+            <div className="arena-compact-list">
+              {filteredRecent.map((m) => {
+                const won = !!m.snapshot_a_id && m.winner_snapshot_id === m.snapshot_a_id;
+                return (
+                  <div key={m.id} className="arena-result-row">
+                    <p className="arena-result-main">vs {m.opponent_name || 'Unknown'}</p>
+                    <p className="arena-result-sub">{won ? 'Win' : 'Loss'} · Turns {m.turns} · Rating {m.rating_delta > 0 ? `+${m.rating_delta}` : m.rating_delta}</p>
+                    <button onClick={() => loadReplay(m.id)} className="arena-mini-btn">Replay Log</button>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </section>
+        )}
+
+        {selectedReplay && (
+          <section className="arena-section-shell">
+            <p className="arena-section-title">Replay · {selectedReplay}</p>
+            <div className="arena-compact-list">
+              {replayEvents.length === 0 && <p className="arena-empty">Loading replay...</p>}
+              {replayEvents.map((ev, idx) => (
+                <div key={`${ev.turn_no}-${idx}`} className="arena-result-row">
+                  <p className="arena-result-main">Turn {ev.turn_no}</p>
+                  <p className="arena-result-sub">{ev.actor_slot.toUpperCase()} used {ev.action_type.toUpperCase()} {ev.value > 0 ? `(${ev.value})` : ''}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <details className="arena-help-dropdown">
+          <summary>How Arena Works</summary>
+          <div className="arena-help-list">
+            <p><strong>1.</strong> Get a fighter by opening <Link href="/submit" className="arena-inline-link">Submit</Link>.</p>
+            <p><strong>2.</strong> Publish a snapshot here so Arena has your cat, behavior, and move preset.</p>
+            <p><strong>3.</strong> Start a match, manage energy each turn, and use stance plus move timing to win.</p>
+            <p><strong>4.</strong> Daily Boss is a bonus fight. Top Snapshots let you challenge popular builds fast.</p>
+          </div>
         </details>
       </div>
     </main>

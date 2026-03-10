@@ -344,11 +344,17 @@ export default function ShopPage() {
     const effect = resolveCosmeticEffect(item);
 
     return (
-      <button
-        type="button"
+      <div
         key={`${keyPrefix}${item.id}`}
+        role="button"
+        tabIndex={0}
         onClick={() => openPreview(item)}
-        className={`text-left w-full rounded-xl border bg-black/30 p-3 transition hover:bg-black/45 ${rarityCardClass(item.rarity)}`}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          openPreview(item);
+        }}
+        className={`text-left w-full rounded-xl border bg-black/30 p-3 transition hover:bg-black/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 cursor-pointer ${rarityCardClass(item.rarity)}`}
       >
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="font-bold text-sm pr-2">{item.name}</p>
@@ -419,7 +425,7 @@ export default function ShopPage() {
             )}
           </div>
         </div>
-      </button>
+      </div>
     );
   }
 

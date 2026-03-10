@@ -1,23 +1,23 @@
 {
   "ONDS": {
-    "last_volume": 3752565,
-    "last_check": "2026-03-08T14:30:02.067525",
-    "avg_volume": 0,
+    "last_volume": 1789089,
+    "last_check": "2026-03-09T21:20:01.475860",
+    "avg_volume": 87288324.06666666,
     "last_alert_volume": 3841405
   },
   "NVDA": {
-    "last_volume": 5614175,
-    "last_check": "2026-03-08T14:30:04.001693",
-    "avg_volume": 0
+    "last_volume": 4524533,
+    "last_check": "2026-03-09T21:20:04.157742",
+    "avg_volume": 190099252.86666667
   },
   "SLS": {
-    "last_volume": 173456,
-    "last_check": "2026-03-08T14:30:06.003635",
-    "avg_volume": 0
+    "last_volume": 302545,
+    "last_check": "2026-03-09T21:20:06.653036",
+    "avg_volume": 6386899.8
   },
   "VOO": {
-    "last_volume": 87944,
-    "last_check": "2026-03-08T14:30:08.008947",
-    "avg_volume": 0
+    "last_volume": 114322,
+    "last_check": "2026-03-09T21:20:08.590399",
+    "avg_volume": 9644069.466666667
   }
 }

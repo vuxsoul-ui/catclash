@@ -28,6 +28,7 @@ type ArenaFlameCardProps = {
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  onNavigateAction?: (action: 'vote' | 'predict' | 'submit') => void;
   className?: string;
   compact?: boolean;
 };
@@ -45,6 +46,7 @@ export default function ArenaFlameCard({
   loading = false,
   error = null,
   onRetry,
+  onNavigateAction,
   className = '',
   compact = false,
 }: ArenaFlameCardProps) {
@@ -119,15 +121,28 @@ export default function ArenaFlameCard({
     return 'border-orange-300/25 bg-gradient-to-br from-orange-500/12 to-amber-500/10';
   }, [viewState, flame.qualifiesToday]);
 
-  const goVote = () => router.push('/arena?focus=vote');
-  const goPredict = () => router.push('/arena?focus=predict');
-  const goSubmit = () => router.push('/submit');
+  const navigateAction = (action: 'vote' | 'predict' | 'submit') => {
+    if (onNavigateAction) {
+      onNavigateAction(action);
+      return;
+    }
+    if (action === 'submit') {
+      router.push('/submit');
+      return;
+    }
+    router.push('/arena');
+  };
+  const goVote = () => navigateAction('vote');
+  const goPredict = () => navigateAction('predict');
+  const goSubmit = () => navigateAction('submit');
+  const nextNeededAction: 'vote' | 'predict' | 'submit' =
+    votesToday < 5 ? 'vote' : predictionsToday < 1 ? 'predict' : catsToday < 1 ? 'submit' : 'vote';
 
   let statusText = 'Your flame needs fuel.';
-  let helperText = 'Do one today to keep it alive:';
+  let helperText = 'Complete any one today to keep it alive:';
   let primaryCta = 'Fuel the Flame';
-  let primaryAction = goVote;
-  let secondaryText: string | null = 'Fastest: vote 5 times.';
+  let primaryAction = () => navigateAction(nextNeededAction);
+  let secondaryText: string | null = 'Any one counts: 5 votes, 1 prediction, or 1 submit.';
   let countdownText: string | null = null;
   let showChips = true;
   let showSecondaryButton = false;
@@ -135,16 +150,16 @@ export default function ArenaFlameCard({
   if (viewState === 'fading') {
     statusText = 'Your flame is fading.';
     countdownText = `Save it in ${formatHms(localSeconds || 0)}`;
-    helperText = 'Vote 5 times or place 1 prediction.';
+    helperText = 'Any one saves it: 5 votes, 1 prediction, or 1 submit.';
     primaryCta = 'Reignite Flame';
-    primaryAction = goVote;
+    primaryAction = () => navigateAction(nextNeededAction);
     secondaryText = null;
     showChips = false;
   } else if (viewState === 'expired') {
     statusText = 'Flame went out.';
     helperText = 'Reignite today to start a new run.';
     primaryCta = 'Ignite Flame';
-    primaryAction = goVote;
+    primaryAction = () => navigateAction(nextNeededAction);
     secondaryText = null;
     showChips = false;
   } else if (flame.qualifiesToday) {

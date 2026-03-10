@@ -78,6 +78,7 @@ export interface ArenaMatch {
   winner_id?: string | null;
   is_close_match?: boolean;
   user_prediction?: { predicted_cat_id: string; bet_sigils: number } | null;
+  user_voted_cat_id?: string | null;
 }
 
 type VoteSnapshot = {
@@ -202,6 +203,12 @@ function getRarityColor(rarity: string): string {
     Legendary: "text-yellow-400", Mythic: "text-red-400", "God-Tier": "text-pink-400",
   };
   return colors[rarity] || "text-gray-400";
+}
+
+function getTierKey(rarity: string | null | undefined): 'common' | 'rare' | 'epic' | 'legendary' | 'mythic' {
+  const key = String(rarity || 'common').trim().toLowerCase();
+  if (key === 'rare' || key === 'epic' || key === 'legendary' || key === 'mythic') return key;
+  return 'common';
 }
 
 function guildBadge(guild: string | null | undefined): { label: string; cls: string } | null {
@@ -958,6 +965,8 @@ const MatchCard = React.memo(function MatchCard({
 
   const cosmeticsA = cosmeticChips(match.cat_a);
   const cosmeticsB = cosmeticChips(match.cat_b);
+  const tierA = getTierKey(match.cat_a.rarity);
+  const tierB = getTierKey(match.cat_b.rarity);
 
   async function loadComments() {
     setCommentsBusy(true);
@@ -1090,13 +1099,13 @@ const MatchCard = React.memo(function MatchCard({
         <div className="min-w-0">
           <div className="arena-flip-scene h-[220px] md:h-[300px]">
             <div className={`arena-flip-card ${flipA && !forceFront ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'b' ? 'opacity-75' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : dragIntent === 'b' ? 'opacity-80' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/15 p-1.5 transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className={`rarity-badge px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_a.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20 rarity-badge--rare' : match.cat_a.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20 rarity-badge--epic' : match.cat_a.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20 rarity-badge--legendary' : match.cat_a.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20 rarity-badge--common'}`}>
+                  <span className={`rarity-badge rarity-badge--${tierA} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_a.rarity}
                   </span>
                   <div className="flex items-center gap-1">
-                    <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[8px] text-white/85">LVL {Math.max(1, Number(match.cat_a.level || 1))}</span>
+                    <span className={`arena-tier-meta-chip arena-tier-meta-chip--${tierA} px-1.5 py-0.5 rounded-full border text-[8px]`}>LVL {Math.max(1, Number(match.cat_a.level || 1))}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -1104,7 +1113,7 @@ const MatchCard = React.memo(function MatchCard({
                         setFlipA(true);
                       }}
                       aria-label={`Open ${catAName} details`}
-                      className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
+                      className={`arena-tier-info-btn arena-tier-info-btn--${tierA} h-4 min-w-4 px-1 rounded-full border text-[8px]`}
                     >
                       i
                     </button>
@@ -1119,14 +1128,15 @@ const MatchCard = React.memo(function MatchCard({
                   aria-label={`Flip ${catAName} card`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
-                  <div className="w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15">
+                  <div className={`arena-card-image arena-card-image--${tierA} w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15`}>
+                    <div className={`arena-card-shimmer arena-card-shimmer--${tierA}`} />
                     <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
                   </div>
                 </button>
                 <div className="mt-1">
                   <p className="text-[13px] leading-tight font-semibold truncate">{catAName}</p>
                   <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
-                    <p className="min-w-0 truncate text-[9px] text-white/70">Challenger</p>
+                    <p className={`arena-tier-role arena-tier-role--${tierA} min-w-0 truncate text-[9px]`}>Challenger</p>
                     {guildA ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildA.cls}`}>{guildA.label}</span> : null}
                   </div>
                 </div>
@@ -1136,8 +1146,10 @@ const MatchCard = React.memo(function MatchCard({
                   role="Challenger"
                   votes={Number(match.votes_a || 0)}
                   sharePct={displayPct.a}
-                  onClose={() => setFlipA(false)}
-                  className={borderA}
+                  onClose={() => {
+                    flipTouchedRef.current = true;
+                    setFlipA(false);
+                  }}
                 />
             </div>
           </div>
@@ -1150,13 +1162,13 @@ const MatchCard = React.memo(function MatchCard({
         <div className="min-w-0">
           <div className="arena-flip-scene h-[220px] md:h-[300px]">
             <div className={`arena-flip-card ${flipB && !forceFront ? 'is-flipped' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane rounded-2xl border border-white/15 p-1.5 transition-transform transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : liveSide === 'a' ? 'opacity-75' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : dragIntent === 'a' ? 'opacity-80' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/15 p-1.5 transition-opacity ${reduceMotion ? 'duration-0' : 'duration-300'} ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className={`rarity-badge px-1.5 py-0.5 rounded-full border text-[8px] font-semibold ${match.cat_b.rarity === 'Rare' ? 'text-blue-100 border-blue-300/45 bg-blue-500/20 rarity-badge--rare' : match.cat_b.rarity === 'Epic' ? 'text-purple-100 border-purple-300/45 bg-purple-500/20 rarity-badge--epic' : match.cat_b.rarity === 'Legendary' ? 'text-amber-100 border-amber-300/45 bg-amber-500/20 rarity-badge--legendary' : match.cat_b.rarity === 'Mythic' ? 'text-fuchsia-100 border-fuchsia-300/45 bg-fuchsia-500/20' : 'text-zinc-100 border-zinc-300/35 bg-zinc-500/20 rarity-badge--common'}`}>
+                  <span className={`rarity-badge rarity-badge--${tierB} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_b.rarity}
                   </span>
                   <div className="flex items-center gap-1">
-                    <span className="px-1.5 py-0.5 rounded-full border border-white/20 bg-white/10 text-[8px] text-white/85">LVL {Math.max(1, Number(match.cat_b.level || 1))}</span>
+                    <span className={`arena-tier-meta-chip arena-tier-meta-chip--${tierB} px-1.5 py-0.5 rounded-full border text-[8px]`}>LVL {Math.max(1, Number(match.cat_b.level || 1))}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -1164,7 +1176,7 @@ const MatchCard = React.memo(function MatchCard({
                         setFlipB(true);
                       }}
                       aria-label={`Open ${catBName} details`}
-                      className="h-4 min-w-4 px-1 rounded-full border border-cyan-300/30 bg-cyan-500/15 text-[8px] text-cyan-100"
+                      className={`arena-tier-info-btn arena-tier-info-btn--${tierB} h-4 min-w-4 px-1 rounded-full border text-[8px]`}
                     >
                       i
                     </button>
@@ -1179,14 +1191,15 @@ const MatchCard = React.memo(function MatchCard({
                   aria-label={`Flip ${catBName} card`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
-                  <div className="w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15">
+                  <div className={`arena-card-image arena-card-image--${tierB} w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15`}>
+                    <div className={`arena-card-shimmer arena-card-shimmer--${tierB}`} />
                     <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="w-full h-full object-cover" />
                   </div>
                 </button>
                 <div className="mt-1">
                   <p className="text-[13px] leading-tight font-semibold truncate">{catBName}</p>
                   <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
-                    <p className="min-w-0 truncate text-[9px] text-white/70">Defender</p>
+                    <p className={`arena-tier-role arena-tier-role--${tierB} min-w-0 truncate text-[9px]`}>Defender</p>
                     {guildB ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildB.cls}`}>{guildB.label}</span> : null}
                   </div>
                 </div>
@@ -1196,8 +1209,10 @@ const MatchCard = React.memo(function MatchCard({
                   role="Defender"
                   votes={Number(match.votes_b || 0)}
                   sharePct={displayPct.b}
-                  onClose={() => setFlipB(false)}
-                  className={borderB}
+                  onClose={() => {
+                    flipTouchedRef.current = true;
+                    setFlipB(false);
+                  }}
                 />
             </div>
           </div>
@@ -1648,7 +1663,17 @@ function ArenaSection({
     }
     return out;
   }, [allArenaMatches, votedMatches]);
-  const results = globalResults.length > 0 ? globalResults : fallbackResults;
+  const resultsWithLocalVotes = useMemo(() => {
+    if (globalResults.length === 0) return fallbackResults;
+    return globalResults.map((match) => {
+      const matchId = String(match.match_id || '').trim();
+      const localChoice = matchId ? votedMatches[matchId] : "";
+      if (!localChoice) return match;
+      if (match.user_voted_cat_id === localChoice) return match;
+      return { ...match, user_voted_cat_id: localChoice };
+    });
+  }, [fallbackResults, globalResults, votedMatches]);
+  const results = resultsWithLocalVotes.length > 0 ? resultsWithLocalVotes : fallbackResults;
   const orderedVoting = useMemo(() => {
     if (globalPageInfo) return voting;
     const arranged = arrangeWithCatSpacing(voting, 10);
@@ -2726,7 +2751,16 @@ function ArenaSection({
           <button
             key={`${arena.tournament_id}-${s}`}
             onClick={() => setSegment(s)}
-            className={`h-10 rounded-full text-xs font-semibold capitalize ${segment === s ? "bg-white text-black" : "bg-white/8 text-white/80"}`}
+            type="button"
+            role="tab"
+            aria-selected={segment === s}
+            aria-controls={`arena-section-${arena.tournament_id}-${s}-content`}
+            id={`arena-section-${arena.tournament_id}-${s}-tab`}
+            className={`h-10 rounded-full text-xs font-semibold capitalize transition-all ${
+              segment === s
+                ? "bg-white/15 text-white border border-emerald-300/45 shadow-[0_0_18px_rgba(16,185,129,0.20)]"
+                : "bg-white/8 text-white/80 border border-transparent"
+            }`}
           >
             {s === "voting" ? (
               <span className="inline-flex items-center gap-1.5">
@@ -2890,7 +2924,7 @@ function ArenaSection({
               <MatchCard
                 key={match.match_id}
                 match={match}
-                voted={votedMatches[match.match_id] || null}
+                voted={match.user_voted_cat_id || votedMatches[match.match_id] || null}
                 debugMode={debugMode}
                 isVoting={votingMatch === match.match_id}
                 predictBusy={predictBusyMatch === match.match_id}
@@ -3973,6 +4007,33 @@ export default function Page() {
     }
   }
 
+  const refreshFlameState = useCallback(async () => {
+    const refreshed = await fetchUserState();
+    if (refreshed?.error) return;
+    setFlame(refreshed.data?.flame || null);
+    setProgress((prev) => prev ? {
+      ...prev,
+      currentStreak: refreshed.data?.flame?.dayCount || refreshed.data?.streak?.current_streak || prev.currentStreak,
+      predictionStreak: refreshed.data?.prediction_streak || prev.predictionStreak,
+      sigils: refreshed.data?.progress?.sigils ?? prev.sigils,
+    } : prev);
+  }, []);
+
+  const handleFlameAction = useCallback((action: 'vote' | 'predict' | 'submit') => {
+    if (action === 'submit') {
+      router.push('/submit');
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      document.getElementById('home-arenas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    if (action === 'predict') {
+      showToast('Open a live matchup and tap Predict.');
+    } else {
+      showToast('Jumped to live voting.');
+    }
+  }, [router]);
+
   async function handleVote(matchId: string, catId: string): Promise<boolean> {
     if (votingMatch) return false;
     if (Date.now() < Number(voteCooldownUntilRef.current || 0)) {
@@ -4178,6 +4239,7 @@ export default function Page() {
             .catch(() => null);
         }
         refreshGettingStarted();
+        void refreshFlameState();
         return true;
       }
     } catch {
@@ -4503,6 +4565,7 @@ export default function Page() {
         });
         statusBurstUntilRef.current = Date.now() + 20_000;
         refreshGettingStarted();
+        void refreshFlameState();
         return true;
       }
     } catch {
@@ -4759,7 +4822,7 @@ export default function Page() {
           </div>
           <div className="mt-2.5 flex items-end justify-between gap-2">
             <div>
-              <h1 className="home-page-title text-lg font-bold tracking-tight text-white">Today&apos;s Arenas</h1>
+              <h1 className="home-page-title text-lg font-bold tracking-tight text-white">Welcome to CatClash</h1>
               <p className="home-page-subtitle text-[11px] text-white/55">Vote fast, stack streaks, and catch the next Pulse.</p>
             </div>
             <div className="flex items-center gap-2">
@@ -5000,6 +5063,7 @@ export default function Page() {
             loading={loading && !flame}
             error={meError}
             onRetry={loadAll}
+            onNavigateAction={handleFlameAction}
             compact
             className="h-full"
           />

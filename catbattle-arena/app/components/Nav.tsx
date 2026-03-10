@@ -3,7 +3,7 @@
 import type { MouseEvent } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Swords, Cat, User, Home, PlusSquare, Trophy, Users, Images, Star } from 'lucide-react';
+import { Swords, Cat, User, Home, Trophy, Users, Images, Star, ShoppingBag } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
 import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
@@ -12,7 +12,6 @@ import { scanDuplicateTestIds } from '../lib/dev-testid-guard';
 export default function Nav() {
   const pathname = usePathname();
   const [myProfileHref, setMyProfileHref] = useState('/login');
-  const [profileLabel, setProfileLabel] = useState<'Login' | 'My Profile'>('Login');
   const [pendingDuelCount, setPendingDuelCount] = useState(0);
 
   useEffect(() => {
@@ -26,10 +25,8 @@ export default function Nav() {
         const actorId = resolveActorId(me);
         if (actorId) {
           setMyProfileHref(`/profile/${actorId}`);
-          setProfileLabel('My Profile');
         } else {
           setMyProfileHref('/login');
-          setProfileLabel('Login');
         }
         if (duel?.ok && Array.isArray(duel.incoming)) {
           const pending = duel.incoming.filter((d: { status?: string | null }) => String(d?.status || '').toLowerCase() === 'pending').length;
@@ -91,20 +88,24 @@ export default function Nav() {
   const desktopLinks = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/submit', label: 'Submit', icon: PlusSquare, emphasis: true },
+    { href: '/submit', label: 'Submit', icon: SparklessFallback, emphasis: true },
     { href: '/gallery', label: 'Gallery', icon: Images },
-    { href: '/shop', label: 'Shop', icon: SparklessFallback },
-    { href: '/social', label: 'Social', icon: Users, compact: true },
-    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, compact: true },
+    { href: '/shop', label: 'Shop', icon: ShoppingBag },
+  ];
+
+  const topActionLinks = [
+    { href: '/social', label: 'Social', icon: Users },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   ];
 
   const mobilePrimaryLinks = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/arena', label: 'Arena', icon: Star, arena: true },
-    { href: '/shop', label: 'Shop', icon: SparklessFallback },
-    { href: myProfileHref, label: 'Profile', icon: User },
+    { href: '/arena', label: 'Arena', icon: Star },
+    { href: '/submit', label: 'Submit', icon: SparklessFallback },
+    { href: '/shop', label: 'Shop', icon: ShoppingBag },
     { href: '/gallery', label: 'Gallery', icon: Images },
+    { href: myProfileHref, label: 'Profile', icon: User },
   ];
 
   const withNavFallback = (href: string) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -122,7 +123,7 @@ export default function Nav() {
       <nav className="main-nav top-nav-shell pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
         <div className="top-nav-backdrop absolute inset-0 pointer-events-none" />
         <div className="top-nav-inner relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="top-nav-row relative h-[var(--header-h)] grid grid-cols-[auto_1fr_auto] items-center gap-3">
+            <div className="top-nav-row relative h-[var(--header-h)] grid grid-cols-[auto_1fr_auto] items-center gap-3">
             <Link href="/" onClick={withNavFallback('/')} className="top-nav-brand inline-flex items-center gap-2">
               <span className="top-nav-logo-box relative w-8 h-8 rounded-xl border border-white/20 bg-gradient-to-br from-slate-800 via-slate-900 to-black overflow-hidden shadow-[0_6px_18px_rgba(0,0,0,0.4)]">
                 <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(56,189,248,0.28),transparent_58%)]" />
@@ -136,16 +137,17 @@ export default function Nav() {
             </Link>
 
             <nav className="nav-tabs top-nav-links flex items-center justify-start min-w-0">
-                {desktopLinks.map((link) => {
+              {desktopLinks.map((link) => {
                 const active = pathname === link.href;
                 const duelBadge = link.href === '/duel' && pendingDuelCount > 0;
                 const Icon = link.icon;
+                const mobileDuplicate = ['/', '/duel', '/gallery', '/shop'].includes(link.href);
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
                     onClick={withNavFallback(link.href)}
-                    className={`nav-tab top-nav-tab relative h-9 px-3 rounded-full border text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${active ? 'active' : ''}`}
+                    className={`nav-tab top-nav-tab relative h-9 px-3 rounded-full border text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${active ? 'active' : ''} ${mobileDuplicate ? 'top-nav-tab--mobile-duplicate' : 'top-nav-tab--mobile-keep'} ${link.emphasis ? 'top-nav-submit' : ''}`}
                   >
                     <Icon className="h-[11px] w-[11px]" />
                     {link.label}
@@ -158,17 +160,22 @@ export default function Nav() {
                 );
               })}
             </nav>
-            <div className="top-nav-actions flex items-center gap-1.5 sm:gap-2">
-              <Link
-                href={myProfileHref}
-                onClick={withNavFallback(myProfileHref)}
-                className={`nav-tab top-nav-profile-chip relative hidden sm:inline-flex h-9 px-3 rounded-full border items-center text-xs font-semibold ${pathname === myProfileHref ? 'active' : ''}`}
-              >
-                <span className="top-nav-profile-avatar inline-flex items-center justify-center">
-                  <User className="h-[13px] w-[13px]" />
-                </span>
-                <span className="top-nav-profile-label">{profileLabel}</span>
-              </Link>
+            <div className="top-nav-actions top-nav-pill-wrap flex items-center gap-1.5 sm:gap-2 ml-auto">
+              {topActionLinks.map((link) => {
+                const active = pathname === link.href;
+                const Icon = link.icon;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={withNavFallback(link.href)}
+                    className={`nav-pill top-nav-pill inline-flex items-center ${active ? 'active' : ''}`}
+                  >
+                    <Icon className="h-[11px] w-[11px]" />
+                    {link.label}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -177,27 +184,28 @@ export default function Nav() {
 
       <nav
         data-nav-root="mobile"
-        className="sm:hidden fixed bottom-0 inset-x-1 mx-auto z-[1400] w-[calc(100%-0.5rem)] max-w-[500px] h-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+6px)] pb-[env(safe-area-inset-bottom)] rounded-t-[18px] border border-zinc-300/20 border-b-0 bg-zinc-950 shadow-[0_-16px_38px_rgba(0,0,0,0.62)] px-1.5 pt-1.5 opacity-100 pointer-events-auto overflow-visible backdrop-blur-xl isolate"
+        className="sm:hidden fixed bottom-0 inset-x-1 mx-auto z-[1400] w-[calc(100%-0.5rem)] max-w-[500px] h-[calc(58px+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] rounded-t-[18px] border border-zinc-300/20 border-b-0 bg-zinc-950 shadow-[0_-16px_38px_rgba(0,0,0,0.62)] px-1 pt-0 opacity-100 pointer-events-auto overflow-visible backdrop-blur-xl isolate"
       >
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,#141518_0%,#1b1d22_54%,#20232a_100%)]" />
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-200/40 to-transparent pointer-events-none" />
-        <div className="relative flex h-[var(--bottom-nav-h)] items-stretch gap-1">
+        <div className="relative flex h-[58px] items-stretch gap-1">
           {mobilePrimaryLinks.map((link) => {
             const active = pathname === link.href;
             const Icon = link.icon;
             const duelBadge = link.href === '/duel' && pendingDuelCount > 0;
-            const testId =
+    const isSubmit = link.href === '/submit';
+                const testId =
               link.href === '/'
                 ? 'nav-home'
                 : link.href === '/duel'
                   ? 'nav-duel'
-                  : link.href === '/submit'
-                    ? 'nav-submit'
-                    : link.href === '/gallery'
+              : link.href === '/gallery'
                       ? 'nav-gallery'
-                      : link.href === '/arena'
+                : link.href === '/arena'
                         ? 'nav-arena'
-                        : 'nav-profile';
+                  : link.href === '/submit'
+                          ? 'nav-submit'
+                  : 'nav-profile';
             return (
               <Link
                 key={link.href}
@@ -205,16 +213,10 @@ export default function Nav() {
                 onClick={withNavFallback(link.href)}
                 data-testid={testId}
                 aria-current={active ? 'page' : undefined}
-                className={`bn-tab nav-tab relative z-10 h-full flex-1 rounded-xl px-[2px] text-[10px] font-semibold inline-flex flex-col items-center justify-center gap-0.5 active:scale-[0.98] touch-manipulation ${
-                  link.arena
-                    ? `arena ${active ? 'active text-white' : 'text-zinc-100/90'}`
-                    : active
-                      ? 'active bg-gradient-to-b from-zinc-500/70 to-zinc-600/75 text-white border border-zinc-100/35 shadow-[0_8px_16px_rgba(148,163,184,0.22)]'
-                      : 'bg-zinc-800/82 text-zinc-100/90 border border-zinc-500/60 hover:bg-zinc-700/84'
-                }`}
+                className={`bn-tab ${isSubmit ? 'bn-submit' : ''} ${active ? 'active' : ''} nav-tab relative z-10 h-full flex-1 text-[0.45rem] font-semibold rounded-xl px-[2px] inline-flex flex-col items-center justify-center gap-0.5 leading-none active:scale-[0.98] touch-manipulation`}
               >
-                <span className={`bn-icon ${link.arena ? 'relative inline-flex items-center justify-center' : ''}`}>
-                  <Icon className={`${link.arena ? 'w-4 h-4' : 'w-[17px] h-[17px]'}`} />
+                <span className={`bn-icon ${link.href === '/arena' ? 'bn-icon--arena' : ''}`}>
+                  <Icon />
                 </span>
                 {link.label}
                 {duelBadge && (

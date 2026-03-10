@@ -203,8 +203,8 @@ export async function POST(req: NextRequest) {
       const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
       if (voterUserId) {
         await trackAppEvent(supabase, isRegistered ? 'vote_cast' : 'guest_vote_cast', { match_id: matchId }, voterUserId);
+        await evaluateAndMaybeQualifyFlame(supabase, voterUserId, 'vote', new Date());
         if (isRegistered) {
-          await evaluateAndMaybeQualifyFlame(supabase, voterUserId, 'vote', new Date());
           const q = await markReferralQualifiedFromVote(supabase, voterUserId);
           if ((q as any)?.qualified) {
             await trackAppEvent(supabase, 'recruit_qualified', { via: 'vote', reason: (q as any)?.reason || null }, voterUserId);
