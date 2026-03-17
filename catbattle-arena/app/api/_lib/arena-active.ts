@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { computePulseWindow } from "./pulse";
 
 export const CANONICAL_ACTIVE_STATUS = "active";
 export const ACTIVE_STATUS_ALIASES = ["active", "in_progress", "open", "voting", "voting_now"] as const;
@@ -14,20 +15,17 @@ export function normalizeArenaStatus(input: string | null | undefined): string {
   return raw;
 }
 
-export function computeArenaUtcContext(now = new Date()) {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const day = now.getUTCDate();
-  const startUtc = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-  const endUtc = new Date(Date.UTC(year, month, day + 1, 0, 0, 0, 0));
-  const dayKeyUtc = startUtc.toISOString().slice(0, 10);
+export async function computeArenaUtcContext(now = new Date()) {
+  const pulse = await computePulseWindow(now);
   return {
     serverNowUtc: now.toISOString(),
-    dayKeyUtc,
+    dayKeyUtc: pulse.pulseKey,
     pulseWindow: {
-      startUtc: startUtc.toISOString(),
-      endUtc: endUtc.toISOString(),
-      nextPulseUtc: endUtc.toISOString(),
+      startUtc: pulse.pulseStartAt,
+      endUtc: pulse.resolvesAt,
+      nextPulseUtc: pulse.resolvesAt,
+      voteLocksAt: pulse.voteLocksAt,
+      isLocked: pulse.isLocked,
     },
   };
 }
@@ -43,7 +41,7 @@ type EnsureActiveArenasResult = {
 };
 
 export async function ensureActiveArenasUtc(supabase: SupabaseClient, now = new Date()): Promise<EnsureActiveArenasResult> {
-  const utc = computeArenaUtcContext(now);
+  const utc = await computeArenaUtcContext(now);
   const arenaTypes: ArenaType[] = ["main", "rookie"];
 
   const { data: sameDayRows } = await supabase

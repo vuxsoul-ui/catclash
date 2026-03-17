@@ -11,6 +11,7 @@ import { markReferralQualifiedFromVote } from "../_lib/referrals";
 import { trackAppEvent } from "../_lib/telemetry";
 import { applyFeatureTesterBoost, isFeatureTesterId } from "../_lib/tester";
 import { computeVoteStats } from "../_lib/vote-stats";
+import { computePulseWindow } from "../_lib/pulse";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ async function fetchMatchVotes(supabase: any, matchId: string) {
     const a = Number(data.votes_a || 0);
     const b = Number(data.votes_b || 0);
     const stats = computeVoteStats(a, b);
-    return { votes_a: a, votes_b: b, ...stats };
+    return stats;
   } catch {
     return null;
   }
@@ -107,9 +108,9 @@ export async function POST(req: NextRequest) {
     if (testerMode) {
       const { data: match, error: matchErr } = await supabase
         .from("tournament_matches")
-        .select("id, cat_a_id, cat_b_id, status, votes_a, votes_b")
-        .eq("id", matchId)
-        .maybeSingle();
+      .select("id, tournament_id, cat_a_id, cat_b_id, status, votes_a, votes_b")
+      .eq("id", matchId)
+      .maybeSingle();
 
       if (matchErr || !match) {
         logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_match" });
@@ -118,6 +119,10 @@ export async function POST(req: NextRequest) {
       if (votedFor !== match.cat_a_id && votedFor !== match.cat_b_id) {
         logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat" });
         return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
+      }
+      const pulse = await computePulseWindow(new Date());
+      if (pulse.isLocked || match.status === 'locked') {
+        return NextResponse.json({ ok: false, error: "voting_locked", vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
       }
 
       const voteA = votedFor === match.cat_a_id;
@@ -180,6 +185,26 @@ export async function POST(req: NextRequest) {
     const userAgent = req.headers.get("user-agent") ?? null;
 
     // Try RPC first
+    const { data: preflightMatch, error: preflightMatchErr } = await supabase
+      .from("tournament_matches")
+      .select("id, tournament_id, cat_a_id, cat_b_id, status, votes_a, votes_b")
+      .eq("id", matchId)
+      .maybeSingle();
+
+    if (preflightMatchErr || !preflightMatch) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_match_preflight" });
+      return NextResponse.json({ ok: false, error: "match_not_found" }, { status: 404 });
+    }
+    if (votedFor !== preflightMatch.cat_a_id && votedFor !== preflightMatch.cat_b_id) {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat_preflight" });
+      return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
+    }
+    const pulse = await computePulseWindow(new Date());
+    if (pulse.isLocked || String(preflightMatch.status || '').toLowerCase() === 'locked') {
+      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "vote_locked" });
+      return NextResponse.json({ ok: false, error: "voting_locked", vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
+    }
+
     const { data: rpcData, error: rpcError } = await supabase.rpc("cast_vote", {
       p_match_id: matchId,
       p_voter_user_id: voterUserId,
@@ -238,7 +263,7 @@ export async function POST(req: NextRequest) {
     // 1. Verify the match exists and is active
     const { data: match, error: matchErr } = await supabase
       .from("tournament_matches")
-      .select("id, cat_a_id, cat_b_id, status, votes_a, votes_b")
+      .select("id, tournament_id, cat_a_id, cat_b_id, status, votes_a, votes_b")
       .eq("id", matchId)
       .single();
 
@@ -250,6 +275,9 @@ export async function POST(req: NextRequest) {
     if (match.status !== "active") {
       logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_state", detail: "match_closed" });
       return NextResponse.json({ ok: false, error: "match_closed" }, { status: 400 });
+    }
+    if (pulse.isLocked || String(match.status || '').toLowerCase() === 'locked') {
+      return NextResponse.json({ ok: false, error: "voting_locked", vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
     }
 
     // Verify voted_for is one of the two cats

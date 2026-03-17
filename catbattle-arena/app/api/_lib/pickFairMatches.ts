@@ -2,6 +2,7 @@ type FairCat = {
   id?: string | null;
   owner_id?: string | null;
   owner_username?: string | null;
+  image_key?: string | null;
 };
 
 type FairMatch = {
@@ -29,10 +30,16 @@ function ownerKeys(match: FairMatch): string[] {
   return Array.from(keys);
 }
 
+function normalizeImageKey(cat?: FairCat | null): string | null {
+  if (!cat) return null;
+  const key = String(cat.image_key || "").trim().toLowerCase();
+  return key || null;
+}
+
 export function pickFairMatches<T extends FairMatch>(
   matches: T[],
   targetCount: number,
-  opts?: { maxPerOwner?: number; avoidSameOwnerMatch?: boolean }
+  opts?: { maxPerOwner?: number; avoidSameOwnerMatch?: boolean; avoidSameImageMatch?: boolean }
 ): T[] {
   const desired = Math.max(0, Number(targetCount || 0));
   if (desired === 0 || matches.length === 0) return [];
@@ -42,6 +49,7 @@ export function pickFairMatches<T extends FairMatch>(
       ? Math.floor(opts.maxPerOwner)
       : Number.POSITIVE_INFINITY;
   const avoidSameOwnerMatch = opts?.avoidSameOwnerMatch ?? true;
+  const avoidSameImageMatch = opts?.avoidSameImageMatch ?? true;
 
   const picked: T[] = [];
   const pickedIds = new Set<string>();
@@ -71,10 +79,17 @@ export function pickFairMatches<T extends FairMatch>(
     return Boolean(a && b && a === b);
   };
 
+  const sameImageMatch = (m: FairMatch) => {
+    const a = normalizeImageKey(m.cat_a);
+    const b = normalizeImageKey(m.cat_b);
+    return Boolean(a && b && a === b);
+  };
+
   const accept = (m: T) => {
     const id = String(m.match_id || m.id || "").trim();
     if (id && pickedIds.has(id)) return false;
     if (avoidSameOwnerMatch && sameOwnerMatch(m)) return false;
+    if (avoidSameImageMatch && sameImageMatch(m)) return false;
     const owners = ownerKeys(m);
     if (wouldExceedOwnerCap(owners)) return false;
     picked.push(m);

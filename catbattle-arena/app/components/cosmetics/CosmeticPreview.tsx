@@ -55,7 +55,9 @@ export default function CosmeticPreview({
   onInteracted?: () => void;
 }) {
   const effect = resolveCosmeticEffect(cosmetic);
-  const [triggerKey, setTriggerKey] = useState('');
+  const [trigger, setTrigger] = useState<{ key: string; clientX?: number; clientY?: number } | null>(null);
+  const [demoTapped, setDemoTapped] = useState(false);
+  const [demoFired, setDemoFired] = useState(false);
   const titleLabel = String(cosmetic.name || 'Untitled').trim() || 'Untitled';
   const badgeLabel = String(cosmetic.name || 'Badge').trim() || 'Badge';
   const isGenericTitle =
@@ -68,7 +70,7 @@ export default function CosmeticPreview({
 
   if (effect.slot === 'theme') {
     return (
-      <div className={`rounded-xl border border-white/10 ${effect.apply.className || 'cosm-theme-default'} ${compact ? 'h-16' : 'h-24'} p-2 flex flex-col justify-between`}>
+      <div className={`rounded-xl border border-[rgba(55,28,108,0.22)] bg-[rgba(8,6,18,0.8)] ${effect.apply.className || 'cosm-theme-default'} ${compact ? 'h-16' : 'h-24'} p-2 flex flex-col justify-between`}>
         <div className="flex items-center justify-between gap-1.5">
           <span className={`text-[10px] font-semibold ${effect.textClassName || 'text-white/85'}`}>Theme Accent</span>
           <span className="h-2 w-2 rounded-full bg-white/60" />
@@ -82,28 +84,59 @@ export default function CosmeticPreview({
   }
 
   if (effect.slot === 'vote_effect') {
+    const demoTone =
+      effect.id === 'vote_ember_burst'
+        ? 'ember'
+        : effect.id === 'vote_comet'
+          ? 'comet'
+          : effect.id === 'vote_stardust'
+            ? 'stardust'
+            : effect.id === 'vote_crown'
+              ? 'crown'
+              : effect.id === 'vote_arc'
+                ? 'arc'
+                : 'ember';
+    const demoIcon =
+      effect.id === 'vote_ember_burst'
+        ? '🔥'
+        : effect.id === 'vote_comet'
+          ? '☄'
+          : effect.id === 'vote_stardust'
+            ? '✧'
+            : effect.id === 'vote_crown'
+              ? '♛'
+              : effect.id === 'vote_arc'
+                ? '⚡'
+                : '✦';
+
     return (
-      <div className={`relative rounded-xl border border-white/10 bg-black/35 ${compact ? 'h-16' : 'h-24'} p-2 flex items-end`}>
+      <div className={`demo-wrap demo-wrap-${demoTone} ${compact ? 'h-[72px]' : 'h-24'}`}>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            const key = `${Date.now()}`;
-            setTriggerKey(key);
+            setDemoTapped(true);
+            setDemoFired(true);
+            setTrigger({ key: `${Date.now()}`, clientX: e.clientX, clientY: e.clientY });
+            window.setTimeout(() => setDemoFired(false), 400);
             onInteracted?.();
           }}
-          className="relative z-10 h-8 w-full rounded-lg bg-white/10 border border-white/15 text-xs font-semibold text-white"
+          className={`btn-effect btn-effect-${demoTone} relative z-10 h-full w-full ${compact ? 'text-[0.78rem]' : 'text-[0.88rem]'} ${demoTapped ? 'tapped' : ''} ${demoFired ? 'fired' : ''}`}
         >
-          Tap To Test
+          <span className="btn-label">
+            <span className={`btn-label-icon ${demoFired ? 'fired' : ''}`}>{demoIcon}</span>
+            Tap To Test
+          </span>
+          <span className="tap-hint">👆</span>
         </button>
-        <VoteEffectLayer effectSlug={cosmetic.slug || null} triggerKey={triggerKey} />
+        <VoteEffectLayer effectSlug={cosmetic.slug || null} trigger={trigger} />
       </div>
     );
   }
 
   if (effect.slot === 'badge') {
     return (
-      <div className={`rounded-xl border border-white/10 bg-black/35 ${compact ? 'h-16' : 'h-24'} p-2 flex items-center`}>
+      <div className={`rounded-xl border border-[rgba(55,28,108,0.22)] bg-[rgba(8,6,18,0.8)] ${compact ? 'h-16' : 'h-24'} p-2 flex items-center`}>
         <div className="w-full flex items-center justify-between gap-2 text-xs text-white/85">
           <span className={`inline-flex px-2 py-1 rounded-full border ${effect.badgeClassName || 'cosm-badge-default'}`}>🏴 {badgeLabel}</span>
           <span className="text-[10px] text-white/55">Arena Tag</span>
@@ -114,7 +147,7 @@ export default function CosmeticPreview({
 
   if (effect.slot === 'xp') {
     return (
-      <div className={`rounded-xl border border-white/10 bg-black/35 ${compact ? 'h-16' : 'h-24'} p-2 flex items-center justify-center`}>
+      <div className={`rounded-xl border border-[rgba(55,28,108,0.22)] bg-[rgba(8,6,18,0.8)] ${compact ? 'h-16' : 'h-24'} p-2 flex items-center justify-center`}>
         <div className="w-full">
           <p className="text-[10px] text-cyan-100/80 mb-1">XP Boost Pack</p>
           <div className="h-2 rounded-full bg-white/10 overflow-hidden">
@@ -127,7 +160,7 @@ export default function CosmeticPreview({
 
   return (
     <div
-      className={`rounded-xl border border-white/10 bg-black/35 ${compact ? 'h-16' : 'h-24'} p-2 flex items-center justify-between`}
+      className={`rounded-xl border border-[rgba(55,28,108,0.22)] bg-[rgba(8,6,18,0.8)] ${compact ? 'h-16' : 'h-24'} p-2 flex items-center justify-between`}
       style={dynamicTitle?.shellStyle}
     >
       <span

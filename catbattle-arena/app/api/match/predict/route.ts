@@ -15,6 +15,7 @@ import { evaluateAndMaybeQualifyFlame } from '../../_lib/arenaFlame';
 import { checkRateLimitMany, getClientIp, hashValue } from '../../_lib/rateLimit';
 import { logReferralEvent } from '../../_lib/referrals';
 import { trackAppEvent } from '../../_lib/telemetry';
+import { computePulseWindow } from '../../_lib/pulse';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,12 +52,16 @@ export async function POST(req: NextRequest) {
 
     const { data: match, error: matchErr } = await supabase
       .from('tournament_matches')
-      .select('id, cat_a_id, cat_b_id, status, votes_a, votes_b')
+      .select('id, tournament_id, cat_a_id, cat_b_id, status, votes_a, votes_b')
       .eq('id', matchId)
       .maybeSingle();
 
     if (matchErr || !match) return NextResponse.json({ ok: false, error: 'Match not found' }, { status: 404 });
     if (match.status !== 'active') return NextResponse.json({ ok: false, error: 'Match is not active' }, { status: 400 });
+    const pulse = await computePulseWindow(new Date());
+    if (pulse.isLocked || String(match.status || '').toLowerCase() === 'locked') {
+      return NextResponse.json({ ok: false, error: 'Voting is locked for this Pulse', vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
+    }
     if (predictedCatId !== match.cat_a_id && predictedCatId !== match.cat_b_id) {
       return NextResponse.json({ ok: false, error: 'Invalid predicted cat' }, { status: 400 });
     }

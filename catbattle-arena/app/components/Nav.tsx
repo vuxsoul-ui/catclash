@@ -88,12 +88,12 @@ export default function Nav() {
   const desktopLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/gallery', label: 'Gallery', icon: Cat },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
   ];
 
   const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnlyMobile?: boolean; hideBelow340?: boolean }> = [
     { href: '/submit', label: 'Submit', icon: Plus },
+    { href: '/gallery', label: 'Gallery', icon: Cat },
     { href: '/social', label: 'Social', icon: Users },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnlyMobile: true },
   ];
@@ -168,8 +168,8 @@ export default function Nav() {
               {topActionLinks.map((link) => {
                 const active = isActiveHref(link.href);
                 const Icon = link.icon;
-                const isSubmit = link.href === '/submit';
-                const actionClass = isSubmit
+                const isStaticAction = link.href === '/submit' || link.href === '/gallery';
+                const actionClass = isStaticAction
                   ? 'header-submit-btn top-nav-submit'
                   : `nav-pill top-nav-pill inline-flex items-center ${active ? 'active' : ''} ${link.href === '/social' ? 'header-social-pill' : ''} ${link.href === '/leaderboard' ? 'header-lb-pill' : ''}`;
                 return (

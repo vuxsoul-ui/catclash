@@ -117,12 +117,8 @@ export function impliedProbability(
   votesA: number | null | undefined,
   votesB: number | null | undefined
 ): number {
-  const a = Math.max(0, Number(votesA || 0)) + 1;
-  const b = Math.max(0, Number(votesB || 0)) + 1;
-  const total = a + b;
-  const pA = total > 0 ? a / total : 0.5;
-  const p = predictedIsA ? pA : 1 - pA;
-  return Math.min(0.95, Math.max(0.05, p));
+  const { prob_a, prob_b } = computeVoteProbabilities(Number(votesA || 0), Number(votesB || 0));
+  return predictedIsA ? prob_a : prob_b;
 }
 
 export function predictionMultiplierFromProbability(probability: number): number {
@@ -133,3 +129,4 @@ export function predictionMultiplierFromProbability(probability: number): number
 export function underdogBonusPct(probability: number): number {
   return probability < PREDICTION_UNDERDOG_THRESHOLD ? PREDICTION_UNDERDOG_BONUS_PCT : 0;
 }
+import { computeVoteProbabilities } from './vote-stats';

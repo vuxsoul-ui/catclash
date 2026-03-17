@@ -12,6 +12,8 @@ import { pickFairMatches } from "../../_lib/pickFairMatches";
 import { isAdminAuthorized } from "../../_lib/adminAuth";
 import { isFeatureTesterId } from "../../_lib/tester";
 import { computeVoteStats } from "../../_lib/vote-stats";
+import { computePulseWindow } from "../../_lib/pulse";
+import { loadCurrentStreakMap, loadEquippedSkillsForCats, loadLockedSkillsForCats, resolveMatchup } from "../../_lib/skill-resolution";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,7 +21,7 @@ export const fetchCache = "force-no-store";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const VOTABLE_MATCH_STATUSES = ["active", "in_progress"] as const;
+const VISIBLE_MATCH_STATUSES = ["active", "in_progress", "locked"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" } as const;
 const NPC_USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -27,6 +29,15 @@ function isSameOwnerPair(aOwnerId?: string | null, bOwnerId?: string | null): bo
   const a = String(aOwnerId || "").trim();
   const b = String(bOwnerId || "").trim();
   return !!a && !!b && a === b;
+}
+
+function normalizedPairImageKey(value: string | null | undefined): string | null {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  return raw
+    .replace(/[?#].*$/, '')
+    .replace(/\/(thumb|card|original)\.(webp|png|jpg|jpeg)$/i, '')
+    .replace(/\.(webp|png|jpg|jpeg)$/i, '');
 }
 
 export async function GET(request: NextRequest) {
@@ -101,7 +112,7 @@ export async function GET(request: NextRequest) {
       .from('tournament_matches')
       .select('id')
       .in('tournament_id', tournamentIds)
-      .in('status', [...VOTABLE_MATCH_STATUSES] as any)
+      .in('status', [...VISIBLE_MATCH_STATUSES] as any)
       .limit(1);
 
     if ((!activeMatchProbe || activeMatchProbe.length === 0) && LAUNCH_CONFIG.seedMatchupAutoFill) {
@@ -141,7 +152,7 @@ export async function GET(request: NextRequest) {
           .from("tournament_matches")
           .select("id, tournament_id, round, cat_a_id, cat_b_id, winner_id, status, votes_a, votes_b, created_at")
           .eq("tournament_id", tournamentId)
-          .in("status", [...VOTABLE_MATCH_STATUSES, "pending", "complete", "completed"] as any)
+          .in("status", [...VISIBLE_MATCH_STATUSES, "pending", "complete", "completed"] as any)
           .order("created_at", { ascending: false })
           .limit(50);
         return { data: data || [], error };
@@ -195,6 +206,12 @@ export async function GET(request: NextRequest) {
         (cats as Array<{ user_id?: string | null }>).map((c) => c.user_id).filter(Boolean) as string[]
       )
     );
+    const pulse = await computePulseWindow(now);
+    const skillCatIds = Array.from(catIds);
+    const [skillMap, streakMap] = await Promise.all([
+      pulse.isLocked ? loadLockedSkillsForCats(supabase, skillCatIds) : loadEquippedSkillsForCats(supabase, skillCatIds),
+      loadCurrentStreakMap(supabase, skillCatIds),
+    ]);
     const { data: profileRows } = userIds.length > 0
       ? await supabase.from('profiles').select('id, username, guild').in('id', userIds)
       : { data: [] as Array<{ id: string; username: string | null; guild: string | null }> };
@@ -206,7 +223,7 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    const catMap: Record<string, { id: string; name: string; image_url: string | null; rarity: string; level: number; ability: string | null; ability_description: string | null; description: string | null; origin: string | null; wins: number; losses: number; owner_id: string | null; owner_username: string | null; owner_guild: string | null; stats: { attack: number; defense: number; speed: number; charisma: number; chaos: number } }> = {};
+    const catMap: Record<string, { id: string; name: string; image_url: string | null; image_key: string | null; rarity: string; level: number; ability: string | null; ability_description: string | null; description: string | null; origin: string | null; wins: number; losses: number; owner_id: string | null; owner_username: string | null; owner_guild: string | null; stats: { attack: number; defense: number; speed: number; charisma: number; chaos: number } }> = {};
     const ineligibleCatIds = new Set<string>();
     for (const cat of cats as Array<{
       id: string;
@@ -247,12 +264,14 @@ export async function GET(request: NextRequest) {
         ineligibleCatIds.add(String(cat.id || ''));
         continue;
       }
-      const normalizedThumb = normalizeCatImageUrl({ id: String(cat.id) });
+      const normalizedThumb = normalizeCatImageUrl({ id: String(cat.id), image_url: sourcePath });
+      const imageKey = normalizedPairImageKey(sourcePath || normalizedThumb || null);
       const normalizedName = String(cat.name || '').trim() || 'Unknown';
       catMap[cat.id] = {
         id: cat.id,
         name: normalizedName,
         image_url: normalizedThumb,
+        image_key: imageKey,
         rarity: cat.rarity || "Common",
         level: Math.max(1, Number((cat as any).cat_level || (cat as any).level || 1)),
         ability: cat.ability || null,
@@ -297,7 +316,7 @@ export async function GET(request: NextRequest) {
       .filter((m) => {
         const t = todayTournaments.find((tt) => tt.id === m.tournament_id);
         if (!t) return false;
-        return m.round === (t.round || 1) && m.status === 'active';
+        return m.round === (t.round || 1) && (m.status === 'active' || m.status === 'locked');
       })
       .map((m) => m.id);
     const votedMatches: Record<string, string> = {};
@@ -358,9 +377,24 @@ export async function GET(request: NextRequest) {
       const b = catMap[m.cat_b_id];
       if (!a || !b) return null;
       if (!testerMode && isSameOwnerPair(a.owner_id || null, b.owner_id || null)) return null;
+      if (a.image_key && b.image_key && a.image_key === b.image_key) return null;
       const votesA = Number(m.votes_a || 0);
       const votesB = Number(m.votes_b || 0);
       const stats = computeVoteStats(votesA, votesB);
+      const votingLocked = pulse.isLocked || String(m.status || '').toLowerCase() === 'locked';
+      const resolution = resolveMatchup(
+        {
+          votes: votesA,
+          skill: skillMap[String(m.cat_a_id || '')] || null,
+          opponentStreak: Math.max(0, Number(streakMap[String(m.cat_b_id || '')] || 0)),
+        },
+        {
+          votes: votesB,
+          skill: skillMap[String(m.cat_b_id || '')] || null,
+          opponentStreak: Math.max(0, Number(streakMap[String(m.cat_a_id || '')] || 0)),
+        },
+        String(m.tournament_id || '')
+      );
       return {
         match_id: m.id,
         status: testerMode ? 'active' : m.status,
@@ -368,8 +402,20 @@ export async function GET(request: NextRequest) {
         votes_a: votesA,
         votes_b: votesB,
         total_votes: stats.total_votes,
-        percent_a: stats.percent_a,
-        percent_b: stats.percent_b,
+        percent_a: Number((resolution.finalProbA * 100).toFixed(2)),
+        percent_b: Number((resolution.finalProbB * 100).toFixed(2)),
+        prob_a: resolution.finalProbA,
+        prob_b: resolution.finalProbB,
+        base_prob_a: resolution.baseProbA,
+        skill_delta: resolution.netSkillDelta,
+        skill_a_triggered: resolution.skillATriggered,
+        skill_b_triggered: resolution.skillBTriggered,
+        skill_a_id: resolution.skillAId,
+        skill_b_id: resolution.skillBId,
+        probability_display: `Cat A: ${(resolution.finalProbA * 100).toFixed(2)}%  ·  Cat B: ${(resolution.finalProbB * 100).toFixed(2)}%`,
+        voting_locked: votingLocked,
+        vote_locks_at: pulse.voteLocksAt,
+        resolves_at: pulse.resolvesAt,
         winner_id: testerMode ? null : m.winner_id,
         is_close_match: Math.abs(votesA - votesB) <= 2,
         user_prediction: userPredictions[m.id] || null,
@@ -425,7 +471,7 @@ export async function GET(request: NextRequest) {
     const poolFor = (type: 'main' | 'rookie') => {
       const active = (allMatches || [])
         .filter((m: any) => typeByTournamentId[String(m?.tournament_id || '')] === type)
-        .filter((m: any) => testerMode || VOTABLE_MATCH_STATUSES.includes(String(m?.status || '').toLowerCase() as any))
+        .filter((m: any) => testerMode || VISIBLE_MATCH_STATUSES.includes(String(m?.status || '').toLowerCase() as any))
         .map(mapMatch)
         .filter(Boolean)
         .sort((a: any, b: any) => {
@@ -484,7 +530,7 @@ export async function GET(request: NextRequest) {
     };
     if (debugMode) {
       const tTypeById = Object.fromEntries(todayTournaments.map((t: any) => [String(t.id), String(t.tournament_type || "")]));
-      const allVotable = (allMatches || []).filter((m: any) => VOTABLE_MATCH_STATUSES.includes(String(m?.status || '').toLowerCase() as any));
+      const allVotable = (allMatches || []).filter((m: any) => VISIBLE_MATCH_STATUSES.includes(String(m?.status || '').toLowerCase() as any));
       const mainCandidates = allVotable.filter((m: any) => tTypeById[String(m?.tournament_id || "")] === 'main');
       const rookieCandidates: Array<any> = [];
       const completedStatuses = new Set(['complete', 'completed']);
@@ -509,7 +555,7 @@ export async function GET(request: NextRequest) {
         rookieNewestVotableCreatedAt: newestBy(rookieCandidates),
         mainNewestMatchCreatedAt: String(mainPool?.[0]?.created_at || ''),
         rookieNewestMatchCreatedAt: '',
-        includedMatchStatuses: [...VOTABLE_MATCH_STATUSES],
+        includedMatchStatuses: [...VISIBLE_MATCH_STATUSES],
         debugImageViolations,
       };
     }

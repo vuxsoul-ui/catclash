@@ -4,12 +4,12 @@ import {
   isRelationMissingError,
   predictionMultiplierFromProbability,
   predictionStreakBonusPct,
-  stanceBonus,
   underdogBonusPct,
 } from './tactical';
 import { pickRandomCatUsername } from './cat-usernames';
-import { computeHeadToHeadMoveBonus, computePowerRating } from '../../_lib/combat';
-import { computePowerTieWinner, computeStatVoteSwing, type CombatProfile } from './combat-balance';
+import { computePulseWindow } from './pulse';
+import { computeVoteProbabilities } from './vote-stats';
+import { loadCurrentStreakMap, loadLockedSkillsForCats, lockPulse, resolveMatchup } from './skill-resolution';
 
 type TournamentRow = {
   id: string;
@@ -22,14 +22,21 @@ type TournamentRow = {
 
 type MatchRow = {
   id: string;
+  tournament_id?: string;
   round: number;
   cat_a_id: string;
   cat_b_id: string;
   votes_a: number | null;
   votes_b: number | null;
+  locked_votes_a?: number | null;
+  locked_votes_b?: number | null;
+  locked_prob_a?: number | null;
+  locked_prob_b?: number | null;
   winner_id: string | null;
   status: string;
   created_at: string;
+  voting_locked_at?: string | null;
+  resolved_at?: string | null;
 };
 
 type CatRow = {
@@ -37,23 +44,7 @@ type CatRow = {
   user_id: string;
   name: string;
   image_path: string | null;
-};
-
-type CombatCat = {
-  id: string;
-  rarity: string | null;
-  attack: number | null;
-  defense: number | null;
-  speed: number | null;
-  charisma: number | null;
-  chaos: number | null;
-  cat_level: number | null;
-  ability: string | null;
-};
-
-type CatStanceRow = {
-  cat_id: string;
-  stance: string;
+  image_url_thumb?: string | null;
 };
 
 export const NPC_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -73,8 +64,8 @@ function supabaseAdmin(): SupabaseClient {
   });
 }
 
-function todayUtc() {
-  return new Date().toISOString().slice(0, 10);
+async function currentPulseKey(now = new Date()) {
+  return (await computePulseWindow(now)).pulseKey;
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -86,57 +77,57 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-function computeCombatScore(cat: CombatCat): number {
-  const c = Number(cat.chaos || 0);
-  const chaosSwing = (Math.random() - 0.5) * (c * 0.28);
-  return (
-    computePowerRating({
-      attack: cat.attack,
-      defense: cat.defense,
-      speed: cat.speed,
-      charisma: cat.charisma,
-      chaos: cat.chaos,
-      rarity: cat.rarity,
-      ability: cat.ability,
-      level: cat.cat_level,
-    }) + chaosSwing
-  );
+function normalizedPairImageKey(value: string | null | undefined): string | null {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  return raw
+    .replace(/[?#].*$/, '')
+    .replace(/\/(thumb|card|original)\.(webp|png|jpg|jpeg)$/i, '')
+    .replace(/\.(webp|png|jpg|jpeg)$/i, '');
 }
 
-async function pickTieWinnerWithStats(
+async function recordResolvedMatchHistory(
   supabase: SupabaseClient,
-  catAId: string,
-  catBId: string,
-  stances?: Record<string, string>
-): Promise<string> {
-  const { data: cats } = await supabase
-    .from('cats')
-    .select('id, rarity, attack, defense, speed, charisma, chaos, cat_level, ability')
-    .in('id', [catAId, catBId]);
-
-  const catMap: Record<string, CombatCat> = {};
-  for (const c of (cats || []) as CombatCat[]) catMap[c.id] = c;
-
-  const a = catMap[catAId];
-  const b = catMap[catBId];
-  if (!a || !b) return Math.random() < 0.5 ? catAId : catBId;
-
-  const scoreA = computeCombatScore(a);
-  const scoreB = computeCombatScore(b);
-  const bonusA = stanceBonus(stances?.[catAId], a, b);
-  const bonusB = stanceBonus(stances?.[catBId], b, a);
-  const moveA = computeHeadToHeadMoveBonus(
-    { attack: a.attack, defense: a.defense, speed: a.speed, charisma: a.charisma, chaos: a.chaos, rarity: a.rarity, ability: a.ability, level: a.cat_level },
-    { attack: b.attack, defense: b.defense, speed: b.speed, charisma: b.charisma, chaos: b.chaos, rarity: b.rarity, ability: b.ability, level: b.cat_level }
-  );
-  const moveB = computeHeadToHeadMoveBonus(
-    { attack: b.attack, defense: b.defense, speed: b.speed, charisma: b.charisma, chaos: b.chaos, rarity: b.rarity, ability: b.ability, level: b.cat_level },
-    { attack: a.attack, defense: a.defense, speed: a.speed, charisma: a.charisma, chaos: a.chaos, rarity: a.rarity, ability: a.ability, level: a.cat_level }
-  );
-  const finalA = scoreA + bonusA + moveA;
-  const finalB = scoreB + bonusB + moveB;
-  if (finalA === finalB) return Math.random() < 0.5 ? catAId : catBId;
-  return finalA > finalB ? catAId : catBId;
+  match: MatchRow,
+  resolution: {
+    baseProbA: number;
+    skillDeltaA: number;
+    skillDeltaB: number;
+    netSkillDelta: number;
+    finalProbA: number;
+    skillATriggered: boolean;
+    skillBTriggered: boolean;
+    skillAId: string | null;
+    skillBId: string | null;
+    skillsCancelled: boolean;
+  },
+  winnerId: string,
+  loserId: string | null,
+  resolvedAt: string
+) {
+  const lockedVotesA = Number(match.locked_votes_a ?? match.votes_a ?? 0);
+  const lockedVotesB = Number(match.locked_votes_b ?? match.votes_b ?? 0);
+  await supabase.from('match_history').upsert({
+    match_id: match.id,
+    tournament_id: match.tournament_id || null,
+    pulse_id: match.tournament_id || null,
+    round: match.round,
+    cat_a_id: match.cat_a_id,
+    cat_b_id: match.cat_b_id,
+    votes_a: lockedVotesA,
+    votes_b: lockedVotesB,
+    base_prob_a: resolution.baseProbA,
+    skill_delta: resolution.netSkillDelta,
+    final_prob_a: resolution.finalProbA,
+    skills_cancelled: resolution.skillsCancelled,
+    skill_a_triggered: resolution.skillATriggered,
+    skill_b_triggered: resolution.skillBTriggered,
+    skill_a_id: resolution.skillAId,
+    skill_b_id: resolution.skillBId,
+    winner_id: winnerId,
+    loser_id: loserId,
+    resolved_at: resolvedAt,
+  }, { onConflict: 'match_id' });
 }
 
 async function resolvePredictionPayouts(
@@ -245,7 +236,12 @@ function pairParticipantsAvoidingSameOwner(cats: CatRow[]): Array<[CatRow, CatRo
 
   while (pool.length > 1) {
     const a = pool.shift() as CatRow;
-    let opponentIndex = pool.findIndex((c) => c.user_id !== a.user_id);
+    const aImageKey = normalizedPairImageKey(a.image_url_thumb || a.image_path || null);
+    let opponentIndex = pool.findIndex((c) => {
+      if (c.user_id === a.user_id) return false;
+      const bImageKey = normalizedPairImageKey(c.image_url_thumb || c.image_path || null);
+      return !(aImageKey && bImageKey && aImageKey === bImageKey);
+    });
     if (opponentIndex < 0) opponentIndex = 0;
     const b = pool.splice(opponentIndex, 1)[0] || a;
     pairs.push([a, b]);
@@ -439,7 +435,7 @@ export async function reseedNpcRoster(targetCount = 24) {
 async function pickParticipants(supabase: SupabaseClient, size: number, minNpcShare: number): Promise<CatRow[]> {
   const { data: approvedCats } = await supabase
     .from('cats')
-    .select('id, user_id, name, image_path, origin, image_review_status')
+    .select('id, user_id, name, image_path, image_url_thumb, origin, image_review_status')
     .eq('status', 'approved')
     .eq('origin', 'submitted')
     .or('image_review_status.is.null,image_review_status.eq.approved')
@@ -464,6 +460,7 @@ async function createTournamentIfMissing(
   size: number,
   minNpcShare: number
 ) {
+  const pulse = await computePulseWindow(new Date());
   const eligibleCatIdsForMatches = async (matches: Array<{ cat_a_id: string; cat_b_id: string }>) => {
     const ids = Array.from(new Set(matches.flatMap((m) => [m.cat_a_id, m.cat_b_id])));
     if (ids.length === 0) return new Set<string>();
@@ -578,7 +575,14 @@ async function createTournamentIfMissing(
       await supabase.from('tournament_entries').delete().eq('tournament_id', existingAny.id);
       await supabase
         .from('tournaments')
-        .update({ status: 'active', round: 1, champion_id: null })
+        .update({
+          status: 'active',
+          round: 1,
+          champion_id: null,
+          pulse_starts_at: pulse.pulseStartAt,
+          vote_locks_at: pulse.voteLocksAt,
+          resolves_at: pulse.resolvesAt,
+        })
         .eq('id', existingAny.id);
 
       const matchCount = await insertBracketForTournament(existingAny.id, participants);
@@ -594,6 +598,9 @@ async function createTournamentIfMissing(
       status: 'active',
       round: 1,
       tournament_type: type,
+      pulse_starts_at: pulse.pulseStartAt,
+      vote_locks_at: pulse.voteLocksAt,
+      resolves_at: pulse.resolvesAt,
     })
     .select('id')
     .single();
@@ -723,7 +730,7 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
   const currentRound = tournament.round || 1;
   const { data: matches, error: mErr } = await supabase
     .from('tournament_matches')
-    .select('id, round, cat_a_id, cat_b_id, votes_a, votes_b, winner_id, status, created_at')
+    .select('id, tournament_id, round, cat_a_id, cat_b_id, votes_a, votes_b, locked_votes_a, locked_votes_b, locked_prob_a, locked_prob_b, winner_id, status, created_at, voting_locked_at, resolved_at')
     .eq('tournament_id', tournament.id)
     .eq('round', currentRound)
     .order('created_at', { ascending: true });
@@ -732,71 +739,62 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
   const roundMatches = (matches || []) as MatchRow[];
   if (roundMatches.length === 0) return { ok: true, action: 'no_matches' };
 
-  const catIds = Array.from(new Set(roundMatches.flatMap((m) => [m.cat_a_id, m.cat_b_id])));
-  const { data: stances } = await supabase
-    .from('cat_stances')
-    .select('cat_id, stance')
-    .in('cat_id', catIds);
-  const stanceMap: Record<string, string> = {};
-  for (const s of (stances || []) as CatStanceRow[]) {
-    stanceMap[s.cat_id] = s.stance;
-  }
-
-  const { data: cats } = await supabase
-    .from('cats')
-    .select('id, rarity, attack, defense, speed, charisma, chaos, cat_level, ability')
-    .in('id', catIds);
-  const catStatsMap: Record<string, CombatProfile> = {};
-  for (const c of (cats || []) as CombatCat[]) {
-    catStatsMap[c.id] = {
-      id: c.id,
-      rarity: c.rarity || null,
-      attack: c.attack || 0,
-      defense: c.defense || 0,
-      speed: c.speed || 0,
-      charisma: c.charisma || 0,
-      chaos: c.chaos || 0,
-      cat_level: c.cat_level || 1,
-      ability: c.ability || null,
-    };
-  }
-
-  const resolvable = roundMatches.filter((m) => m.status === 'active' || m.status === 'pending');
+  const resolvable = roundMatches.filter((m) => m.status === 'locked' || m.status === 'active' || m.status === 'pending');
+  const catIds = Array.from(new Set(resolvable.flatMap((m) => [m.cat_a_id, m.cat_b_id])));
+  const [lockedSkillMap, streakMap] = await Promise.all([
+    loadLockedSkillsForCats(supabase, catIds),
+    loadCurrentStreakMap(supabase, catIds),
+  ]);
   for (const match of resolvable) {
-    const rawA = match.votes_a || 0;
-    const rawB = match.votes_b || 0;
+    const rawA = Number(match.locked_votes_a ?? match.votes_a ?? 0);
+    const rawB = Number(match.locked_votes_b ?? match.votes_b ?? 0);
     const hasRealVotes = rawA + rawB > 0;
-    const profileA = catStatsMap[match.cat_a_id];
-    const profileB = catStatsMap[match.cat_b_id];
-    const stanceA = stanceBonus(stanceMap[match.cat_a_id], profileA || {}, profileB || {});
-    const stanceB = stanceBonus(stanceMap[match.cat_b_id], profileB || {}, profileA || {});
-    const statSwing = profileA && profileB ? computeStatVoteSwing(profileA, profileB) : 0;
-    const resolveDelta = (rawA - rawB) + (stanceA - stanceB) + statSwing;
+    const resolution = match.cat_a_id === match.cat_b_id
+      ? {
+          baseProbA: 0.5,
+          baseProbB: 0.5,
+          skillDeltaA: 0,
+          skillDeltaB: 0,
+          netSkillDelta: 0,
+          finalProbA: 0.5,
+          finalProbB: 0.5,
+          skillATriggered: false,
+          skillBTriggered: false,
+          skillAId: lockedSkillMap[match.cat_a_id]?.id || null,
+          skillBId: lockedSkillMap[match.cat_b_id]?.id || null,
+          skillsCancelled: false,
+          winnerSide: 'a' as const,
+        }
+      : resolveMatchup(
+          {
+            votes: rawA,
+            skill: lockedSkillMap[match.cat_a_id] || null,
+            opponentStreak: Math.max(0, Number(streakMap[match.cat_b_id] || 0)),
+          },
+          {
+            votes: rawB,
+            skill: lockedSkillMap[match.cat_b_id] || null,
+            opponentStreak: Math.max(0, Number(streakMap[match.cat_a_id] || 0)),
+          },
+          String(match.tournament_id || '')
+        );
+    const side = resolution.winnerSide;
+    const winner = side === 'a' ? match.cat_a_id : match.cat_b_id;
+    const loser = winner === match.cat_a_id ? match.cat_b_id : match.cat_a_id;
+    const resolvedAt = new Date().toISOString();
 
-    let winner = '';
-    if (match.cat_a_id === match.cat_b_id) {
-      winner = match.cat_a_id;
-    } else if (resolveDelta > 0.15) {
-      winner = match.cat_a_id;
-    } else if (resolveDelta < -0.15) {
-      winner = match.cat_b_id;
-    }
-
-    if (!winner) {
-      if (profileA && profileB) {
-        winner = computePowerTieWinner(profileA, profileB) === 'a' ? match.cat_a_id : match.cat_b_id;
-      } else {
-        winner = await pickTieWinnerWithStats(supabase, match.cat_a_id, match.cat_b_id, stanceMap);
-      }
-    }
     await supabase
       .from('tournament_matches')
-      .update({ status: 'complete', winner_id: winner })
+      .update({
+        status: 'complete',
+        winner_id: winner,
+        resolved_at: resolvedAt,
+        resolution_source: 'weighted_random_vote',
+      })
       .eq('id', match.id);
 
     await resolvePredictionPayouts(supabase, match.id, winner);
-
-    const loser = winner === match.cat_a_id ? match.cat_b_id : match.cat_a_id;
+    await recordResolvedMatchHistory(supabase, match, resolution, winner, loser, resolvedAt);
 
     if (hasRealVotes) {
       const { data: winnerCat } = await supabase.from('cats').select('wins, battles_fought').eq('id', winner).maybeSingle();
@@ -941,7 +939,9 @@ async function cleanupIneligibleVotableMatches(supabase: SupabaseClient, date: s
 
 export async function runTournamentTick(options?: { includeOldActive?: boolean; resolveRounds?: boolean }) {
   const supabase = supabaseAdmin();
-  const today = todayUtc();
+  const now = new Date();
+  const pulse = await computePulseWindow(now);
+  const today = await currentPulseKey(now);
   const includeOldActive = options?.includeOldActive ?? true;
   const resolveRounds = options?.resolveRounds ?? true;
   const actions: Array<Record<string, unknown>> = [];
@@ -967,7 +967,7 @@ export async function runTournamentTick(options?: { includeOldActive?: boolean; 
   actions.push({ cleanup_ineligible_votable: cleanup });
 
   if (resolveRounds) {
-    const statusFilter = ['active', 'in_progress'];
+    const statusFilter = ['active', 'in_progress', 'locked'];
     let query = supabase
       .from('tournaments')
       .select('id, date, status, round, tournament_type, champion_id')
@@ -979,13 +979,23 @@ export async function runTournamentTick(options?: { includeOldActive?: boolean; 
     if (tErr) return { ok: false, error: tErr.message, actions };
 
     for (const t of (tournaments || []) as TournamentRow[]) {
-      const result = await resolveTournamentRound(supabase, t);
-      actions.push({
-        type: t.tournament_type || 'main',
-        tournament_id: t.id,
-        date: t.date,
-        result,
-      });
+      if (pulse.isLocked && !pulse.isResolving) {
+        const result = await lockPulse(supabase, t.date, pulse.voteLocksAt);
+        actions.push({
+          type: t.tournament_type || 'main',
+          tournament_id: t.id,
+          date: t.date,
+          result,
+        });
+      } else if (pulse.isResolving) {
+        const result = await resolveTournamentRound(supabase, t);
+        actions.push({
+          type: t.tournament_type || 'main',
+          tournament_id: t.id,
+          date: t.date,
+          result,
+        });
+      }
     }
 
     // Self-heal: if a tournament was resolved into "complete" or got stuck with

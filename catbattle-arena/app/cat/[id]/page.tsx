@@ -1,7 +1,7 @@
 // REPLACE: app/cat/[id]/page.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Loader2, Swords, Shield, Zap,
@@ -33,6 +33,11 @@ interface CatProfile {
   owner_id: string | null;
   owner_username?: string | null;
   created_at: string;
+  viewer_is_owner?: boolean;
+  skill_locked?: boolean;
+  skill_lock_ends_at?: string | null;
+  equipped_skill?: SkillOption | null;
+  available_skills?: SkillOption[];
   battle_history: {
     match_id: string;
     opponent_name: string;
@@ -41,6 +46,18 @@ interface CatProfile {
     opp_votes: number;
     date: string;
   }[];
+}
+
+interface SkillOption {
+  id: string;
+  name: string;
+  description?: string | null;
+  trigger: string;
+  trigger_value?: number | null;
+  delta: number;
+  is_counter?: boolean;
+  counter_to?: string | null;
+  trigger_label: string;
 }
 
 const RARITY_CONFIG: Record<string, {
@@ -104,6 +121,10 @@ export default function CatProfilePage() {
   const [settingStance, setSettingStance] = useState<string | null>(null);
   const [mintingCard, setMintingCard] = useState(false);
   const [challengeBanner, setChallengeBanner] = useState<{ active: boolean; ref: string }>({ active: false, ref: '' });
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [pendingSkillId, setPendingSkillId] = useState<string | null>(null);
+  const [savingSkill, setSavingSkill] = useState(false);
+  const [skillPickerError, setSkillPickerError] = useState<string | null>(null);
 
   const challengeTargetCatId = (targetParam && targetParam.length > 10) ? targetParam : catId;
 
@@ -118,7 +139,7 @@ export default function CatProfilePage() {
 
   useEffect(() => {
     if (!catId) return;
-    async function loadCat() {
+  async function loadCat() {
       setLoading(true);
       try {
         const res = await fetch(`/api/cats/${catId}`);
@@ -182,6 +203,61 @@ export default function CatProfilePage() {
     }
   }
 
+  const availableSkills = cat?.available_skills || [];
+  const pendingSkill = useMemo(
+    () => availableSkills.find((skill) => skill.id === pendingSkillId) || null,
+    [availableSkills, pendingSkillId]
+  );
+
+  function formatSkillDelta(delta: number) {
+    const pct = Math.round(Number(delta || 0) * 100);
+    return `${pct >= 0 ? '+' : ''}${pct}%`;
+  }
+
+  async function saveEquippedSkill() {
+    if (!cat || !pendingSkillId || savingSkill || cat.skill_locked) return;
+    setSavingSkill(true);
+    setError(null);
+    setSkillPickerError(null);
+    try {
+      const res = await fetch(`/api/cat/${cat.id}/skill`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skill_id: pendingSkillId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        if (res.status === 403 && data?.error === 'pulse_locked') {
+          setSkillPickerError('Skills are locked — wait for Pulse to resolve');
+          setCat((prev) => prev ? { ...prev, skill_locked: true } : prev);
+          return;
+        }
+        setSkillPickerError(data?.message || data?.error || 'Failed to equip skill');
+        return;
+      }
+      const selected = availableSkills.find((skill) => skill.id === pendingSkillId) || null;
+      setCat((prev) => prev ? { ...prev, equipped_skill: selected } : prev);
+      setSkillPickerOpen(false);
+      setPendingSkillId(null);
+    } catch {
+      setSkillPickerError('Failed to equip skill');
+    } finally {
+      setSavingSkill(false);
+    }
+  }
+
+  function openSkillPicker() {
+    setPendingSkillId(equippedSkill?.id || availableSkills[0]?.id || null);
+    setSkillPickerError(null);
+    setSkillPickerOpen(true);
+  }
+
+  function closeSkillPicker() {
+    if (savingSkill) return;
+    setSkillPickerOpen(false);
+    setSkillPickerError(null);
+  }
+
   async function openShareScreen() {
     if (!cat || mintingCard) return;
     setMintingCard(true);
@@ -224,6 +300,8 @@ export default function CatProfilePage() {
   const hasBattles = Number(cat.battles_fought || 0) > 0;
   const winRateDisplay = hasBattles && typeof cat.win_rate === 'number' ? `${cat.win_rate}%` : '—';
   const fans = Number(cat.fan_count || 0);
+  const skillLocked = !!cat.skill_locked;
+  const equippedSkill = cat.equipped_skill || null;
 
   return (
     <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
@@ -355,6 +433,45 @@ export default function CatProfilePage() {
               <span className={`text-lg font-black ${r.text}`}>{cat.total_power}</span>
             </div>
 
+            <div className="rounded-xl bg-white/[0.03] border border-white/8 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Equipped Skill</div>
+                  {equippedSkill ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-bold text-white">{equippedSkill.name}</p>
+                        {equippedSkill.is_counter ? (
+                          <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-amber-200">
+                            Counter
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-white/60 mt-1">{equippedSkill.trigger_label}</p>
+                      <p className="text-[11px] text-cyan-200 mt-1">{formatSkillDelta(equippedSkill.delta)} win chance</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-white/70">No skill equipped</p>
+                      <p className="text-xs text-white/45 mt-1">Choose one skill identity for this cat.</p>
+                    </>
+                  )}
+                  {skillLocked ? (
+                    <p className="text-[11px] text-amber-200 mt-2">Locked until Pulse resolves</p>
+                  ) : null}
+                </div>
+                {cat.viewer_is_owner && !skillLocked ? (
+                  <button
+                    type="button"
+                    onClick={openSkillPicker}
+                    className="shrink-0 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20"
+                  >
+                    {equippedSkill ? 'Change' : 'Choose Skill'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-white/[0.03] p-3">
                 <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Stance</div>
@@ -479,6 +596,85 @@ export default function CatProfilePage() {
           </div>
         </div>
       </div>
+
+      {skillPickerOpen && cat.viewer_is_owner ? (
+        <div className="fixed inset-0 z-[150]" role="dialog" aria-modal="true">
+          <button type="button" className="absolute inset-0 bg-black/65" onClick={closeSkillPicker} aria-label="Close skill picker" />
+          <div className="absolute inset-x-0 bottom-0 rounded-t-2xl border border-white/12 border-b-0 bg-neutral-950/96 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] max-w-lg mx-auto">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="text-sm font-bold text-white">Choose Skill</p>
+                <p className="text-xs text-white/60 mt-0.5">One skill equipped at a time. Confirm to replace the current slot.</p>
+              </div>
+              <button
+                type="button"
+                className="h-8 w-8 rounded-full border border-white/15 bg-white/5 inline-flex items-center justify-center text-white/70"
+                onClick={closeSkillPicker}
+              >
+                ×
+              </button>
+            </div>
+
+            {skillPickerError ? (
+              <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100">
+                {skillPickerError}
+              </div>
+            ) : null}
+
+            <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              {availableSkills.map((skill) => {
+                const selected = pendingSkillId === skill.id;
+                return (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() => setPendingSkillId(skill.id)}
+                    className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                      selected ? 'border-cyan-400/30 bg-cyan-500/10' : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-white">{skill.name}</p>
+                          {skill.is_counter ? (
+                            <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-amber-200">
+                              Counter
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-white/60 mt-1">{skill.trigger_label}</p>
+                        {skill.description ? <p className="text-[11px] text-white/40 mt-1">{skill.description}</p> : null}
+                      </div>
+                      <span className="shrink-0 rounded-lg bg-white/[0.04] px-2 py-1 text-xs font-bold text-cyan-200">
+                        {formatSkillDelta(skill.delta)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <button
+                type="button"
+                onClick={closeSkillPicker}
+                className="rounded-xl border border-white/12 bg-white/5 px-3 py-3 text-sm font-bold text-white/70"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!pendingSkill || savingSkill}
+                onClick={saveEquippedSkill}
+                className="rounded-xl border border-cyan-400/30 bg-cyan-500/15 px-3 py-3 text-sm font-bold text-cyan-100 disabled:opacity-40"
+              >
+                {savingSkill ? 'Saving...' : pendingSkill ? `Equip ${pendingSkill.name}` : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style jsx>{`
         @keyframes shimmer {

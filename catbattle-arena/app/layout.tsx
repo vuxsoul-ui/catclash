@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
-import { Cinzel, Rajdhani } from "next/font/google";
+import { Barlow, Barlow_Condensed, Cinzel, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import GlobalToastHost from "./components/GlobalToastHost";
 import BuildStamp from "./components/BuildStamp";
@@ -11,18 +10,6 @@ export const viewport = {
   themeColor: "#06050e",
 };
 
-const inter = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const spaceGrotesk = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-space",
-  display: "swap",
-});
-
 const cinzel = Cinzel({
   subsets: ["latin"],
   weight: ["400", "600", "700"],
@@ -30,10 +17,25 @@ const cinzel = Cinzel({
   display: "swap",
 });
 
-const rajdhani = Rajdhani({
+const barlow = Barlow({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-rajdhani",
+  weight: ["300", "400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-ui-base",
+  display: "swap",
+});
+
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-condensed-base",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono-base",
   display: "swap",
 });
 
@@ -81,7 +83,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} ${cinzel.variable} ${rajdhani.variable} antialiased min-h-screen relative bg-black`}
+        className={`${cinzel.variable} ${barlow.variable} ${barlowCondensed.variable} ${jetbrainsMono.variable} antialiased min-h-screen relative bg-black`}
       >
         <div className="noise-overlay" />
         <HeaderSystem>

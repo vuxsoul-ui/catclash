@@ -208,11 +208,9 @@ const EFFECTS: Record<EffectKey, CosmeticEffectDefinition> = {
 
 const EFFECT_ID_BY_SLUG: Record<string, EffectKey> = {
   'border-neon-cyan': 'border_neon_cyan',
-  'border-flame': 'border_flame',
   'border-lightning': 'border_lightning',
   'border-thunder': 'border_lightning',
   'border-solarflare': 'border_solarflare',
-  'border-ember-gold': 'border_flame',
   'border-galaxy': 'border_galaxy',
   'border-prism-shift': 'border_prism',
   'border-prism': 'border_prism',
@@ -230,6 +228,7 @@ const EFFECT_ID_BY_SLUG: Record<string, EffectKey> = {
   'title-clutch-voter': 'title_clutch',
   'title-sigil-whisperer': 'title_sigil',
   'title-meme-lord': 'title_meme_lord',
+  'title-niche-microcelebrity': 'title_meme_lord',
   'title-instafamous': 'title_instafamous',
   'title-ember-emperor': 'title_ember_emperor',
   'title-midnight-hunter': 'title_midnight',
@@ -347,7 +346,7 @@ export function resolveEffectKey(cosmetic: CosmeticLike): EffectKey {
   if (slot === 'title') {
     if (slug.includes('clutch')) return 'title_clutch';
     if (slug.includes('sigil')) return 'title_sigil';
-    if (slug.includes('meme')) return 'title_meme_lord';
+    if (slug.includes('meme') || slug.includes('microcelebrity') || slug.includes('niche')) return 'title_meme_lord';
     if (slug.includes('insta')) return 'title_instafamous';
     if (slug.includes('ember')) return 'title_ember_emperor';
     if (slug.includes('midnight')) return 'title_midnight';

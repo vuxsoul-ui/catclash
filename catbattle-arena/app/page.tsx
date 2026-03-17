@@ -887,6 +887,15 @@ const MatchCard = React.memo(function MatchCard({
   }, [flipA, flipB]);
 
   useEffect(() => {
+    if (!detailsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDetailsOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [detailsOpen]);
+
+  useEffect(() => {
     return () => {
       if (rafRef.current !== null) {
         window.cancelAnimationFrame(rafRef.current);
@@ -1287,6 +1296,8 @@ const MatchCard = React.memo(function MatchCard({
           onClick={() => setDetailsOpen((v) => !v)}
           className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-[11px] font-semibold inline-flex items-center gap-1"
           aria-label={detailsOpen ? 'Hide analyze section' : 'Open analyze section'}
+          aria-expanded={detailsOpen}
+          aria-controls={`match-analyze-panel-${match.match_id}`}
         >
           {detailsOpen ? 'Hide' : 'Analyze'}
           <span className={`transition-transform duration-150 ${detailsOpen ? 'rotate-180' : ''}`}>⌄</span>
@@ -1380,139 +1391,6 @@ const MatchCard = React.memo(function MatchCard({
         </>
       )}
 
-      {detailsOpen && (
-        <div className="mt-2 rounded-xl border border-white/10 bg-black/25 p-2.5 space-y-2">
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-cyan-100">Power A: {Math.round(aPower)}</span>
-              <span className="text-cyan-100">Power B: {Math.round(bPower)}</span>
-            </div>
-            <div className="mt-1 h-1 rounded-full overflow-hidden bg-white/10 flex">
-              <div
-                className="h-full w-full bg-blue-500 origin-left transition-transform duration-300"
-                style={{ transform: `scaleX(${Math.max(0.08, Math.min(1, (strongerA ? 50 + edgePct : 50 - edgePct) / 100))})` }}
-              />
-              <div
-                className="h-full w-full -ml-full bg-rose-500 origin-right transition-transform duration-300"
-                style={{ transform: `scaleX(${Math.max(0.08, Math.min(1, (strongerA ? 50 - edgePct : 50 + edgePct) / 100))})` }}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-1 text-[10px]">
-            <span className="text-white/55">Stat</span>
-            <span className="text-blue-200 text-right">A</span>
-            <span className="text-rose-200 text-right">B</span>
-            <span className="text-red-200">ATK</span><span className="text-right">{statsA.attack}</span><span className="text-right">{statsB.attack}</span>
-            <span className="text-cyan-200">DEF</span><span className="text-right">{statsA.defense}</span><span className="text-right">{statsB.defense}</span>
-            <span className="text-emerald-200">SPD</span><span className="text-right">{statsA.speed}</span><span className="text-right">{statsB.speed}</span>
-            <span className="text-violet-200">CHA</span><span className="text-right">{statsA.charisma}</span><span className="text-right">{statsB.charisma}</span>
-            <span className="text-amber-200">CHS</span><span className="text-right">{statsA.chaos}</span><span className="text-right">{statsB.chaos}</span>
-          </div>
-
-          <p className="text-[10px] text-white/65">{edgePct <= 3 ? 'Stat edge is balanced.' : `${strongerA ? catAName : catBName} has a ${edgePct}% stat edge.`}</p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <p className="text-[10px] text-white/60 mb-1">{catAName} cosmetics</p>
-              <div className="space-y-1">
-                {cosmeticsA.slice(0, 4).map((c) => (
-                  <div key={`a-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="truncate">{c.icon} {c.label}</span>
-                    {c.previewable ? <button onClick={() => setPreviewToast(`${c.label} preview`)} className="px-1.5 py-0.5 rounded border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Preview</button> : null}
-                  </div>
-                ))}
-                {cosmeticsA.length === 0 && <p className="text-[10px] text-white/45">No cosmetics equipped</p>}
-              </div>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <p className="text-[10px] text-white/60 mb-1">{catBName} cosmetics</p>
-              <div className="space-y-1">
-                {cosmeticsB.slice(0, 4).map((c) => (
-                  <div key={`b-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="truncate">{c.icon} {c.label}</span>
-                    {c.previewable ? <button onClick={() => setPreviewToast(`${c.label} preview`)} className="px-1.5 py-0.5 rounded border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Preview</button> : null}
-                  </div>
-                ))}
-                {cosmeticsB.length === 0 && <p className="text-[10px] text-white/45">No cosmetics equipped</p>}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <button
-              onClick={() => {
-                const nextOpen = !commentsOpen;
-                setCommentsOpen(nextOpen);
-                if (nextOpen && !commentsLoaded && !commentsBusy) {
-                  loadComments();
-                }
-              }}
-              className="h-9 px-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white/85 text-[11px] font-semibold inline-flex items-center gap-1.5"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              Comments {comments.length > 0 ? `(${comments.length})` : ''}
-            </button>
-          </div>
-
-          {commentsOpen && (
-            <div className="rounded-xl border border-white/10 bg-black/25 p-2.5">
-              {commentsDisabled ? (
-                <p className="text-[11px] text-white/50">Comments are not enabled yet on this deployment.</p>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      maxLength={240}
-                      placeholder="Say something..."
-                      className="flex-1 h-9 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white placeholder:text-white/35 focus:outline-none focus:border-white/25"
-                    />
-                    <button
-                      disabled={commentPosting || !commentText.trim()}
-                      onClick={handlePostComment}
-                      className="h-9 px-3 rounded-lg bg-cyan-500/20 border border-cyan-300/30 text-cyan-200 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
-                    >
-                      {commentPosting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                      Send
-                    </button>
-                  </div>
-                  {commentError && <p className="text-[11px] text-red-300 mt-1.5">{commentError}</p>}
-                  <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                    {commentsBusy && <p className="text-[11px] text-white/50">Loading comments...</p>}
-                    {!commentsBusy && comments.length === 0 && (
-                      <p className="text-[11px] text-white/45">No comments yet. Start the thread.</p>
-                    )}
-                    {comments.map((c) => (
-                      <div key={c.id} className={`rounded-lg bg-white/[0.04] border p-2 ${commentBorderClassFromBorderSlug(c.commenter_cosmetics?.border_slug)}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex items-center gap-1.5">
-                            <p className={`text-[11px] font-semibold truncate ${commentTextClassFromColorSlug(c.commenter_cosmetics?.color_slug)}`}>{c.username || 'Guest'}</p>
-                            {c.commenter_cosmetics?.title && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-yellow-400/35 bg-yellow-500/15 text-yellow-200 shrink-0">
-                                {c.commenter_cosmetics.title}
-                              </span>
-                            )}
-                            {String(c.commenter_cosmetics?.color_slug || '').startsWith('vote-') && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-cyan-300/35 bg-cyan-500/15 text-cyan-200 shrink-0">
-                                ✨ Effect
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-white/45 shrink-0">{relativeTime(c.created_at)}</p>
-                        </div>
-                        <p className="text-[11px] text-white/75 mt-0.5 break-words">{c.body}</p>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {hasVoted && socialEnabled && (
         <div className="mt-2">
           <button
@@ -1537,6 +1415,176 @@ const MatchCard = React.memo(function MatchCard({
         <div className="mt-1 text-[10px] text-cyan-200/90 animate-pulse">Next matchup loading...</div>
       )}
       </div>
+      </div>
+
+      <div className={`pointer-events-none absolute inset-0 z-40 overflow-hidden rounded-[inherit] transition-opacity duration-200 ${detailsOpen ? 'opacity-100' : 'opacity-0'}`} aria-hidden={!detailsOpen}>
+        <button
+          type="button"
+          aria-label="Close analyze panel"
+          onClick={() => setDetailsOpen(false)}
+          className={`absolute inset-0 touch-none bg-[radial-gradient(circle_at_center,rgba(5,18,28,0.08),rgba(2,6,12,0.42))] transition-opacity duration-200 ${detailsOpen ? 'pointer-events-auto opacity-100' : 'opacity-0'}`}
+        />
+        <aside
+          id={`match-analyze-panel-${match.match_id}`}
+          role="dialog"
+          aria-label="Match analysis panel"
+          className={`absolute inset-y-1.5 right-1.5 z-50 flex h-[calc(100%-0.75rem)] w-[min(18.5rem,calc(100%-4.25rem))] max-w-[calc(100%-0.75rem)] min-w-0 touch-pan-y flex-col overflow-hidden rounded-[1.35rem] border border-cyan-300/14 bg-[linear-gradient(180deg,rgba(8,18,29,0.975),rgba(4,10,18,0.955))] shadow-[0_18px_34px_rgba(0,0,0,0.34),0_0_0_1px_rgba(103,232,249,0.04),0_0_16px_rgba(34,211,238,0.08)] backdrop-blur-xl transition-all duration-200 ease-out sm:inset-y-2 sm:right-2 sm:h-[calc(100%-1rem)] sm:w-[min(22rem,calc(100%-1rem))] ${detailsOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'translate-x-2 opacity-0 sm:translate-x-3'}`}
+        >
+          <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/7 bg-[linear-gradient(180deg,rgba(8,18,29,0.985),rgba(8,18,29,0.93))] px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.03),0_10px_18px_rgba(2,6,12,0.18)] sm:px-3.5">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/72">Match Intel</p>
+              <p className="truncate pr-1 text-[12px] font-semibold text-white/90">{catAName} vs {catBName}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(false)}
+              aria-label="Close analyze panel"
+              className="inline-flex h-10 min-h-[40px] shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.05] px-3.5 text-[10px] font-semibold text-white/78 transition-colors hover:bg-white/[0.09]"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 touch-pan-y sm:px-3.5">
+            <div className="rounded-[1.05rem] border border-cyan-300/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.02))] p-3">
+              <div className="mb-2 grid grid-cols-2 gap-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-200/62">Power A</p>
+                  <p className="truncate text-[13px] font-semibold text-cyan-100">{Math.round(aPower)}</p>
+                </div>
+                <div className="min-w-0 text-right">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-200/62">Power B</p>
+                  <p className="truncate text-[13px] font-semibold text-cyan-100">{Math.round(bPower)}</p>
+                </div>
+              </div>
+              <div className="mt-1.5 h-1.5 rounded-full overflow-hidden bg-white/10 flex">
+                <div
+                  className="h-full w-full bg-blue-500 origin-left transition-transform duration-300"
+                  style={{ transform: `scaleX(${Math.max(0.08, Math.min(1, (strongerA ? 50 + edgePct : 50 - edgePct) / 100))})` }}
+                />
+                <div
+                  className="h-full w-full -ml-full bg-rose-500 origin-right transition-transform duration-300"
+                  style={{ transform: `scaleX(${Math.max(0.08, Math.min(1, (strongerA ? 50 - edgePct : 50 + edgePct) / 100))})` }}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/7 bg-white/[0.022] p-2.5">
+              <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/48">Stat Line</p>
+              <div className="grid grid-cols-3 gap-x-1.5 gap-y-1 text-[10px]">
+                <span className="text-white/55">Stat</span>
+                <span className="text-blue-200/92 text-right">A</span>
+                <span className="text-rose-200/92 text-right">B</span>
+                <span className="text-red-200">ATK</span><span className="text-right font-medium text-white/88">{statsA.attack}</span><span className="text-right font-medium text-white/88">{statsB.attack}</span>
+                <span className="text-cyan-200">DEF</span><span className="text-right font-medium text-white/88">{statsA.defense}</span><span className="text-right font-medium text-white/88">{statsB.defense}</span>
+                <span className="text-emerald-200">SPD</span><span className="text-right font-medium text-white/88">{statsA.speed}</span><span className="text-right font-medium text-white/88">{statsB.speed}</span>
+                <span className="text-violet-200">CHA</span><span className="text-right font-medium text-white/88">{statsA.charisma}</span><span className="text-right font-medium text-white/88">{statsB.charisma}</span>
+                <span className="text-amber-200">CHS</span><span className="text-right font-medium text-white/88">{statsA.chaos}</span><span className="text-right font-medium text-white/88">{statsB.chaos}</span>
+              </div>
+            </div>
+
+            <p className="rounded-lg border border-white/7 bg-white/[0.02] px-2.5 py-2 text-[10px] text-white/65">{edgePct <= 3 ? 'Stat edge is balanced.' : `${strongerA ? catAName : catBName} has a ${edgePct}% stat edge.`}</p>
+
+            <div className="grid grid-cols-1 gap-2.5">
+              <div className="rounded-xl border border-white/7 bg-white/[0.022] p-2.5">
+                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/48">{catAName} cosmetics</p>
+                <div className="space-y-1">
+                  {cosmeticsA.slice(0, 4).map((c) => (
+                    <div key={`a-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="truncate">{c.icon} {c.label}</span>
+                      {c.previewable ? <button onClick={() => setPreviewToast(`${c.label} preview`)} className="px-1.5 py-0.5 rounded border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Preview</button> : null}
+                    </div>
+                  ))}
+                  {cosmeticsA.length === 0 && <p className="text-[10px] text-white/45">No cosmetics equipped</p>}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/7 bg-white/[0.022] p-2.5">
+                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/48">{catBName} cosmetics</p>
+                <div className="space-y-1">
+                  {cosmeticsB.slice(0, 4).map((c) => (
+                    <div key={`b-full-${c.slot}`} className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="truncate">{c.icon} {c.label}</span>
+                      {c.previewable ? <button onClick={() => setPreviewToast(`${c.label} preview`)} className="px-1.5 py-0.5 rounded border border-cyan-300/30 bg-cyan-500/10 text-cyan-100">Preview</button> : null}
+                    </div>
+                  ))}
+                  {cosmeticsB.length === 0 && <p className="text-[10px] text-white/45">No cosmetics equipped</p>}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button
+                onClick={() => {
+                  const nextOpen = !commentsOpen;
+                  setCommentsOpen(nextOpen);
+                  if (nextOpen && !commentsLoaded && !commentsBusy) {
+                    loadComments();
+                  }
+                }}
+                className="h-9 px-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white/85 text-[11px] font-semibold inline-flex items-center gap-1.5"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Comments {comments.length > 0 ? `(${comments.length})` : ''}
+              </button>
+            </div>
+
+            {commentsOpen && (
+              <div className="rounded-xl border border-white/10 bg-black/25 p-2.5">
+                {commentsDisabled ? (
+                  <p className="text-[11px] text-white/50">Comments are not enabled yet on this deployment.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        maxLength={240}
+                        placeholder="Say something..."
+                        className="flex-1 h-9 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white placeholder:text-white/35 focus:outline-none focus:border-white/25"
+                      />
+                      <button
+                        disabled={commentPosting || !commentText.trim()}
+                        onClick={handlePostComment}
+                        className="h-9 px-3 rounded-lg bg-cyan-500/20 border border-cyan-300/30 text-cyan-200 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+                      >
+                        {commentPosting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                        Send
+                      </button>
+                    </div>
+                    {commentError && <p className="text-[11px] text-red-300 mt-1.5">{commentError}</p>}
+                    <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {commentsBusy && <p className="text-[11px] text-white/50">Loading comments...</p>}
+                      {!commentsBusy && comments.length === 0 && (
+                        <p className="text-[11px] text-white/45">No comments yet. Start the thread.</p>
+                      )}
+                      {comments.map((c) => (
+                        <div key={c.id} className={`rounded-lg bg-white/[0.04] border p-2 ${commentBorderClassFromBorderSlug(c.commenter_cosmetics?.border_slug)}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex items-center gap-1.5">
+                              <p className={`text-[11px] font-semibold truncate ${commentTextClassFromColorSlug(c.commenter_cosmetics?.color_slug)}`}>{c.username || 'Guest'}</p>
+                              {c.commenter_cosmetics?.title && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-yellow-400/35 bg-yellow-500/15 text-yellow-200 shrink-0">
+                                  {c.commenter_cosmetics.title}
+                                </span>
+                              )}
+                              {String(c.commenter_cosmetics?.color_slug || '').startsWith('vote-') && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-cyan-300/35 bg-cyan-500/15 text-cyan-200 shrink-0">
+                                  ✨ Effect
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-white/45 shrink-0">{relativeTime(c.created_at)}</p>
+                          </div>
+                          <p className="text-[11px] text-white/75 mt-0.5 break-words">{c.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );

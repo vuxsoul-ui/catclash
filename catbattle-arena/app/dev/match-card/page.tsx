@@ -73,7 +73,7 @@ function makeMatch(id: string, opts?: { close?: boolean; votesA?: number; votesB
       owner_guild: 'moon',
       ability: 'Solar Blink',
       stats: { attack: 14, defense: 12, speed: 13, charisma: 9, chaos: 8 },
-      ...(cosmetics ? { cosmetic_title: 'Meme Lord', cosmetic_border: 'Solarflare', cosmetic_color: 'Cyan Ember' } : {}),
+      ...(cosmetics ? { cosmetic_title: 'Niche MicroCelebrity', cosmetic_border: 'Solarflare', cosmetic_color: 'Cyan Ember' } : {}),
     } as any,
     cat_b: {
       id: `${id}-b`,

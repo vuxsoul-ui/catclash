@@ -11,6 +11,7 @@ export type ArenaPageCat = {
   id: string;
   name: string;
   image_url: string | null;
+  image_key?: string | null;
   rarity: string;
   level?: number;
   ability: string | null;
@@ -116,6 +117,15 @@ function supabaseAdmin(): SupabaseClient {
   return createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+function normalizedPairImageKey(value: string | null | undefined): string | null {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  return raw
+    .replace(/[?#].*$/, "")
+    .replace(/\/(thumb|card|original)\.(webp|png|jpg|jpeg)$/i, "")
+    .replace(/\.(webp|png|jpg|jpeg)$/i, "");
 }
 
 export function getPageSize(): number {
@@ -260,10 +270,14 @@ async function ensureArenaMatches(params: {
     .select("id, status, image_review_status, origin, user_id, image_path, image_url_thumb, created_at")
     .in("id", entryCatIds);
   const ownerByCatId = new Map<string, string>();
+  const imageKeyByCatId = new Map<string, string>();
   for (const c of eligibleCatsRaw || []) {
     const catId = String((c as any).id || "");
     const ownerId = String((c as any).user_id || "");
     if (catId && ownerId) ownerByCatId.set(catId, ownerId);
+    const imageHint = String((c as any).image_url_thumb || (c as any).image_path || "");
+    const imageKey = normalizedPairImageKey(imageHint);
+    if (catId && imageKey) imageKeyByCatId.set(catId, imageKey);
   }
   const eligibleCatIds = (eligibleCatsRaw || [])
     .filter((c: any) => {
@@ -358,7 +372,8 @@ async function ensureArenaMatches(params: {
     Number(reasons.get("duplicate_pair_same_round") || 0)
     + Number(reasons.get("cat_repeated_on_page") || 0)
     + Number(reasons.get("same_owner_pair") || 0)
-    + Number(reasons.get("same_cat_pair") || 0);
+    + Number(reasons.get("same_cat_pair") || 0)
+    + Number(reasons.get("same_image_pair") || 0);
 
   let attempts = 0;
   let cursor = 0;
@@ -384,6 +399,10 @@ async function ensureArenaMatches(params: {
       }
       if (isSameOwnerPair(ownerByCatId.get(catA) || null, ownerByCatId.get(catB) || null)) {
         reasons.set("same_owner_pair", (reasons.get("same_owner_pair") || 0) + 1);
+        continue;
+      }
+      if (imageKeyByCatId.get(catA) && imageKeyByCatId.get(catA) === imageKeyByCatId.get(catB)) {
+        reasons.set("same_image_pair", (reasons.get("same_image_pair") || 0) + 1);
         continue;
       }
       if (usedCatsOnOpenPage.has(catA) || usedCatsOnOpenPage.has(catB)) {
@@ -622,10 +641,12 @@ export async function loadArenaPage(params: {
     const sourcePath = String(c.image_url_thumb || c.image_url_card || c.image_url_original || c.image_path || "").trim();
     if (/\/starter\//i.test(sourcePath)) continue;
     const resolved = normalizeCatImageUrl({ id: String(c.id), image_url: sourcePath });
+    const imageKey = normalizedPairImageKey(sourcePath || resolved || null);
     catMap[String(c.id)] = {
       id: String(c.id),
       name: String(c.name || "Unknown"),
       image_url: resolved || null,
+      image_key: imageKey,
       rarity: String(c.rarity || "Common"),
       level: Math.max(1, Number(c.cat_level || c.level || 1)),
       ability: c.ability || null,
@@ -652,7 +673,9 @@ export async function loadArenaPage(params: {
       const a = catMap[String(m.cat_a_id)];
       const b = catMap[String(m.cat_b_id)];
       if (!a || !b) return false;
-      return !isSameOwnerPair(a.owner_id || null, b.owner_id || null);
+      if (isSameOwnerPair(a.owner_id || null, b.owner_id || null)) return false;
+      if (a.image_key && b.image_key && a.image_key === b.image_key) return false;
+      return true;
     })
     .map((m) => {
       const votesA = Number(m.votes_a || 0);

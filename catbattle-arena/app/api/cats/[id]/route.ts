@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveCatImageUrl } from '../../_lib/images';
+import { getGuestId } from '../../_lib/guest';
+import { computePulseWindow } from '../../_lib/pulse';
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,7 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
+    const viewerId = await getGuestId().catch(() => null);
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
@@ -105,7 +108,8 @@ export async function GET(
     const totalPower =
       (cat.attack || 0) + (cat.defense || 0) + (cat.speed || 0) + (cat.charisma || 0) + (cat.chaos || 0);
 
-    const [{ data: stanceRow }, { data: fanVotes }, { data: cheerRows }, { data: ownerTitleRow }] = await Promise.all([
+    const pulse = await computePulseWindow();
+    const [{ data: stanceRow }, { data: fanVotes }, { data: cheerRows }, { data: ownerTitleRow }, { data: equippedSkillRows }, { data: skillsCatalog }] = await Promise.all([
       supabase.from('cat_stances').select('stance').eq('cat_id', cat.id).maybeSingle(),
       supabase.from('votes').select('id, user_agent').eq('voted_for', cat.id),
       supabase.from('match_tactics').select('id').eq('cat_id', cat.id).in('action_type', ['cheer', 'guard_break']),
@@ -116,6 +120,16 @@ export async function GET(
         .in('slot', ['title', 'cat_title'])
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from('cat_skills')
+        .select('id, skill_id, equipped_at, locked, skills(id, name, description, trigger, trigger_value, delta, is_counter, counter_to)')
+        .eq('cat_id', cat.id)
+        .order('equipped_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('skills')
+        .select('id, name, description, trigger, trigger_value, delta, is_counter, counter_to')
+        .order('name', { ascending: true }),
     ]);
     const { data: ownerProfile } = cat.user_id
       ? await supabase.from('profiles').select('username').eq('id', cat.user_id).maybeSingle()
@@ -133,6 +147,51 @@ export async function GET(
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([id, battles]) => ({ cat_id: id, cat_name: oppMap[id] || 'Unknown', battles }));
+
+    const latestEquippedSkillRow = Array.isArray(equippedSkillRows) ? equippedSkillRows[0] : null;
+    const equippedSkill = Array.isArray((latestEquippedSkillRow as any)?.skills)
+      ? (latestEquippedSkillRow as any)?.skills?.[0] || null
+      : (latestEquippedSkillRow as any)?.skills || null;
+
+    const skillNameById = new Map<string, string>(
+      ((skillsCatalog || []) as any[])
+        .filter((skill) => typeof skill?.id === 'string')
+        .map((skill) => [String(skill.id), String(skill.name || '').trim()])
+    );
+
+    function describeSkillTrigger(skill: any): string {
+      const trigger = String(skill?.trigger || '').trim().toLowerCase();
+      const triggerValue = Number(skill?.trigger_value || 0);
+      switch (trigger) {
+        case 'opponent_on_streak':
+          return `Activates if opponent is on a ${triggerValue}-win streak`;
+        case 'underdog':
+          return 'Activates if this cat is the underdog';
+        case 'favourite':
+          return 'Activates if this cat enters as the favourite';
+        case 'vote_gap_close':
+        case 'close_vote_gap':
+          return `Activates if vote gap is under ${triggerValue}%`;
+        case 'counter': {
+          const targetName = skillNameById.get(String(skill?.counter_to || '').trim());
+          return targetName ? `Activates against ${targetName}` : 'Activates against its counter target';
+        }
+        default:
+          return String(skill?.description || 'Passive skill effect');
+      }
+    }
+
+    const availableSkills = ((skillsCatalog || []) as any[]).map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description || null,
+      trigger: skill.trigger,
+      trigger_value: skill.trigger_value,
+      delta: Number(skill.delta || 0),
+      is_counter: !!skill.is_counter,
+      counter_to: skill.counter_to || null,
+      trigger_label: describeSkillTrigger(skill),
+    }));
 
     return NextResponse.json({
       ok: true,
@@ -166,6 +225,23 @@ export async function GET(
         owner_username: ownerProfile?.username || null,
         created_at: cat.created_at,
         battle_history: battleHistory,
+        viewer_is_owner: !!viewerId && viewerId === cat.user_id,
+        skill_locked: pulse.isLocked,
+        skill_lock_ends_at: pulse.resolvesAt,
+        equipped_skill: equippedSkill
+          ? {
+              id: equippedSkill.id,
+              name: equippedSkill.name,
+              description: equippedSkill.description || null,
+              trigger: equippedSkill.trigger,
+              trigger_value: equippedSkill.trigger_value,
+              delta: Number(equippedSkill.delta || 0),
+              is_counter: !!equippedSkill.is_counter,
+              counter_to: equippedSkill.counter_to || null,
+              trigger_label: describeSkillTrigger(equippedSkill),
+            }
+          : null,
+        available_skills: availableSkills,
       },
     });
   } catch (e) {

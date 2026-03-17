@@ -14,6 +14,7 @@ type CandidateCat = {
   id: string;
   user_id: string | null;
   created_at: string | null;
+  image_key: string | null;
 };
 
 type ActiveTournament = {
@@ -51,6 +52,15 @@ function shuffle<T>(items: T[]): T[] {
 
 function toPairSig(a: string, b: string): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function normalizedPairImageKey(value: string | null | undefined): string | null {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  return raw
+    .replace(/[?#].*$/, '')
+    .replace(/\/(thumb|card|original)\.(webp|png|jpg|jpeg)$/i, '')
+    .replace(/\.(webp|png|jpg|jpeg)$/i, '');
 }
 
 function orderCandidates(cats: CandidateCat[], prioritizeNew: boolean): CandidateCat[] {
@@ -99,6 +109,7 @@ function pickSeedPairs(params: {
         if (!a.id || !b.id || a.id === b.id) continue;
         if ((catUseCount.get(b.id) || 0) >= maxCatUse) continue;
         if (a.user_id && b.user_id && a.user_id === b.user_id) continue;
+        if (a.image_key && b.image_key && a.image_key === b.image_key) continue;
 
         const pairSig = toPairSig(a.id, b.id);
         if (existingPairSigs.has(pairSig) || chosenPairSigs.has(pairSig)) continue;
@@ -190,6 +201,7 @@ async function seedForArena(params: {
       id: String(c.id),
       user_id: c.user_id ? String(c.user_id) : null,
       created_at: c.created_at ? String(c.created_at) : null,
+      image_key: normalizedPairImageKey(String(c.image_url_thumb || c.image_path || '')),
     }))
     .filter((c) => !!c.id);
 
@@ -324,4 +336,3 @@ export async function runAdminArenaSeed(params: {
     rookieTournamentId: String(rookieResult.tournamentId || ''),
   };
 }
-

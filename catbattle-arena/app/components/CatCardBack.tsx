@@ -19,6 +19,8 @@ type BackCat = {
   losses?: number;
   owner_username?: string | null;
   owner_guild?: 'sun' | 'moon' | null;
+  equipped_skill_name?: string | null;
+  equipped_skill_trigger_label?: string | null;
 };
 
 function cleanText(value: unknown): string {
@@ -72,6 +74,8 @@ export default function CatCardBack({
   const heat = heatLabel(votes);
   const ability = cleanText(cat.ability);
   const abilityDesc = cleanText(cat.ability_description);
+  const equippedSkillName = cleanText(cat.equipped_skill_name);
+  const equippedSkillTrigger = cleanText(cat.equipped_skill_trigger_label);
   const tierClass = rarityTierClass(cat.rarity);
   const meta = [
     { k: 'Rarity', v: cat.rarity },
@@ -100,7 +104,7 @@ export default function CatCardBack({
   }, [cat.id]);
 
   return (
-    <div className={`arena-flip-face arena-flip-back arena-fighter-pane cat-card-back-shell ${tierClass} rounded-2xl h-full min-h-0 flex flex-col overflow-hidden ${className || ''}`}>
+    <div className={`arena-flip-face arena-flip-back arena-fighter-pane cat-card-back-shell ${tierClass} rounded-2xl min-h-0 flex flex-col ${className || ''}`}>
       <div className="cat-card-back-accent" />
 
       <div className="relative z-[1] flex items-center justify-between gap-2 px-3 pt-2.5">
@@ -111,7 +115,7 @@ export default function CatCardBack({
         <span className="cat-card-back-tier-chip shrink-0">{cleanText(cat.rarity || 'Common').toUpperCase()}</span>
       </div>
 
-      <div className="relative z-[1] flex-1 min-h-0 overflow-y-auto px-3 pb-2 pt-2 [scrollbar-width:thin] [-webkit-overflow-scrolling:touch]">
+      <div className="relative z-[1] flex-1 min-h-0 overflow-y-auto px-3 pb-[14px] pt-2 [scrollbar-width:thin] [-webkit-overflow-scrolling:touch]">
         <div className="cat-card-back-owner-row">
           <span className="cat-card-back-owner-icon" aria-hidden="true" />
           <span className="cat-card-back-owner-label">OWNER</span>
@@ -140,6 +144,11 @@ export default function CatCardBack({
             {abilityDesc ? <p className="cat-card-back-ability-desc">{abilityDesc}</p> : null}
           </div>
         ) : null}
+
+        <div className="cat-card-back-ability mt-2 min-w-0">
+          <p className="cat-card-back-ability-name">Skill: {equippedSkillName || 'No skill equipped'}</p>
+          {equippedSkillTrigger ? <p className="cat-card-back-ability-desc">{equippedSkillTrigger}</p> : null}
+        </div>
 
         <div className="cat-card-back-footer mt-2">
           <div className="min-w-0 flex-1">
@@ -175,12 +184,14 @@ export default function CatCardBack({
           <div className="text-[9px] uppercase tracking-[0.14em] text-white/35">{role}</div>
         </div>
 
-        <div data-cat-back-actions={cat.id} className="grid grid-cols-2 gap-1.5 items-stretch">
-          <Link href={`/cat/${cat.id}`} className="cat-card-back-action cat-card-back-action--primary h-10 w-full whitespace-nowrap touch-manipulation inline-flex items-center justify-center">
-            Open Cat Profile
+        <div data-cat-back-actions={cat.id} className="cat-card-back-actions-grid grid grid-cols-2 gap-1.5 items-stretch">
+          <Link href={`/cat/${cat.id}`} className="cat-card-back-action cat-card-back-action--primary h-10 w-full touch-manipulation inline-flex items-center justify-center">
+            <span className="cat-card-back-label-full">Open Cat Profile</span>
+            <span className="cat-card-back-label-short">Profile</span>
           </Link>
-          <Link href={`/c/${cat.id}/share`} className="cat-card-back-action cat-card-back-action--secondary h-10 w-full whitespace-nowrap touch-manipulation inline-flex items-center justify-center">
-            Share Card
+          <Link href={`/c/${cat.id}/share`} className="cat-card-back-action cat-card-back-action--secondary h-10 w-full touch-manipulation inline-flex items-center justify-center">
+            <span className="cat-card-back-label-full">Share Card</span>
+            <span className="cat-card-back-label-short">Share</span>
           </Link>
         </div>
       </div>

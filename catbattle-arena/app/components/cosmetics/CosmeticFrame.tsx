@@ -6,7 +6,7 @@ import ElementalBorder, { type ElementalVariant } from './ElementalBorder';
 
 function mapElementalVariant(borderSlug?: string | null): ElementalVariant | null {
   const slug = String(borderSlug || '').toLowerCase();
-  if (slug === 'border-flame' || slug === 'border-ember-gold' || slug === 'border-inferno') return 'plasma';
+  if (slug === 'border-flame' || slug === 'border-inferno') return 'plasma';
   if (slug === 'border-lightning' || slug === 'border-thunder') return 'lightning';
   if (slug === 'border-holographic' || slug === 'holographic-border' || slug === 'border-holo' || slug === 'border-prism-shift') return 'prism';
   if (slug === 'border-void-drift' || slug === 'border-shadow' || slug === 'border-shadow-drift' || slug === 'border-shadow-veil' || slug === 'border-void') return 'void';

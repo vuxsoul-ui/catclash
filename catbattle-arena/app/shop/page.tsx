@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Sparkles, Check, Eye, UserRound, Shield } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, Check, Eye, UserRound, Shield, ChevronDown } from 'lucide-react';
 import SigilIcon from '../components/icons/SigilIcon';
 import SigilWidget from '../components/SigilWidget';
 import CosmeticPreview from '../components/cosmetics/CosmeticPreview';
@@ -44,6 +44,8 @@ type PreviewProfile = {
   };
 };
 
+type ShopSectionId = 'vote-effects' | 'cat-borders' | 'cat-titles' | 'limited-time';
+
 function displayCategory(item: ShopItem): string {
   const cosmeticType = String(item.metadata?.cosmetic_type || '');
   if (item.slug.startsWith('vote-') || cosmeticType === 'vote_effect') return 'vote_effect';
@@ -77,6 +79,34 @@ function telemetry(event: string, payload: Record<string, unknown>) {
   }).catch(() => null);
 }
 
+function tierChipClass(label: string): string {
+  const key = label.trim().toLowerCase();
+  if (key === 'rare') return 'bg-[rgba(22,72,155,0.18)] border-[rgba(35,100,175,0.32)] text-[rgba(68,148,225,0.82)]';
+  if (key === 'epic') return 'bg-[rgba(108,42,210,0.18)] border-[rgba(130,65,245,0.32)] text-[rgba(185,118,255,0.82)]';
+  if (key === 'legendary') return 'bg-[rgba(185,130,8,0.18)] border-[rgba(210,155,15,0.38)] text-[rgba(238,185,28,0.9)]';
+  if (key === 'mythic' || key === 'god-tier') return 'bg-[rgba(160,22,22,0.2)] border-[rgba(195,45,45,0.38)] text-[rgba(238,88,88,0.9)]';
+  if (key === 'identity tier') return 'bg-[rgba(0,110,108,0.18)] border-[rgba(0,155,148,0.28)] text-[rgba(0,210,200,0.75)]';
+  if (key === 'animated') return 'bg-transparent border-[rgba(28,155,140,0.28)] text-[rgba(38,178,162,0.7)]';
+  if (key === 'prestige drop') return 'bg-[rgba(88,38,175,0.16)] border-[rgba(118,55,228,0.28)] text-[rgba(188,148,255,0.78)]';
+  if (key === 'elite tier') return 'bg-[rgba(155,115,12,0.2)] border-[rgba(195,148,15,0.32)] text-[rgba(225,185,80,0.82)]';
+  if (key === 'mythic rotation') return 'bg-[rgba(120,24,48,0.18)] border-[rgba(225,29,72,0.3)] text-[rgba(251,113,133,0.82)]';
+  return 'bg-[rgba(80,95,115,0.1)] border-[rgba(90,55,160,0.22)] text-[rgba(200,180,240,0.78)]';
+}
+
+function buyButtonClass(item: ShopItem): string {
+  const category = displayCategory(item);
+  if (item.slug === 'border-lightning') return 'buy-btn-lightning';
+  if (item.slug === 'border-shadow') return 'buy-btn-shadow';
+  if (category === 'cat_color' || category === 'color' || category === 'vote_effect' || category === 'effect') {
+    return 'buy-btn-cyan';
+  }
+  if (item.rarity === 'Legendary') return 'buy-btn-legendary';
+  if (item.rarity === 'Mythic' || item.rarity === 'God-Tier') return 'buy-btn-mythic';
+  if (item.rarity === 'Epic') return 'buy-btn-epic';
+  if (item.rarity === 'Rare') return 'buy-btn-rare';
+  return 'buy-btn-common';
+}
+
 export default function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [busySlug, setBusySlug] = useState<string | null>(null);
@@ -90,6 +120,8 @@ export default function ShopPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [showTip, setShowTip] = useState(false);
   const [sortMode, setSortMode] = useState<'recommended' | 'price_low' | 'price_high' | 'rarity'>('recommended');
+  const [openSections, setOpenSections] = useState<ShopSectionId[]>(['vote-effects']);
+  const [showAllSections, setShowAllSections] = useState<ShopSectionId[]>([]);
   const [previewItem, setPreviewItem] = useState<ShopItem | null>(null);
   const [previewStageItem, setPreviewStageItem] = useState<ShopItem | null>(null);
   const [previewProfile, setPreviewProfile] = useState<PreviewProfile | null>(null);
@@ -245,11 +277,11 @@ export default function ShopPage() {
       cat_border: [],
       cat_color: [],
       xp_boost: [],
-      voter_badge: [],
       vote_effect: [],
     };
     for (const i of items) {
       const k = displayCategory(i) || 'cat_title';
+      if (k === 'voter_badge' || k === 'badge') continue;
       if (!seed[k]) seed[k] = [];
       seed[k].push(i);
     }
@@ -286,6 +318,14 @@ export default function ShopPage() {
 
   const stageAccentClass = cosmeticTextClassFromSlug(stageLook.colorSlug);
 
+  function toggleSection(id: ShopSectionId) {
+    setOpenSections((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+  }
+
+  function toggleShowAll(id: ShopSectionId) {
+    setShowAllSections((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+  }
+
   function categoryLabel(category: string): string {
     if (category === 'cat_title' || category === 'title') return 'Cat Titles';
     if (category === 'cat_border' || category === 'border') return 'Cat Borders';
@@ -321,7 +361,7 @@ export default function ShopPage() {
     if (rarity === 'Legendary') return 'border-amber-300/35 shadow-[0_0_24px_rgba(251,191,36,0.2)]';
     if (rarity === 'Epic') return 'border-purple-400/28 shadow-[0_0_20px_rgba(168,85,247,0.18)]';
     if (rarity === 'Rare') return 'border-blue-400/26 shadow-[0_0_16px_rgba(96,165,250,0.16)]';
-    return 'border-white/10';
+    return 'border-[rgba(90,55,160,0.22)] shadow-[0_0_12px_rgba(76,46,138,0.12)]';
   }
 
   function tierMeta(price: number): { label: string; chip: string; helper?: string } {
@@ -342,6 +382,7 @@ export default function ShopPage() {
   function renderCard(item: ShopItem, keyPrefix = '') {
     const purchaseAllowed = item.purchasable ?? canPurchaseCosmetic(item);
     const effect = resolveCosmeticEffect(item);
+    const pricingTier = tierMeta(item.price_sigils);
 
     return (
       <div
@@ -354,7 +395,7 @@ export default function ShopPage() {
           e.preventDefault();
           openPreview(item);
         }}
-        className={`text-left w-full rounded-xl border bg-black/30 p-3 transition hover:bg-black/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 cursor-pointer ${rarityCardClass(item.rarity)}`}
+        className={`shop-item-card text-left w-full p-4 transition hover:bg-[#121126] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60 cursor-pointer ${rarityCardClass(item.rarity)}`}
       >
         <div className="flex items-start justify-between gap-2 mb-1">
           <p className="font-bold text-sm pr-2">{item.name}</p>
@@ -365,10 +406,10 @@ export default function ShopPage() {
         </div>
 
         <div className="mb-2 flex items-center gap-1.5 flex-wrap">
-          <span className={`text-[10px] px-2 py-0.5 rounded border ${rarityBadgeClass(item.rarity)}`}>{item.rarity}</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded border ${tierMeta(item.price_sigils).chip}`}>{tierMeta(item.price_sigils).label}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded border ${tierChipClass(item.rarity)}`}>{item.rarity}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded border ${tierChipClass(pricingTier.label)}`}>{pricingTier.label}</span>
           {!purchaseAllowed && <span className="text-[10px] px-2 py-0.5 rounded border border-amber-300/35 bg-amber-500/15 text-amber-200">Preview coming soon</span>}
-          {effect.motion !== 'static' && <span className="text-[10px] text-cyan-200/85">Animated</span>}
+          {effect.motion !== 'static' && <span className={`text-[10px] px-2 py-0.5 rounded border ${tierChipClass('Animated')}`}>Animated</span>}
         </div>
 
         <div className="mb-2">
@@ -405,7 +446,7 @@ export default function ShopPage() {
                   buy(item);
                 }}
                 disabled={busySlug === item.slug || sigils < item.price_sigils || !purchaseAllowed}
-                className="px-3 py-1.5 rounded-lg bg-yellow-400 text-black text-xs font-bold disabled:opacity-40"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40 ${buyButtonClass(item)}`}
               >
                 {busySlug === item.slug ? '...' : 'Buy'}
               </button>
@@ -427,6 +468,34 @@ export default function ShopPage() {
         </div>
       </div>
     );
+  }
+
+  function isFeatured(item: ShopItem): boolean {
+    const rarity = String(item.rarity || '');
+    const slug = String(item.slug || '').toLowerCase();
+    const name = String(item.name || '').toLowerCase();
+    if (rarity === 'Legendary' || rarity === 'Mythic' || rarity === 'God-Tier') return true;
+    if (slug.includes('prestige') || slug.includes('new') || slug.includes('identity')) return true;
+    if (name.includes('crown') || name.includes('royal') || name.includes('legend')) return true;
+    return false;
+  }
+
+  function pickFeatured(itemsForSection: ShopItem[]): ShopItem | null {
+    if (!itemsForSection.length) return null;
+    return itemsForSection.find(isFeatured) || itemsForSection[0];
+  }
+
+  const voteEffects = grouped.vote_effect || [];
+  const borderItems = grouped.cat_border || [];
+  const titleItems = grouped.cat_title || [];
+
+  const voteFeatured = pickFeatured(voteEffects);
+  const borderFeatured = pickFeatured(borderItems);
+  const titleFeatured = pickFeatured(titleItems);
+
+  function remainingItems(itemsForSection: ShopItem[], featured: ShopItem | null) {
+    if (!featured) return itemsForSection;
+    return itemsForSection.filter((item) => item.id !== featured.id);
   }
 
   return (
@@ -487,23 +556,6 @@ export default function ShopPage() {
             </div>
           </div>
         </Card>
-
-        <section className="mb-5 rounded-2xl border border-purple-300/20 bg-gradient-to-r from-purple-500/12 to-cyan-500/10 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-purple-200/80">Premium Crates</p>
-              <p className="text-sm font-bold text-white">Epic Chaos Crate</p>
-              <p className="text-[11px] text-white/65">Enhanced Legendary & Mythic odds · High-Voltage Odds</p>
-            </div>
-            <Link href="/crate" className="h-10 px-3 rounded-xl bg-purple-300 text-black text-xs font-bold inline-flex items-center justify-center">
-              Open Crates
-            </Link>
-          </div>
-          <details className="mt-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
-            <summary className="cursor-pointer text-[11px] font-semibold text-white/85">View Drop Table</summary>
-            <p className="mt-1 text-[11px] text-white/70">Common 30 · Rare 28 · Epic 20 · Legendary 12 · Mythic 7 · God 3</p>
-          </details>
-        </section>
 
         <div className="mb-4 flex items-center justify-between gap-2">
           <p className="text-[11px] text-white/45">Tap any item card for full quick preview.</p>
@@ -574,14 +626,94 @@ export default function ShopPage() {
               )}
             </Card>
 
-            {Object.keys(grouped).map((cat) => (
-              <Card key={cat} className="bg-white/[0.03]">
-                <h2 className="text-lg font-bold mb-3 inline-flex items-center gap-2">{categoryIcon(cat)} {categoryLabel(cat)}</h2>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {grouped[cat].map((item) => renderCard(item))}
-                </div>
-              </Card>
-            ))}
+            {[
+              {
+                id: 'vote-effects' as const,
+                icon: '⚡',
+                name: 'Vote Effects',
+                items: voteEffects,
+                featured: voteFeatured,
+                inlineAll: false,
+              },
+              {
+                id: 'cat-borders' as const,
+                icon: '◻',
+                name: 'Cat Borders',
+                items: borderItems,
+                featured: borderFeatured,
+                inlineAll: false,
+              },
+              {
+                id: 'cat-titles' as const,
+                icon: '🏷',
+                name: 'Cat Titles',
+                items: titleItems,
+                featured: titleFeatured,
+                inlineAll: true,
+              },
+              {
+                id: 'limited-time' as const,
+                icon: '🔥',
+                name: 'Limited Time',
+                items: limitedItems,
+                featured: limitedItems[0] || null,
+                inlineAll: true,
+              },
+            ].map((section) => {
+              const isOpen = openSections.includes(section.id);
+              const showAll = showAllSections.includes(section.id);
+              const count = section.items.length;
+              const rest = remainingItems(section.items, section.featured);
+              return (
+                <Card key={section.id} className={`shop-section bg-white/[0.03] ${isOpen ? 'open' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(section.id)}
+                    className="shop-section-header w-full text-left"
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <span className="text-sm">{section.icon}</span>
+                      <span className="text-sm font-bold text-white">{section.name}</span>
+                      <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-white/60">{count}</span>
+                    </span>
+                    <ChevronDown className="section-chevron h-4 w-4 shrink-0" />
+                  </button>
+                  <div className="section-body">
+                    <div className="p-3">
+                      {section.id === 'limited-time' && count === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/20 bg-black/25 p-3">
+                          <p className="text-sm font-bold text-white/90">Coming Soon</p>
+                          <p className="text-xs text-white/55 mt-0.5">Unlocks at next Pulse</p>
+                        </div>
+                      ) : section.featured ? (
+                        <>
+                          {renderCard(section.featured, `${section.id}-featured-`)}
+                          {rest.length > 0 ? (
+                            <div className="mt-3">
+                              {showAll ? (
+                                <div className="grid sm:grid-cols-2 gap-3">
+                                  {rest.map((item) => renderCard(item, `${section.id}-rest-`))}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleShowAll(section.id)}
+                                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-white/75 hover:bg-white/[0.05]"
+                                >
+                                  Show all {count} items →
+                                </button>
+                              )}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="text-xs text-white/50">Nothing available in this section yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

@@ -29,13 +29,13 @@ export default function BorderPreview({
     return (
       <div
         aria-hidden
-        className={`h-full w-full rounded-[11px] border border-white/10 bg-slate-950/50 overflow-visible ${extraClassName}`}
+        className={`h-full w-full rounded-[10px] overflow-visible border-preview-surface ${extraClassName}`}
       />
     );
   }
 
   return (
-    <div className={`borderPreview ${compact ? 'h-16 isCompact' : 'h-28'} rounded-xl border border-white/10 bg-black/35 p-0 overflow-hidden`}>
+    <div className={`borderPreview border-preview-shell ${compact ? 'h-[72px] isCompact' : 'h-28'} rounded-[10px] p-0 overflow-hidden`}>
       {variant ? (
         <ElementalBorder variant={variant} className="h-full rounded-[11px]">
           {renderSurface()}

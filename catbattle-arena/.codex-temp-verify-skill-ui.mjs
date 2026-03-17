@@ -1,0 +1,15 @@
+import { chromium } from 'playwright';
+const base = 'http://127.0.0.1:3000';
+const catId = '7d6408af-d6ec-4aeb-8923-5f274a565e6d';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const logs = [];
+page.on('console', msg => logs.push(`[${msg.type()}] ${msg.text()}`));
+await page.goto(`${base}/cat/${catId}`, { waitUntil: 'networkidle' });
+const bodyText = await page.locator('body').innerText();
+const hasEquippedSkill = bodyText.includes('Equipped Skill');
+const hasNoSkill = bodyText.includes('No skill equipped');
+const hasChoose = bodyText.includes('Choose Skill');
+await page.screenshot({ path: '/tmp/cat-skill-ui.jpg', type: 'jpeg', quality: 85, fullPage: true });
+await browser.close();
+console.log(JSON.stringify({ hasEquippedSkill, hasNoSkill, hasChoose, logs: logs.slice(0, 20) }, null, 2));

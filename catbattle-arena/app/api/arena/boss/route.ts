@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getGuestId } from '../../_lib/guest';
-import { resolveCatImageUrl } from '../../_lib/images';
+import { isPlaceholderLikeImage, resolveCatImageUrl, stableNpcImageUrl } from '../../_lib/images';
 import { FEATURES } from '../../_lib/flags';
 import { getActiveWhiskerModifier } from '../../_lib/whisker-modifier';
 
@@ -39,21 +39,38 @@ export async function GET() {
   try {
     const userId = await getGuestId();
     const today = todayKey();
+    const NPC_USER_ID = '00000000-0000-0000-0000-000000000000';
 
     const { data: cats } = await supabase
       .from('cats')
-      .select('id, name, rarity, image_path, image_review_status, attack, defense, speed, charisma, chaos')
+      .select('id, user_id, name, rarity, image_path, image_url_thumb, image_url_card, image_url_original, image_review_status, attack, defense, speed, charisma, chaos')
       .eq('status', 'approved')
       .neq('user_id', userId)
       .order('id', { ascending: true })
       .limit(500);
 
-    if (!cats || cats.length === 0) {
+    const bossCandidates = (cats || []).filter((cat) => {
+      const review = String(cat.image_review_status || '').trim().toLowerCase();
+      if (review === 'pending_review' || review === 'disapproved') return false;
+      const hasSource = Boolean(
+        String(
+          (cat as any).image_url_thumb ||
+            (cat as any).image_url_card ||
+            (cat as any).image_url_original ||
+            cat.image_path ||
+            ''
+        ).trim()
+      );
+      const isNpc = String((cat as any).user_id || '') === NPC_USER_ID;
+      return hasSource || isNpc;
+    });
+
+    if (bossCandidates.length === 0) {
       return NextResponse.json({ ok: false, error: 'No boss candidates yet' }, { status: 404 });
     }
 
-    const idx = seededIndex(cats.length, `boss:${today}`);
-    const boss = cats[idx];
+    const idx = seededIndex(bossCandidates.length, `boss:${today}`);
+    const boss = bossCandidates[idx];
     const rewardKey = `daily_boss_win:${today}`;
     const { data: claimed } = await supabase
       .from('user_reward_claims')
@@ -77,6 +94,24 @@ export async function GET() {
     const bossModifier = FEATURES.DAILY_BOSS_V2 ? bossModifierForDay(today) : null;
 
     const weeklyModifier = getActiveWhiskerModifier();
+    const imageSource = String(
+      (boss as any).image_url_thumb ||
+        (boss as any).image_url_card ||
+        (boss as any).image_url_original ||
+        boss.image_path ||
+        ''
+    ).trim();
+    let imageUrl = await resolveCatImageUrl(
+      supabase,
+      imageSource,
+      boss.image_review_status || null
+    );
+    if (
+      (!imageUrl || isPlaceholderLikeImage(imageUrl)) &&
+      String((boss as any).user_id || '') === NPC_USER_ID
+    ) {
+      imageUrl = stableNpcImageUrl(boss.id, 320);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -92,7 +127,7 @@ export async function GET() {
         id: boss.id,
         name: boss.name,
         rarity: boss.rarity || 'Common',
-        image_url: await resolveCatImageUrl(supabase, boss.image_path, boss.image_review_status || null),
+        image_url: imageUrl,
         stats: {
           attack: Number(boss.attack || 45),
           defense: Number(boss.defense || 45),

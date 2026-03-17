@@ -12,15 +12,10 @@ export type ShopSeedItem = {
 };
 
 export const DEFAULT_SHOP_ITEMS: ShopSeedItem[] = [
-  { slug: 'title-arena-rookie', name: 'Arena Rookie', category: 'cat_title', rarity: 'Common', description: 'First blood in the arena.', price_sigils: 80, metadata: { title: 'Arena Rookie' } },
   { slug: 'title-clutch-voter', name: 'Clutch Voter', category: 'cat_title', rarity: 'Rare', description: 'You make close calls count.', price_sigils: 220, metadata: { title: 'Clutch Voter' } },
-  { slug: 'title-sigil-whisperer', name: 'Sigil Whisperer', category: 'cat_title', rarity: 'Epic', description: 'Master of the sigil economy.', price_sigils: 420, metadata: { title: 'Sigil Whisperer' } },
-  { slug: 'title-ember-emperor', name: 'Ember Emperor', category: 'cat_title', rarity: 'Legendary', description: 'Crowned in the fire of the arena.', price_sigils: 680, metadata: { title: 'Ember Emperor' } },
-  { slug: 'title-midnight-hunter', name: 'Midnight Hunter', category: 'cat_title', rarity: 'Rare', description: 'Silent, patient, and deadly cute.', price_sigils: 220, metadata: { title: 'Midnight Hunter' } },
-  { slug: 'title-meme-lord', name: 'Meme Lord', category: 'cat_title', rarity: 'Epic', description: 'Certified chaos curator.', price_sigils: 420, metadata: { title: 'Meme Lord' } },
+  { slug: 'title-niche-microcelebrity', name: 'Niche MicroCelebrity', category: 'cat_title', rarity: 'Epic', description: 'Known by the right people for exactly the right chaos.', price_sigils: 420, metadata: { title: 'Niche MicroCelebrity' } },
   { slug: 'title-instafamous', name: 'Instafamous', category: 'cat_title', rarity: 'Legendary', description: 'Built for viral cat moments.', price_sigils: 720, metadata: { title: 'Instafamous' } },
   { slug: 'border-neon-cyan', name: 'Neon Cyan Border', category: 'cat_border', rarity: 'Rare', description: 'Clean cyan frame for your cats.', price_sigils: 220, metadata: { borderClass: 'ring-cyan-400' } },
-  { slug: 'border-ember-gold', name: 'Ember Gold Border', category: 'cat_border', rarity: 'Epic', description: 'Premium gold-hot profile frame.', price_sigils: 420, metadata: { borderClass: 'ring-yellow-400' } },
   { slug: 'border-obsidian', name: 'Obsidian Edge', category: 'cat_border', rarity: 'Common', description: 'Matte black frame with silver trim.', price_sigils: 120, metadata: { borderClass: 'ring-zinc-400' } },
   { slug: 'border-royal-violet', name: 'Royal Violet Border', category: 'cat_border', rarity: 'Legendary', description: 'A crown-tier violet aura frame.', price_sigils: 680, metadata: { borderClass: 'ring-fuchsia-400' } },
   { slug: 'border-prism-shift', name: 'Prism Shift Border', category: 'cat_border', rarity: 'Epic', description: 'Shimmering edge for spotlight cats.', price_sigils: 460, metadata: { borderClass: 'ring-indigo-400' } },

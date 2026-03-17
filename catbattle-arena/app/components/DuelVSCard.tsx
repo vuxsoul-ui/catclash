@@ -117,7 +117,7 @@ function DuelFighterCard({
   isActiveAttacker,
   cosmetics,
   isOwnerView,
-  voteTriggerKey,
+  voteTrigger,
 }: {
   side: 'a' | 'b';
   cat: DuelCatLite | null;
@@ -139,7 +139,7 @@ function DuelFighterCard({
     badge_name: string | null;
   } | null;
   isOwnerView: boolean;
-  voteTriggerKey: string;
+  voteTrigger: { key: string; clientX?: number; clientY?: number } | null;
 }) {
   const rarity = String(cat?.rarity || 'Common');
   const level = Number(cat?.level || 1);
@@ -156,7 +156,7 @@ function DuelFighterCard({
 
   return (
     <article className={`duel-fighter ${rarityBaseBorderClass(rarity)} ${borderClass} ${isWinner ? 'winner' : ''} ${isLoser ? 'loser' : ''} ${isActiveAttacker ? 'attacker' : ''}`}>
-      <VoteEffectLayer effectSlug={voteEffectSlug} triggerKey={voteTriggerKey} />
+      <VoteEffectLayer effectSlug={voteEffectSlug} trigger={voteTrigger} />
       <header className="duel-header-strip">
         <span className={`duel-rarity-badge ${rarityBadgeClass(rarity)}`}>{rarity}</span>
         <div className="duel-header-right">
@@ -228,8 +228,8 @@ export default function DuelVSCard({
   showCopyLink?: boolean;
   onCopyLink?: (duelId: string) => void;
 }) {
-  const [leftVoteTriggerKey, setLeftVoteTriggerKey] = useState('');
-  const [rightVoteTriggerKey, setRightVoteTriggerKey] = useState('');
+  const [leftVoteTrigger, setLeftVoteTrigger] = useState<{ key: string; clientX?: number; clientY?: number } | null>(null);
+  const [rightVoteTrigger, setRightVoteTrigger] = useState<{ key: string; clientX?: number; clientY?: number } | null>(null);
   const canVote =
     !!onVote &&
     !!duel.challenger_cat?.id &&
@@ -262,7 +262,7 @@ export default function DuelVSCard({
       isActiveAttacker={leftActive}
       cosmetics={duel.challenger_cosmetics || null}
       isOwnerView={meId === duel.challenger_user_id}
-      voteTriggerKey={leftVoteTriggerKey}
+      voteTrigger={leftVoteTrigger}
     />
   );
 
@@ -280,7 +280,7 @@ export default function DuelVSCard({
       isActiveAttacker={rightActive}
       cosmetics={duel.challenged_cosmetics || null}
       isOwnerView={meId === duel.challenged_user_id}
-      voteTriggerKey={rightVoteTriggerKey}
+      voteTrigger={rightVoteTrigger}
     />
   );
 
@@ -302,9 +302,9 @@ export default function DuelVSCard({
         <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             disabled={!canVote || busy}
-            onClick={() => {
+            onClick={(e) => {
               if (!duel.challenger_cat?.id) return;
-              setLeftVoteTriggerKey(`${duel.id}:a:${Date.now()}`);
+              setLeftVoteTrigger({ key: `${duel.id}:a:${Date.now()}`, clientX: e.clientX, clientY: e.clientY });
               onVote(duel.id, duel.challenger_cat.id);
             }}
             className="duel-vote-btn h-8 rounded-xl bg-orange-500/20 text-orange-100 text-[10px] font-bold disabled:opacity-45"
@@ -313,9 +313,9 @@ export default function DuelVSCard({
           </button>
           <button
             disabled={!canVote || busy}
-            onClick={() => {
+            onClick={(e) => {
               if (!duel.challenged_cat?.id) return;
-              setRightVoteTriggerKey(`${duel.id}:b:${Date.now()}`);
+              setRightVoteTrigger({ key: `${duel.id}:b:${Date.now()}`, clientX: e.clientX, clientY: e.clientY });
               onVote(duel.id, duel.challenged_cat.id);
             }}
             className="duel-vote-btn h-8 rounded-xl bg-sky-500/20 text-sky-100 text-[10px] font-bold disabled:opacity-45"

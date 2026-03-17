@@ -1,0 +1,250 @@
+name: Skill Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      owned_cat_id:
+        description: 'Owned cat id for equip and owner UI checks'
+        required: false
+        type: string
+      owner_user_id:
+        description: 'Guest/user id that owns owned_cat_id'
+        required: false
+        type: string
+      locked_cat_id:
+        description: 'Cat id that should currently be in Pulse lock state'
+        required: false
+        type: string
+      locked_owner_user_id:
+        description: 'Guest/user id that owns locked_cat_id'
+        required: false
+        type: string
+      history_user_id:
+        description: 'Guest/user id with resolved_matchups data in /api/arena/history'
+        required: false
+        type: string
+      history_cat_id:
+        description: 'Optional cat id expected to appear in resolved_matchups'
+        required: false
+        type: string
+      counter_match_id:
+        description: 'Optional resolved match id expected to show skills_cancelled'
+        required: false
+        type: string
+
+jobs:
+  skill-smoke:
+    name: Skill Smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NODE_ENV: production
+      PORT: 3000
+      BASE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GUEST_SECRET: ${{ secrets.GUEST_SECRET }}
+      OWNED_CAT_ID: ${{ inputs.owned_cat_id }}
+      OWNER_USER_ID: ${{ inputs.owner_user_id }}
+      LOCKED_CAT_ID: ${{ inputs.locked_cat_id }}
+      LOCKED_OWNER_USER_ID: ${{ inputs.locked_owner_user_id }}
+      HISTORY_USER_ID: ${{ inputs.history_user_id }}
+      HISTORY_CAT_ID: ${{ inputs.history_cat_id }}
+      COUNTER_MATCH_ID: ${{ inputs.counter_match_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for manual UI checks
+        run: npx playwright install --with-deps chromium
+
+      - name: Build app
+        run: npm run build
+
+      - name: Start app
+        run: |
+          npm run start > /tmp/skill-smoke-app.log 2>&1 &
+          echo $! > /tmp/skill-smoke-app.pid
+
+      - name: Wait for app health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE_URL/api/health" >/tmp/skill-health.json 2>/dev/null; then
+              echo "App is healthy"
+              cat /tmp/skill-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App failed to become healthy"
+          cat /tmp/skill-smoke-app.log || true
+          exit 1
+
+      - name: API smoke and seeded deep checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          make_cookie() {
+            local user_id="$1"
+            node -e "const crypto=require('crypto'); const userId=process.argv[1]; const secret=String(process.env.GUEST_SECRET||'').trim(); if(!secret){console.error('Missing GUEST_SECRET'); process.exit(2);} if(!userId){console.error('Missing user id'); process.exit(3);} const expUnix=Math.floor(Date.now()/1000)+3600; const payload=Buffer.from(userId+':'+expUnix,'utf8').toString('base64url'); const sig=crypto.createHmac('sha256', secret).update(payload).digest('base64url'); process.stdout.write(payload+'.'+sig);" "$user_id"
+          }
+
+          RANDOM_NON_OWNER_ID="00000000-0000-4000-8000-000000000999"
+
+          echo "== Basic API checks =="
+          curl -fsS "$BASE_URL/api/health" | jq '.'
+
+          if [[ -n "${OWNED_CAT_ID}" ]]; then
+            curl -fsS "$BASE_URL/api/cats/${OWNED_CAT_ID}" | jq '{ok, cat: {id: .cat.id, viewer_is_owner: .cat.viewer_is_owner, skill_locked: .cat.skill_locked, equipped_skill: .cat.equipped_skill, available_skills_count: (.cat.available_skills|length)}}'
+          else
+            echo "SKIP: /api/cats/[id] deep field check skipped (OWNED_CAT_ID missing)"
+          fi
+
+          if [[ -n "${OWNED_CAT_ID}" ]]; then
+            curl -sS -X PATCH -H 'Content-Type: application/json' "$BASE_URL/api/cat/${OWNED_CAT_ID}/skill" --data '{"skill_id":"00000000-0000-0000-0000-000000000000"}' | jq '.'
+          else
+            echo "SKIP: /api/cat/[id]/skill basic route check skipped (OWNED_CAT_ID missing)"
+          fi
+
+          curl -fsS "$BASE_URL/api/arena/history" | jq '{ok, resolved_matchups_count: (.resolved_matchups|length), matches_count: (.matches|length)}'
+
+          echo "== Seeded deep checks =="
+          if [[ -n "${OWNED_CAT_ID}" && -n "${OWNER_USER_ID}" ]]; then
+            OWNER_COOKIE=$(make_cookie "$OWNER_USER_ID")
+            export OWNER_COOKIE
+            OWNED_JSON=$(curl -fsS -H "Cookie: guest=${OWNER_COOKIE}" "$BASE_URL/api/cats/${OWNED_CAT_ID}")
+            echo "$OWNED_JSON" | jq '{ok, cat: {viewer_is_owner: .cat.viewer_is_owner, skill_locked: .cat.skill_locked, available_skills_count: (.cat.available_skills|length)}}'
+            echo "$OWNED_JSON" | jq -e '.cat.viewer_is_owner == true' >/dev/null
+            echo "$OWNED_JSON" | jq -e '.cat.skill_locked == false' >/dev/null
+
+            SKILL_ID=$(echo "$OWNED_JSON" | jq -r '.cat.available_skills[0].id // empty')
+            if [[ -n "$SKILL_ID" ]]; then
+              PATCH_OK=$(curl -fsS -X PATCH -H 'Content-Type: application/json' -H "Cookie: guest=${OWNER_COOKIE}" "$BASE_URL/api/cat/${OWNED_CAT_ID}/skill" --data "{\"skill_id\":\"${SKILL_ID}\"}")
+              echo "$PATCH_OK" | jq '{ok, equipped_skill}'
+              echo "$PATCH_OK" | jq -e '.ok == true' >/dev/null
+
+              PATCH_FORBIDDEN=$(curl -sS -X PATCH -H 'Content-Type: application/json' -H "Cookie: guest=$(make_cookie "$RANDOM_NON_OWNER_ID")" "$BASE_URL/api/cat/${OWNED_CAT_ID}/skill" --data "{\"skill_id\":\"${SKILL_ID}\"}")
+              echo "$PATCH_FORBIDDEN" | jq '{ok, error}'
+              echo "$PATCH_FORBIDDEN" | jq -e '.ok == false' >/dev/null
+            else
+              echo "SKIP: owner PATCH success check skipped (no available skills on owned cat)"
+            fi
+          else
+            echo "SKIP: owner equip checks skipped (OWNED_CAT_ID and/or OWNER_USER_ID missing)"
+          fi
+
+          if [[ -n "${LOCKED_CAT_ID}" && -n "${LOCKED_OWNER_USER_ID}" ]]; then
+            LOCKED_JSON=$(curl -fsS -H "Cookie: guest=$(make_cookie "$LOCKED_OWNER_USER_ID")" "$BASE_URL/api/cats/${LOCKED_CAT_ID}")
+            echo "$LOCKED_JSON" | jq '{ok, cat: {viewer_is_owner: .cat.viewer_is_owner, skill_locked: .cat.skill_locked}}'
+            echo "$LOCKED_JSON" | jq -e '.cat.skill_locked == true' >/dev/null
+          else
+            echo "SKIP: locked cat checks skipped (LOCKED_CAT_ID and/or LOCKED_OWNER_USER_ID missing)"
+          fi
+
+          if [[ -n "${HISTORY_USER_ID}" ]]; then
+            HISTORY_JSON=$(curl -fsS -H "Cookie: guest=$(make_cookie "$HISTORY_USER_ID")" "$BASE_URL/api/arena/history")
+            echo "$HISTORY_JSON" | jq '{ok, resolved_matchups_count: (.resolved_matchups|length)}'
+            echo "$HISTORY_JSON" | jq -e '.resolved_matchups | length > 0' >/dev/null
+
+            if [[ -n "${HISTORY_CAT_ID}" ]]; then
+              echo "$HISTORY_JSON" | jq -e --arg catId "$HISTORY_CAT_ID" '.resolved_matchups | any(.cat_a_column.id == $catId or .cat_b_column.id == $catId)' >/dev/null
+            else
+              echo "SKIP: history cat presence check skipped (HISTORY_CAT_ID missing)"
+            fi
+
+            if [[ -n "${COUNTER_MATCH_ID}" ]]; then
+              echo "$HISTORY_JSON" | jq -e --arg matchId "$COUNTER_MATCH_ID" '.resolved_matchups | any(.match_id == $matchId and has("skills_cancelled"))' >/dev/null
+            else
+              echo "SKIP: counter reveal check skipped (COUNTER_MATCH_ID missing)"
+            fi
+          else
+            echo "SKIP: resolved_matchups deep checks skipped (HISTORY_USER_ID missing)"
+          fi
+
+      - name: Browser smoke for skill/reveal UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .github/skill-smoke-check.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import crypto from 'node:crypto';
+
+          const base = process.env.BASE_URL || 'http://127.0.0.1:3000';
+          const ownedCatId = process.env.OWNED_CAT_ID || '';
+          const ownerUserId = process.env.OWNER_USER_ID || '';
+          const lockedCatId = process.env.LOCKED_CAT_ID || '';
+          const lockedOwnerUserId = process.env.LOCKED_OWNER_USER_ID || '';
+          const historyUserId = process.env.HISTORY_USER_ID || '';
+          const secret = String(process.env.GUEST_SECRET || '').trim();
+
+          function makeCookie(userId) {
+            if (!userId || !secret) return '';
+            const expUnix = Math.floor(Date.now() / 1000) + 3600;
+            const payload = Buffer.from(`${userId}:${expUnix}`, 'utf8').toString('base64url');
+            const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+            return `${payload}.${sig}`;
+          }
+
+          async function checkPage(url, cookie, expected) {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+            if (cookie) {
+              await page.context().addCookies([
+                { name: 'guest', value: cookie, domain: '127.0.0.1', path: '/', httpOnly: true, sameSite: 'Lax' },
+              ]);
+            }
+            await page.goto(url, { waitUntil: 'networkidle' });
+            const bodyText = await page.locator('body').innerText();
+            const result = {};
+            for (const item of expected) result[item] = bodyText.includes(item);
+            await browser.close();
+            return result;
+          }
+
+          const tasks = [];
+          if (ownedCatId && ownerUserId) {
+            tasks.push(checkPage(`${base}/cat/${ownedCatId}`, makeCookie(ownerUserId), ['Equipped Skill']));
+          } else {
+            console.log('SKIP: owned cat UI check skipped (OWNED_CAT_ID and/or OWNER_USER_ID missing)');
+          }
+
+          if (lockedCatId && lockedOwnerUserId) {
+            tasks.push(checkPage(`${base}/cat/${lockedCatId}`, makeCookie(lockedOwnerUserId), ['Equipped Skill', 'Locked until Pulse resolves']));
+          } else {
+            console.log('SKIP: locked cat UI check skipped (LOCKED_CAT_ID and/or LOCKED_OWNER_USER_ID missing)');
+          }
+
+          if (historyUserId) {
+            tasks.push(checkPage(`${base}/arena`, makeCookie(historyUserId), ['Recent Results']));
+          } else {
+            console.log('SKIP: arena reveal UI check skipped (HISTORY_USER_ID missing)');
+          }
+
+          const results = await Promise.all(tasks);
+          for (const result of results) {
+            console.log(JSON.stringify(result));
+            if (Object.values(result).includes(false)) {
+              process.exitCode = 1;
+            }
+          }
+          EOF
+          node .github/skill-smoke-check.mjs
+
+      - name: Upload app log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-smoke-app-log
+          path: /tmp/skill-smoke-app.log

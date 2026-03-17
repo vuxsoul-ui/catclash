@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { computePulseWindow } from "../../_lib/pulse";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,20 +13,11 @@ function getSupabase() {
   );
 }
 
-function todayUtcKey(now = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
-function nextPulseAtUtc(now = new Date()): string {
-  const next = new Date(now);
-  next.setUTCHours(24, 0, 0, 0);
-  return next.toISOString();
-}
-
 export async function GET() {
   try {
     const sb = getSupabase();
-    const dayKey = todayUtcKey();
+    const pulse = await computePulseWindow(new Date());
+    const dayKey = pulse.pulseKey;
     const { data: tournaments } = await sb
       .from("tournaments")
       .select("id, tournament_type, updated_at, created_at")
@@ -72,7 +64,7 @@ export async function GET() {
         ok: true,
         dayKey,
         serverNowUtc: new Date().toISOString(),
-        nextPulseAtUtc: nextPulseAtUtc(),
+        nextPulseAtUtc: pulse.resolvesAt,
         arenaVersionMain: `${dayKey}:main:${mainStamp || "0"}:${voteStamp || "0"}`,
         arenaVersionRookie: `${dayKey}:rookie:${rookieStamp || "0"}:${voteStamp || "0"}`,
         duelVersion: `${dayKey}:duel:${duelStamp || "0"}`,

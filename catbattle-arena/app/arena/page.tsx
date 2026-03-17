@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronDown, Loader2, PlusCircle, Play, Swords, Zap } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Loader2, PlusCircle, Play, Sparkles, Swords, Target, Trophy, Zap } from 'lucide-react';
 import { showGlobalToast } from '../lib/global-toast';
 
 type MyCat = {
@@ -11,6 +11,9 @@ type MyCat = {
   rarity: string;
   image_url: string | null;
   cat_level?: number;
+  wins?: number;
+  losses?: number;
+  stance?: string | null;
   stats?: {
     attack: number;
     defense: number;
@@ -40,6 +43,51 @@ type ArenaMatch = {
   turns: number;
   rating_delta: number;
   created_at: string;
+};
+
+type ResolvedPulseMatch = {
+  id: string;
+  match_id: string;
+  resolved_at: string | null;
+  winner_id: string | null;
+  base_prob_a: number;
+  skill_delta: number;
+  final_prob_a: number;
+  skills_cancelled?: boolean;
+  skill_a_triggered: boolean;
+  skill_b_triggered: boolean;
+  skill_a_id: string | null;
+  skill_b_id: string | null;
+  skill_a_name: string | null;
+  skill_a_description: string | null;
+  skill_b_name: string | null;
+  skill_b_description: string | null;
+  cat_a_column: {
+    id: string;
+    name: string;
+    image_url: string | null;
+    skill_name: string;
+    skill_description: string | null;
+    triggered: boolean;
+    base_probability: number;
+    skill_delta: number;
+    final_probability: number;
+    is_winner: boolean;
+  };
+  cat_b_column: {
+    id: string;
+    name: string;
+    image_url: string | null;
+    skill_name: string;
+    skill_description: string | null;
+    triggered: boolean;
+    base_probability: number;
+    skill_delta: number;
+    final_probability: number;
+    is_winner: boolean;
+  };
+  votes_a?: number | null;
+  votes_b?: number | null;
 };
 
 type NpcCat = { id: string; name: string; rarity: string; image_url?: string | null };
@@ -159,6 +207,7 @@ export default function WhiskerArenaPage() {
   const [cats, setCats] = useState<MyCat[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [matches, setMatches] = useState<ArenaMatch[]>([]);
+  const [resolvedMatchups, setResolvedMatchups] = useState<ResolvedPulseMatch[]>([]);
   const [rating, setRating] = useState<{ rating: number; tier: string; wins: number; losses: number }>({
     rating: 1000,
     tier: 'bronze',
@@ -198,6 +247,8 @@ export default function WhiskerArenaPage() {
   }, [sortedSnapshots, catId]);
 
   const selectedNpc = useMemo(() => npcCats.find((n) => n.id === selectedNpcId), [npcCats, selectedNpcId]);
+  const activeSnapshot = useMemo(() => sortedSnapshots.find((s) => s.id === preferredSnapshotId) || null, [sortedSnapshots, preferredSnapshotId]);
+  const selectedCat = useMemo(() => cats.find((cat) => cat.id === (activeSnapshot?.cat_id || catId)) || null, [cats, activeSnapshot, catId]);
 
   const energyA = battleState?.fighter_a.energy || 0;
   const activeModifier = modifierMeta(battleState?.weekly_modifier || dailyBoss?.weekly_modifier?.key || null);
@@ -222,9 +273,47 @@ export default function WhiskerArenaPage() {
     const momentum = battleState.fighter_a.momentum;
     return Math.max(0, Math.min(100, Math.round(((momentum + 5) / 10) * 100)));
   }, [battleState]);
+  const currentStreak = useMemo(() => {
+    let streak = 0;
+    for (const match of filteredRecent) {
+      const won = !!match.snapshot_a_id && match.winner_snapshot_id === match.snapshot_a_id;
+      if (!won) break;
+      streak += 1;
+    }
+    return streak;
+  }, [filteredRecent]);
+  const divisionLabel = useMemo(() => {
+    const tier = String(rating.tier || 'bronze').toLowerCase();
+    if (tier === 'bronze') return 'Bronze Division';
+    if (tier === 'silver') return 'Silver Division';
+    if (tier === 'gold') return 'Gold Division';
+    if (tier === 'platinum') return 'Platinum Division';
+    if (tier === 'diamond') return 'Diamond Division';
+    return `${String(rating.tier || 'bronze')} Division`;
+  }, [rating.tier]);
+  const fighterRewardInfo = useMemo(() => {
+    if (dailyBoss?.boss) return `Daily Boss clear pays ${dailyBoss.reward_sigils} sigils`;
+    return 'Earn rating swings and cross-mode token bonuses through wins';
+  }, [dailyBoss]);
 
   function onMoveFlashComplete(id: number) {
     setMoveFlash((current) => (current?.id === id ? null : current));
+  }
+
+  function percent(value: number) {
+    return `${Math.round(Math.max(0, Math.min(1, Number(value || 0))) * 100)}%`;
+  }
+
+  function signedPercent(value: number) {
+    const pct = Math.round(Number(value || 0) * 100);
+    if (!pct) return '—';
+    return `${pct > 0 ? '+' : ''}${pct}%`;
+  }
+
+  function skillDeltaTone(value: number) {
+    const pct = Math.round(Number(value || 0) * 100);
+    if (!pct) return 'text-white/40';
+    return pct > 0 ? 'text-emerald-300' : 'text-rose-300';
   }
 
   async function loadAll() {
@@ -255,6 +344,9 @@ export default function WhiskerArenaPage() {
         rarity: c.rarity || 'Common',
         image_url: c.image_url || null,
         cat_level: Number(c.cat_level || c.level || 1),
+        wins: Number(c.wins || 0),
+        losses: Number(c.losses || 0),
+        stance: c.stance || null,
         stats: c.stats || {
           attack: Number(c.attack || 0),
           defense: Number(c.defense || 0),
@@ -286,6 +378,7 @@ export default function WhiskerArenaPage() {
       } else if (historyRes.ok && history?.ok) {
         const rows = history.matches || [];
         setMatches(rows);
+        setResolvedMatchups(history.resolved_matchups || []);
         setRating(history.rating || { rating: 1000, tier: 'bronze', wins: 0, losses: 0 });
 
         const active = rows.find((m: ArenaMatch) => m.status === 'active');
@@ -490,7 +583,7 @@ export default function WhiskerArenaPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#08090d] text-white pt-4 pb-8 px-3 sm:px-4">
+    <main className="min-h-screen bg-[#08090d] text-white pt-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:pb-8 px-3 sm:px-4">
       <div className="max-w-5xl mx-auto">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white mb-3">
           <ArrowLeft className="w-4 h-4" />
@@ -498,114 +591,145 @@ export default function WhiskerArenaPage() {
         </Link>
 
         <section className="arena-hero-shell">
-          <div className="arena-hero-top">
+          <div className="arena-prep-hero">
+            <div className="arena-prep-copy">
+              <div className="arena-hero-top">
+                <div>
+                  <p className="arena-hero-eyebrow">⚔ RANKED BATTLE PREP</p>
+                  <h1 className="arena-hero-title">Whisker Arena</h1>
+                  <p className="arena-hero-subtitle">Train one fighter, climb the ladder, and queue into snapshot duels with a clearer battle-prep loop.</p>
+                </div>
+              </div>
+
+              <div className="arena-hero-rankline">
+                <div className="arena-hero-rankcard">
+                  <span className="arena-hero-ranklabel">Rank</span>
+                  <strong>{divisionLabel}</strong>
+                </div>
+                <div className="arena-hero-rankcard">
+                  <span className="arena-hero-ranklabel">Rating</span>
+                  <strong>{rating.rating}</strong>
+                </div>
+                <div className="arena-tier-pill">Tier {String(rating.tier || 'bronze').toUpperCase()}</div>
+              </div>
+
+              <div className="arena-hero-actions">
+                <button
+                  disabled={!preferredSnapshotId || battleBusy || uninitialized || hasActiveMatch}
+                  onClick={() => startBattle(preferredSnapshotId)}
+                  className="arena-start-match-btn arena-start-match-btn-hero"
+                >
+                  <Play className="w-4 h-4" />
+                  {hasActiveMatch ? 'Battle In Progress' : 'Start Match'}
+                </button>
+                <button type="button" onClick={() => setSnapshotPanelOpen(true)} className="arena-secondary-btn">
+                  <Target className="w-4 h-4" />
+                  Edit Loadout
+                </button>
+              </div>
+
+              {!preferredSnapshotId && <p className="arena-hero-warning">No snapshot configured yet. Publish your loadout first to enter the ladder.</p>}
+              {hasActiveMatch && <p className="arena-hero-warning">A match is already active. Jump back in below to keep the run alive.</p>}
+            </div>
+
+            <div className="arena-hero-fighter-portrait">
+              <div className="arena-hero-fighter-frame">
+                <img
+                  src={selectedCat?.image_url || fallbackCatUrl(selectedCat?.id || 'arena-active-cat')}
+                  alt={selectedCat?.name || 'Active fighter'}
+                  className="arena-hero-fighter-image"
+                />
+                <div className="arena-hero-fighter-glow" />
+              </div>
+              <div className="arena-hero-fighter-caption">
+                <p className="arena-hero-fighter-name">{selectedCat?.name || 'Choose Your Fighter'}</p>
+                <p className="arena-hero-fighter-meta">
+                  {selectedCat ? `${selectedCat.rarity} · Lv ${selectedCat.cat_level || 1}` : 'Select a cat and publish a snapshot to battle'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="arena-section-shell arena-fighter-shell">
+          <div className="arena-section-head arena-section-head-tight">
             <div>
-              <p className="arena-hero-eyebrow">⚔ BATTLE MODE</p>
-              <h1 className="arena-hero-title">Whisker Arena</h1>
-              <p className="arena-hero-subtitle">Turn-based 1v1. Outplay NPCs or rival snapshots.</p>
+              <p className="arena-section-title">Active Fighter</p>
+              <p className="arena-helper-text">Your chosen cat, current tactic, and what it is fighting for.</p>
             </div>
-            <div className="arena-tier-pill">Tier {String(rating.tier || 'bronze').toUpperCase()}</div>
+            {preferredSnapshotId ? <span className="arena-fighter-status">Snapshot Ready</span> : <span className="arena-fighter-status arena-fighter-status-muted">Needs Snapshot</span>}
           </div>
 
-          {activeModifier && (
-            <div className="arena-week-buff mt-3">
-              <span className="arena-week-dot" />
-              <div>
-                <p className="arena-week-label">{activeModifier.label}</p>
-                <p className="arena-week-desc">{activeModifier.description}</p>
-              </div>
+          <div className="arena-fighter-spotlight">
+            <div className="arena-fighter-art">
+              <img
+                src={selectedCat?.image_url || fallbackCatUrl(selectedCat?.id || 'arena-fighter')}
+                alt={selectedCat?.name || 'Active fighter'}
+                className="arena-fighter-art-image"
+              />
             </div>
-          )}
 
-          <div className="arena-stats-grid mt-3">
-            <div className="arena-stat-cell">
-              <p className="arena-stat-label">W / L</p>
-              <p className="arena-stat-value">{rating.wins} / {rating.losses}</p>
-            </div>
-            <div className="arena-stat-cell">
-              <p className="arena-stat-label">TURN CAP</p>
-              <p className="arena-stat-value">12</p>
-            </div>
-            <div className="arena-stat-cell">
-              <p className="arena-stat-label">RATING</p>
-              <p className="arena-stat-value">{rating.rating}</p>
-            </div>
-            <div className="arena-stat-cell">
-              <p className="arena-stat-label">ELO RATING</p>
-              <p className="arena-stat-value">{rating.tier}</p>
+            <div className="arena-fighter-panel">
+              <div className="arena-fighter-header">
+                <div>
+                  <h2 className="arena-fighter-name">{selectedCat?.name || 'No fighter selected'}</h2>
+                  <div className="arena-fighter-badges">
+                    <span className="arena-fighter-badge">{selectedCat?.rarity || 'Unknown rarity'}</span>
+                    <span className="arena-fighter-badge">Level {selectedCat?.cat_level || 1}</span>
+                    <span className="arena-fighter-badge">{divisionLabel}</span>
+                  </div>
+                </div>
+                <div className="arena-fighter-record">
+                  <span>W / L</span>
+                  <strong>{selectedCat?.wins || 0} / {selectedCat?.losses || 0}</strong>
+                </div>
+              </div>
+
+              <div className="arena-fighter-meta-grid">
+                <div className="arena-fighter-meta-card">
+                  <span>Current streak</span>
+                  <strong>{currentStreak} win{currentStreak === 1 ? '' : 's'}</strong>
+                </div>
+                <div className="arena-fighter-meta-card">
+                  <span>Equipped skill</span>
+                  <strong>{preferredSnapshotId ? 'Configured on cat profile' : 'No skill equipped'}</strong>
+                </div>
+                <div className="arena-fighter-meta-card">
+                  <span>Stance</span>
+                  <strong>{selectedCat?.stance || selectedStance || 'Neutral'}</strong>
+                </div>
+                <div className="arena-fighter-meta-card">
+                  <span>Tactic</span>
+                  <strong>{activeSnapshot ? behaviorLabel(activeSnapshot.ai_behavior) : behaviorLabel(behavior)}</strong>
+                </div>
+              </div>
+
+              <div className="arena-fighter-rewardline">
+                <Sparkles className="w-4 h-4" />
+                <span>{fighterRewardInfo}</span>
+              </div>
+
+              {!preferredSnapshotId && (
+                <div className="arena-submit-guide arena-submit-guide-inline">
+                  <div>
+                    <p className="arena-submit-guide-title">No snapshot configured</p>
+                    <p className="arena-submit-guide-copy">Publish a loadout for this cat, then jump into Whisker Arena battles.</p>
+                  </div>
+                  <div className="arena-submit-guide-actions">
+                    <Link href="/submit" className="arena-submit-guide-primary">Submit Cat</Link>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </section>
 
-        <section className="arena-section-shell">
-          <div className="arena-section-head">
-            <p className="arena-section-title">Quick Match</p>
-            <button
-              disabled={!preferredSnapshotId || battleBusy || uninitialized || hasActiveMatch}
-              onClick={() => startBattle(preferredSnapshotId)}
-              className="arena-start-match-btn"
-            >
-              <Play className="w-3.5 h-3.5" />
-              Start Match
-            </button>
-          </div>
-          {!preferredSnapshotId && <p className="arena-helper-text">Select a snapshot in configuration first.</p>}
-          {hasActiveMatch && <p className="arena-helper-text mt-1">Match in progress.</p>}
-        </section>
-
-        {dailyBoss?.boss && (
-          <section className="arena-boss-card">
-            <div className="arena-boss-row">
-              <div className="arena-boss-avatar-wrap">
-                <img src={dailyBoss.boss.image_url || '/cat-placeholder.svg'} alt={dailyBoss.boss.name} className="arena-boss-avatar" />
-              </div>
-              <div className="arena-boss-copy">
-                <p className="arena-boss-name">{dailyBoss.boss.name}</p>
-                <p className="arena-boss-meta">{dailyBoss.boss.rarity} · Reward {dailyBoss.reward_sigils} sigils</p>
-                {dailyBoss.boss_modifier && <p className="arena-boss-meta">Modifier: {dailyBoss.boss_modifier.replace(/_/g, ' ')}</p>}
-                <p className="arena-boss-meta">Streak: {dailyBoss.clear_streak || 0}</p>
-              </div>
-            </div>
-            <button
-              disabled={!preferredSnapshotId || battleBusy || uninitialized || hasActiveMatch || dailyBoss.claimed}
-              onClick={() => startBossBattle(preferredSnapshotId)}
-              className="arena-boss-btn"
-            >
-              {dailyBoss.claimed ? '✓ Completed' : 'Challenge Daily Boss'}
-            </button>
-          </section>
-        )}
-
-        {uninitialized && (
-          <div className="arena-error-box">Whisker Arena tables are not initialized yet. Run migration `016_whisker_arena_phase1.sql` and `020_whisker_snapshot_version.sql`.</div>
-        )}
-
-        {error && <div className="arena-error-box">{error}</div>}
-
-        <section className="arena-section-shell">
-          <button className="arena-snapshot-header" onClick={() => setSnapshotPanelOpen((v) => !v)} type="button">
+          <button className="arena-snapshot-header arena-snapshot-header-inline" onClick={() => setSnapshotPanelOpen((v) => !v)} type="button">
             <p>
-              Snapshot Config
-              <span className="arena-snapshot-sub">{snapshotPanelOpen ? 'Click to hide' : 'Click to expand'}</span>
+              Battle Loadout
+              <span className="arena-snapshot-sub">{snapshotPanelOpen ? 'Hide config' : preferredSnapshotId ? 'Edit snapshot, tactic, and target' : 'Open and publish a snapshot to battle'}</span>
             </p>
             <ChevronDown className={`w-4 h-4 transition-transform ${snapshotPanelOpen ? 'rotate-180' : ''}`} />
           </button>
-
-          {!snapshotPanelOpen && (
-            <p className="arena-helper-text">{preferredSnapshotId ? `Current snapshot configured` : 'No snapshot configured'}</p>
-          )}
-
-          {!preferredSnapshotId && (
-            <div className="arena-submit-guide">
-              <div>
-                <p className="arena-submit-guide-title">Need a fighter first?</p>
-                <p className="arena-submit-guide-copy">Submit a cat, then come back here to publish your snapshot and enter Arena battles.</p>
-              </div>
-              <div className="arena-submit-guide-actions">
-                <Link href="/submit" className="arena-submit-guide-primary">Submit Cat</Link>
-              </div>
-            </div>
-          )}
 
           {snapshotPanelOpen && (
             <>
@@ -638,7 +762,7 @@ export default function WhiskerArenaPage() {
                       </select>
                     </label>
                     <label>
-                      <span className="arena-form-label">NPC Target (optional)</span>
+                      <span className="arena-form-label">Target</span>
                       <select value={selectedNpcId} onChange={(e) => setSelectedNpcId(e.target.value)} className="styled-select">
                         <option value="">Random NPC / Snapshot</option>
                         {npcCats.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.rarity})</option>)}
@@ -666,6 +790,44 @@ export default function WhiskerArenaPage() {
             </>
           )}
         </section>
+
+        <section className="arena-section-shell arena-progression-shell">
+          <div className="arena-section-head arena-section-head-tight">
+            <div>
+              <p className="arena-section-title">Progression Strip</p>
+              <p className="arena-helper-text">Quick ladder state, weekly rules, and battle bonuses.</p>
+            </div>
+          </div>
+
+          <div className="arena-progress-strip">
+            <div className="arena-progress-chip">
+              <span>Rating</span>
+              <strong>{rating.rating}</strong>
+            </div>
+            <div className="arena-progress-chip">
+              <span>Division</span>
+              <strong>{divisionLabel}</strong>
+            </div>
+            <div className="arena-progress-chip">
+              <span>Turn cap</span>
+              <strong>12 turns</strong>
+            </div>
+            <div className="arena-progress-chip arena-progress-chip-wide">
+              <span>Weekly rule</span>
+              <strong>{activeModifier?.label || 'Standard rules'}</strong>
+            </div>
+            <div className="arena-progress-chip arena-progress-chip-wide">
+              <span>Daily bonus</span>
+              <strong>{dailyBoss?.boss ? `Boss reward ${dailyBoss.reward_sigils} sigils` : `${currentStreak} win streak live`}</strong>
+            </div>
+          </div>
+        </section>
+
+        {uninitialized && (
+          <div className="arena-error-box">Whisker Arena tables are not initialized yet. Run migration `016_whisker_arena_phase1.sql` and `020_whisker_snapshot_version.sql`.</div>
+        )}
+
+        {error && <div className="arena-error-box">{error}</div>}
 
         {hasActiveMatch && battleState && (
           <section className="arena-section-shell">
@@ -774,37 +936,161 @@ export default function WhiskerArenaPage() {
           </section>
         )}
 
-        <section className="arena-section-shell">
-          <p className="arena-section-title">Top Snapshots</p>
-          <div className="arena-compact-list">
-            {sortedSnapshots.slice(0, 3).map((s) => (
-              <div key={s.id} className="arena-compact-row">
-                <p className="arena-compact-main">{s.cat_name}</p>
-                <p className="arena-compact-sub">{behaviorLabel(s.ai_behavior)} · v{s.snapshot_version || 1}</p>
-                <button type="button" onClick={() => startBattle(s.id)} className="arena-mini-btn">Fight</button>
+        <section className="arena-activities-grid">
+          {dailyBoss?.boss && (
+            <section className="arena-boss-card">
+              <div className="arena-section-head arena-section-head-tight">
+                <div>
+                  <p className="arena-section-title">Daily Boss</p>
+                  <p className="arena-helper-text">One featured fight with bonus sigils and special pressure.</p>
+                </div>
               </div>
-            ))}
-            {sortedSnapshots.length === 0 && <p className="arena-empty">No snapshots published yet.</p>}
-          </div>
-        </section>
+              <div className="arena-boss-row">
+                <div className="arena-boss-avatar-wrap">
+                  <img src={dailyBoss.boss.image_url || '/cat-placeholder.svg'} alt={dailyBoss.boss.name} className="arena-boss-avatar" />
+                </div>
+                <div className="arena-boss-copy">
+                  <p className="arena-boss-name">{dailyBoss.boss.name}</p>
+                  <p className="arena-boss-meta">{dailyBoss.boss.rarity} · Reward {dailyBoss.reward_sigils} sigils</p>
+                  {dailyBoss.boss_modifier && <p className="arena-boss-meta">Modifier: {dailyBoss.boss_modifier.replace(/_/g, ' ')}</p>}
+                  <p className="arena-boss-meta">Clear streak: {dailyBoss.clear_streak || 0}</p>
+                </div>
+              </div>
+              <button
+                disabled={!preferredSnapshotId || battleBusy || uninitialized || hasActiveMatch || dailyBoss.claimed}
+                onClick={() => startBossBattle(preferredSnapshotId)}
+                className="arena-boss-btn"
+              >
+                <Swords className="w-4 h-4" />
+                {dailyBoss.claimed ? '✓ Completed' : 'Challenge Daily Boss'}
+              </button>
+            </section>
+          )}
 
-        {filteredRecent.length > 0 && (
           <section className="arena-section-shell">
-            <p className="arena-section-title">Recent Results</p>
+            <div className="arena-section-head arena-section-head-tight">
+              <div>
+                <p className="arena-section-title">Top Snapshots</p>
+                <p className="arena-helper-text">Fast ways to test your fighter against live builds.</p>
+              </div>
+            </div>
             <div className="arena-compact-list">
-              {filteredRecent.map((m) => {
-                const won = !!m.snapshot_a_id && m.winner_snapshot_id === m.snapshot_a_id;
-                return (
-                  <div key={m.id} className="arena-result-row">
-                    <p className="arena-result-main">vs {m.opponent_name || 'Unknown'}</p>
-                    <p className="arena-result-sub">{won ? 'Win' : 'Loss'} · Turns {m.turns} · Rating {m.rating_delta > 0 ? `+${m.rating_delta}` : m.rating_delta}</p>
-                    <button onClick={() => loadReplay(m.id)} className="arena-mini-btn">Replay Log</button>
+              {sortedSnapshots.slice(0, 3).map((s) => (
+                <div key={s.id} className="arena-compact-row">
+                  <div className="arena-compact-icon"><Trophy className="w-3.5 h-3.5" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="arena-compact-main">{s.cat_name}</p>
+                    <p className="arena-compact-sub">{behaviorLabel(s.ai_behavior)} · v{s.snapshot_version || 1}</p>
                   </div>
-                );
-              })}
+                  <button type="button" onClick={() => startBattle(s.id)} className="arena-mini-btn">Fight</button>
+                </div>
+              ))}
+              {sortedSnapshots.length === 0 && <p className="arena-empty">No snapshots published yet.</p>}
             </div>
           </section>
-        )}
+
+          {(resolvedMatchups.length > 0 || filteredRecent.length > 0) && (
+            <section className="arena-section-shell arena-activities-span">
+              <div className="arena-section-head arena-section-head-tight">
+                <div>
+                  <p className="arena-section-title">Top Fighters & Recent Results</p>
+                  <p className="arena-helper-text">Latest resolved pulse fights, replays, and standout ladder outcomes.</p>
+                </div>
+              </div>
+              <div className="arena-compact-list">
+                {resolvedMatchups.map((match) => (
+                  <div key={match.id} className="arena-skill-result-card">
+                    <div className="arena-skill-result-head">
+                      <p className="arena-result-main">Resolved Pulse Match</p>
+                      <p className="arena-result-sub">{match.resolved_at ? new Date(match.resolved_at).toLocaleString() : 'Awaiting resolution'}</p>
+                    </div>
+
+                    <div className="arena-skill-result-grid">
+                      {[
+                        { ...match.cat_a_column, votes: match.votes_a },
+                        { ...match.cat_b_column, votes: match.votes_b },
+                      ].map((column) => {
+                        const revealReady = Boolean(match.resolved_at);
+                        const deltaValue = match.skills_cancelled ? 0 : column.skill_delta;
+
+                        return (
+                          <div key={column.id} className={`arena-skill-column min-w-0 ${column.is_winner ? 'arena-skill-column-winner' : ''}`}>
+                            <div className="arena-skill-column-top items-start">
+                              <img src={column.image_url || '/cat-placeholder.svg'} alt={column.name} className="arena-skill-avatar shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="arena-result-main truncate">{column.name}</p>
+                                  {revealReady && column.is_winner ? <span className="arena-skill-winner-badge shrink-0">Winner</span> : null}
+                                </div>
+                                {revealReady ? (
+                                  <p className="arena-result-sub truncate">{column.skill_name || 'No skill equipped'}</p>
+                                ) : (
+                                  <p className="arena-result-sub truncate">
+                                    {typeof column.votes === 'number' ? `${column.votes.toLocaleString()} votes` : 'Votes pending'}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {revealReady ? (
+                              <div className="arena-skill-stats">
+                                {!match.skills_cancelled ? (
+                                  <p>
+                                    <span>Trigger</span>
+                                    <strong className={column.triggered ? 'text-emerald-300' : 'text-white/40'}>
+                                      {column.triggered ? 'Activated' : 'Did not activate'}
+                                    </strong>
+                                  </p>
+                                ) : null}
+                                <p>
+                                  <span>Vote odds</span>
+                                  <strong>{percent(column.base_probability)}</strong>
+                                </p>
+                                <p>
+                                  <span>Skill delta</span>
+                                  <strong className={skillDeltaTone(deltaValue)}>{signedPercent(deltaValue)}</strong>
+                                </p>
+                                <p>
+                                  <span>Final odds</span>
+                                  <strong>{percent(column.final_probability)}</strong>
+                                </p>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {match.resolved_at && match.skills_cancelled ? (
+                      <p className="arena-skill-cancelled">⚔ Skills cancelled each other</p>
+                    ) : null}
+                  </div>
+                ))}
+
+                {filteredRecent.map((m) => {
+                  const won = !!m.snapshot_a_id && m.winner_snapshot_id === m.snapshot_a_id;
+                  return (
+                    <div key={m.id} className="arena-result-row">
+                      <p className="arena-result-main">vs {m.opponent_name || 'Unknown'}</p>
+                      <p className="arena-result-sub">{won ? 'Win' : 'Loss'} · Turns {m.turns} · Rating {m.rating_delta > 0 ? `+${m.rating_delta}` : m.rating_delta}</p>
+                      <button onClick={() => loadReplay(m.id)} className="arena-mini-btn">Replay Log</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <details className="arena-help-dropdown">
+            <summary>How Arena Works</summary>
+            <div className="arena-help-list">
+              <p><strong>1.</strong> Get a fighter by opening <Link href="/submit" className="arena-inline-link">Submit</Link>.</p>
+              <p><strong>2.</strong> Publish a snapshot here so Arena has your cat, behavior, and move preset.</p>
+              <p><strong>3.</strong> Start a match, manage energy each turn, and use stance plus move timing to win.</p>
+              <p><strong>4.</strong> Daily Boss is a bonus fight. Top Snapshots let you challenge popular builds fast.</p>
+            </div>
+          </details>
+        </section>
 
         {selectedReplay && (
           <section className="arena-section-shell">
@@ -821,15 +1107,6 @@ export default function WhiskerArenaPage() {
           </section>
         )}
 
-        <details className="arena-help-dropdown">
-          <summary>How Arena Works</summary>
-          <div className="arena-help-list">
-            <p><strong>1.</strong> Get a fighter by opening <Link href="/submit" className="arena-inline-link">Submit</Link>.</p>
-            <p><strong>2.</strong> Publish a snapshot here so Arena has your cat, behavior, and move preset.</p>
-            <p><strong>3.</strong> Start a match, manage energy each turn, and use stance plus move timing to win.</p>
-            <p><strong>4.</strong> Daily Boss is a bonus fight. Top Snapshots let you challenge popular builds fast.</p>
-          </div>
-        </details>
       </div>
     </main>
   );

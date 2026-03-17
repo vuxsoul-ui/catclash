@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const logs = [];
+page.on('console', msg => logs.push(`[${msg.type()}] ${msg.text()}`));
+await page.goto('http://127.0.0.1:3000/arena', { waitUntil: 'networkidle' });
+const bodyText = await page.locator('body').innerText();
+const hasRecentResults = bodyText.includes('Recent Results');
+const hasSnapshotConfig = bodyText.includes('Snapshot Config');
+await page.screenshot({ path: '/tmp/arena-history-ui.jpg', type: 'jpeg', quality: 85, fullPage: true });
+await browser.close();
+console.log(JSON.stringify({ hasRecentResults, hasSnapshotConfig, logs: logs.slice(0, 20) }, null, 2));
