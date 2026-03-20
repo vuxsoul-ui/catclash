@@ -25,7 +25,7 @@ import {
 import CatCardBack from "./components/CatCardBack";
 import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from "./_lib/cosmetics/effectsRegistry";
 import { computePowerRating } from "./_lib/combat";
-import { Button, Card, SectionHeader } from "./components/ui/primitives";
+import { Button, Card, SectionHeader, buttonStyles } from "./components/ui/primitives";
 import { pickFairMatches } from "./api/_lib/pickFairMatches";
 import { checkTapTarget, warnOnce } from "./lib/dev-click-guards";
 import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
@@ -33,6 +33,7 @@ import { canonicalThumbForCat } from "./lib/cat-images";
 import DebugControls from "./components/DebugControls";
 import DebugWidget from "./components/DebugWidget";
 import CosmicStatsBar from "./components/CosmicStatsBar";
+import { LoadingState } from "./components/LoadingState";
 import { useHeaderExtension } from "./components/HeaderSystem";
 
 // Types
@@ -384,7 +385,7 @@ function LiveDuelsModule({
           href="/duel"
           onClick={withFallbackNav('/duel')}
           data-testid="open-duel-arena-cta-live"
-          className="relative z-20 pointer-events-auto rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-1 text-[10px] text-cyan-100 inline-flex items-center gap-1 tap-target hover:bg-cyan-500/22"
+          className="focus-ring relative z-20 pointer-events-auto inline-flex items-center gap-1 rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-1 text-[10px] text-cyan-100 tap-target transition-all duration-150 hover:bg-cyan-500/22 active:translate-y-[1px]"
         >
           Open Duel Arena <ArrowRight className="w-3 h-3" />
           {pendingDuelCount > 0 && (
@@ -403,7 +404,7 @@ function LiveDuelsModule({
           ))}
         </div>
       ) : (
-        <p className="relative z-10 text-[11px] text-white/65">No live duels yet.</p>
+        <p className="relative z-10 text-xs text-white/55">No live duels yet.</p>
       )}
       {liveDuelVotes2m > 0 && (
         <p className="relative z-10 text-[10px] text-cyan-100/75 mt-1.5 inline-flex items-center gap-1">
@@ -415,13 +416,13 @@ function LiveDuelsModule({
   );
 }
 
-function LoadingNextFightsCard({ text = "Loading next fights..." }: { text?: string }) {
+function LoadingNextFightsCard({ text = "Scrying the next fights..." }: { text?: string }) {
   return (
     <div className="min-h-[140px] rounded-2xl border border-cyan-300/25 bg-cyan-500/8 p-4 pointer-events-none">
       <div className="h-full w-full flex items-center justify-between gap-3 pointer-events-none">
         <div>
           <p className="text-sm font-semibold text-cyan-100">{text}</p>
-          <p className="text-[11px] text-cyan-100/70 mt-1">Keeping your current queue stable while we refill.</p>
+          <p className="mt-1 text-xs text-cyan-100/60">Keeping your current queue stable while the arena assembles fresh rivals.</p>
         </div>
         <Loader2 className="w-5 h-5 text-cyan-200 animate-spin shrink-0" />
       </div>
@@ -437,7 +438,7 @@ function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null
       </div>
       <p className="text-base font-bold text-emerald-100">All matches voted. You cleared the arena.</p>
       <p className="mt-1 text-xs text-white/70">New battles will appear on the next pulse.</p>
-      <p className="mt-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] text-white/85">
+      <p className="mt-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-xs text-white/80">
         Next Pulse: {pulseCountdown || "--:--:--"}
       </p>
     </div>
@@ -550,6 +551,15 @@ const MatchCard = React.memo(function MatchCard({
   const guildB = guildBadge(match.cat_b.owner_guild || null);
   const catAName = getCatDisplayName(match.cat_a);
   const catBName = getCatDisplayName(match.cat_b);
+  const tierA = getTierKey(match.cat_a.rarity);
+  const tierB = getTierKey(match.cat_b.rarity);
+  const intelSide: "a" | "b" = liveSide === 'b' ? 'b' : 'a';
+  const intelCat = intelSide === 'b' ? match.cat_b : match.cat_a;
+  const intelTier = intelSide === 'b' ? tierB : tierA;
+  const intelRole = intelSide === 'b' ? 'Defender' : 'Challenger';
+  const intelWins = Math.max(0, Number(intelCat.wins || 0));
+  const intelLosses = Math.max(0, Number(intelCat.losses || 0));
+  const intelRecordLabel = intelWins === 0 && intelLosses === 0 ? 'No record yet' : `${intelWins}W · ${intelLosses}L`;
   const aPower = statPower(match.cat_a);
   const bPower = statPower(match.cat_b);
   const strongerA = aPower >= bPower;
@@ -974,8 +984,6 @@ const MatchCard = React.memo(function MatchCard({
 
   const cosmeticsA = cosmeticChips(match.cat_a);
   const cosmeticsB = cosmeticChips(match.cat_b);
-  const tierA = getTierKey(match.cat_a.rarity);
-  const tierB = getTierKey(match.cat_b.rarity);
 
   async function loadComments() {
     setCommentsBusy(true);
@@ -1279,7 +1287,7 @@ const MatchCard = React.memo(function MatchCard({
           <button
             onClick={() => setPredictOpen(true)}
             aria-label="Open prediction panel"
-            className="h-9 px-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 text-cyan-100 text-[11px] font-semibold inline-flex items-center justify-center"
+            className="h-9 px-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 text-cyan-100 text-xs font-semibold inline-flex items-center justify-center"
           >
             🔮 Predict
           </button>
@@ -1294,7 +1302,7 @@ const MatchCard = React.memo(function MatchCard({
         )}
         <button
           onClick={() => setDetailsOpen((v) => !v)}
-          className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-[11px] font-semibold inline-flex items-center gap-1"
+          className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-xs font-semibold inline-flex items-center gap-1"
           aria-label={detailsOpen ? 'Hide analyze section' : 'Open analyze section'}
           aria-expanded={detailsOpen}
           aria-controls={`match-analyze-panel-${match.match_id}`}
@@ -1370,7 +1378,7 @@ const MatchCard = React.memo(function MatchCard({
                     if (ok) setPredictOpen(false);
                   }}
                   aria-label={`Predict ${catAName} for ${bet} sigils`}
-                  className="h-11 rounded-lg bg-blue-500/15 text-blue-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
+                  className="h-11 rounded-lg bg-blue-500/15 text-blue-200 text-xs font-semibold inline-flex items-center justify-center disabled:opacity-40"
                 >
                   Predict A (+<SigilIcon className="w-3 h-3" />{bet})
                 </button>
@@ -1381,7 +1389,7 @@ const MatchCard = React.memo(function MatchCard({
                     if (ok) setPredictOpen(false);
                   }}
                   aria-label={`Predict ${catBName} for ${bet} sigils`}
-                  className="h-11 rounded-lg bg-red-500/15 text-red-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-40"
+                  className="h-11 rounded-lg bg-red-500/15 text-red-200 text-xs font-semibold inline-flex items-center justify-center disabled:opacity-40"
                 >
                   Predict B (+<SigilIcon className="w-3 h-3" />{bet})
                 </button>
@@ -1399,7 +1407,7 @@ const MatchCard = React.memo(function MatchCard({
               if (!voted) return;
               onCreateCallout(match.match_id, voted);
             }}
-            className="h-9 px-3 rounded-lg bg-cyan-500/15 text-cyan-200 text-[11px] font-semibold inline-flex items-center justify-center disabled:opacity-50"
+            className="h-9 px-3 rounded-lg bg-cyan-500/15 text-cyan-200 text-xs font-semibold inline-flex items-center justify-center disabled:opacity-50"
           >
             {calloutBusy ? 'Creating...' : 'Create Callout'}
           </button>
@@ -1412,7 +1420,7 @@ const MatchCard = React.memo(function MatchCard({
         </div>
       )}
       {exitingVisual && (
-        <div className="mt-1 text-[10px] text-cyan-200/90 animate-pulse">Next matchup loading...</div>
+        <div className="mt-1 text-[10px] text-cyan-200/90 animate-pulse">Summoning the next matchup...</div>
       )}
       </div>
       </div>
@@ -1432,20 +1440,36 @@ const MatchCard = React.memo(function MatchCard({
         >
           <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/7 bg-[linear-gradient(180deg,rgba(8,18,29,0.985),rgba(8,18,29,0.93))] px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.03),0_10px_18px_rgba(2,6,12,0.18)] sm:px-3.5">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/72">Match Intel</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200/65">Match Intel</p>
               <p className="truncate pr-1 text-[12px] font-semibold text-white/90">{catAName} vs {catBName}</p>
             </div>
             <button
               type="button"
               onClick={() => setDetailsOpen(false)}
               aria-label="Close analyze panel"
-              className="inline-flex h-10 min-h-[40px] shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.05] px-3.5 text-[10px] font-semibold text-white/78 transition-colors hover:bg-white/[0.09]"
+              className="focus-ring inline-flex h-10 min-h-[40px] shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.05] px-3.5 text-[10px] font-semibold text-white/78 transition-all duration-150 hover:bg-white/[0.09] active:translate-y-[1px]"
             >
               Close
             </button>
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 touch-pan-y sm:px-3.5">
+            <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+              <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-semibold rarity-badge rarity-badge--${intelTier}`}>
+                <span aria-hidden="true">◆</span>
+                <span className="truncate">{intelCat.rarity}</span>
+              </span>
+              <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-1 text-[9px] font-semibold arena-tier-meta-chip arena-tier-meta-chip--${intelTier}`}>
+                Lv {Math.max(1, Number(intelCat.level || 1))}
+              </span>
+              <span className={`hidden shrink-0 items-center rounded-full border px-2 py-1 text-[9px] min-[420px]:inline-flex arena-tier-role arena-tier-role--${intelTier}`}>
+                {intelRole}
+              </span>
+              <span className="hidden min-w-0 shrink items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-medium text-white/78 min-[350px]:inline-flex">
+                <span className="truncate">{intelRecordLabel}</span>
+              </span>
+            </div>
+
             <div className="rounded-[1.05rem] border border-cyan-300/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.02))] p-3">
               <div className="mb-2 grid grid-cols-2 gap-2">
                 <div className="min-w-0">
@@ -1521,7 +1545,7 @@ const MatchCard = React.memo(function MatchCard({
                     loadComments();
                   }
                 }}
-                className="h-9 px-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white/85 text-[11px] font-semibold inline-flex items-center gap-1.5"
+                className="h-9 px-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white/85 text-xs font-semibold inline-flex items-center gap-1.5"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
                 Comments {comments.length > 0 ? `(${comments.length})` : ''}
@@ -1531,7 +1555,7 @@ const MatchCard = React.memo(function MatchCard({
             {commentsOpen && (
               <div className="rounded-xl border border-white/10 bg-black/25 p-2.5">
                 {commentsDisabled ? (
-                  <p className="text-[11px] text-white/50">Comments are not enabled yet on this deployment.</p>
+                  <p className="text-xs text-white/50">Comments are not enabled yet on this deployment.</p>
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
@@ -1540,28 +1564,28 @@ const MatchCard = React.memo(function MatchCard({
                         onChange={(e) => setCommentText(e.target.value)}
                         maxLength={240}
                         placeholder="Say something..."
-                        className="flex-1 h-9 px-2.5 rounded-lg bg-white/5 border border-white/10 text-[12px] text-white placeholder:text-white/35 focus:outline-none focus:border-white/25"
+                        className="input-focus flex-1 h-9 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[12px] text-white placeholder:text-white/35"
                       />
                       <button
                         disabled={commentPosting || !commentText.trim()}
                         onClick={handlePostComment}
-                        className="h-9 px-3 rounded-lg bg-cyan-500/20 border border-cyan-300/30 text-cyan-200 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+                        className="h-9 px-3 rounded-lg bg-cyan-500/20 border border-cyan-300/30 text-cyan-200 text-xs font-semibold disabled:opacity-50 inline-flex items-center gap-1"
                       >
                         {commentPosting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                         Send
                       </button>
                     </div>
-                    {commentError && <p className="text-[11px] text-red-300 mt-1.5">{commentError}</p>}
+                    {commentError && <p className="mt-1.5 text-xs text-red-300">{commentError}</p>}
                     <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                      {commentsBusy && <p className="text-[11px] text-white/50">Loading comments...</p>}
+                      {commentsBusy && <p className="text-xs text-white/50">Gathering battle banter...</p>}
                       {!commentsBusy && comments.length === 0 && (
-                        <p className="text-[11px] text-white/45">No comments yet. Start the thread.</p>
+                        <p className="text-xs text-white/45">No comments yet. Start the thread.</p>
                       )}
                       {comments.map((c) => (
                         <div key={c.id} className={`rounded-lg bg-white/[0.04] border p-2 ${commentBorderClassFromBorderSlug(c.commenter_cosmetics?.border_slug)}`}>
                           <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0 flex items-center gap-1.5">
-                              <p className={`text-[11px] font-semibold truncate ${commentTextClassFromColorSlug(c.commenter_cosmetics?.color_slug)}`}>{c.username || 'Guest'}</p>
+                              <p className={`text-xs font-semibold truncate ${commentTextClassFromColorSlug(c.commenter_cosmetics?.color_slug)}`}>{c.username || 'Guest'}</p>
                               {c.commenter_cosmetics?.title && (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-yellow-400/35 bg-yellow-500/15 text-yellow-200 shrink-0">
                                   {c.commenter_cosmetics.title}
@@ -1575,7 +1599,7 @@ const MatchCard = React.memo(function MatchCard({
                             </div>
                             <p className="text-[10px] text-white/45 shrink-0">{relativeTime(c.created_at)}</p>
                           </div>
-                          <p className="text-[11px] text-white/75 mt-0.5 break-words">{c.body}</p>
+                          <p className="mt-0.5 break-words text-xs text-white/70">{c.body}</p>
                         </div>
                       ))}
                     </div>
@@ -2821,7 +2845,7 @@ function ArenaSection({
       </div>
       {segment === 'voting' && voteStreak >= 2 && (
         <div className="mb-2 flex items-center justify-end gap-2">
-          <span className={`streak-badge relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${voteStreak >= 3 ? 'badge-glow border-orange-200/55 bg-orange-500/18 text-orange-50' : 'border-orange-300/35 bg-orange-500/12 text-orange-100'}`}>
+          <span className={`streak-badge relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${voteStreak >= 3 ? 'badge-glow border-orange-200/55 bg-orange-500/18 text-orange-50' : 'border-orange-300/35 bg-orange-500/12 text-orange-100'}`}>
             {voteStreak >= 5 && !reduceMotion ? <span className="ring-pulse" /> : null}
             🔥 {voteStreak} Vote Streak
           </span>
@@ -2832,7 +2856,7 @@ function ArenaSection({
           )}
         </div>
       )}
-      {queueDebug && (
+      {testerMode && debugMode && queueDebug && (
         <div className="mb-2 rounded-lg border border-white/15 bg-black/35 p-2 text-[10px] text-white/70">
           <div>
             debug arena={queueDebug.arenaType} phase={queueDebug.status} snapshotV={queueDebug.snapshotVersion} reqSeq={queueDebug.requestSeq} orderLen={queueDebug.poolLen} pendingSnapshot={String(queueDebug.pendingSnapshot)}
@@ -2847,13 +2871,13 @@ function ArenaSection({
       {segment === 'voting' && stackVelocity && (
         <p className="text-[10px] text-white/50 mb-2">{stackVelocity}</p>
       )}
-      {segment === 'voting' && debugInfo?.whyNotFilled?.length ? (
+      {testerMode && debugMode && segment === 'voting' && debugInfo?.whyNotFilled?.length ? (
         <p className="text-[10px] text-white/45 mb-2">
           debug: {debugInfo.whyNotFilled.join(', ')} · eligible {Number(debugInfo.eligibleCatsCount || 0)} · open {Number(debugInfo.openMatchesCount || 0)}
         </p>
       ) : null}
       {segment === 'voting' && hasRenderableVotingMatch && feedError && !showAllVotedModule && hasMoreFightsForUser && isRefilling && (
-        <div className="mb-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-[11px] text-amber-100 flex items-center justify-between gap-2">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-xs text-amber-100">
           <span>{feedError}</span>
           {showManualRefresh && (
             <button
@@ -2861,7 +2885,7 @@ function ArenaSection({
                 setQueuedVotes({});
                 void refillArena('manual');
               }}
-              className="h-9 min-h-[36px] px-3 rounded-lg border border-amber-300/45 bg-amber-500/15 text-[11px] font-semibold text-amber-100 touch-manipulation"
+              className="h-9 min-h-[36px] px-3 rounded-lg border border-amber-300/45 bg-amber-500/15 text-xs font-semibold text-amber-100 touch-manipulation"
             >
               Retry
             </button>
@@ -2874,7 +2898,7 @@ function ArenaSection({
         </p>
       )}
       {segment === 'voting' && showHotStreakBanner && voteStreak >= 10 && (
-        <div key={`hot-${hotStreakTick}`} className={`mb-2 inline-flex items-center rounded-full border border-fuchsia-300/45 bg-fuchsia-500/18 px-3 py-1 text-[11px] font-semibold text-fuchsia-100 ${reduceMotion ? '' : 'hot-streak'}`}>
+        <div key={`hot-${hotStreakTick}`} className={`mb-2 inline-flex items-center rounded-full border border-fuchsia-300/45 bg-fuchsia-500/18 px-3 py-1 text-xs font-semibold text-fuchsia-100 ${reduceMotion ? '' : 'hot-streak'}`}>
           🔥 HOT STREAK x{voteStreak}
         </div>
       )}
@@ -2900,7 +2924,7 @@ function ArenaSection({
                         setQueuedVotes({});
                         void refillArena('manual');
                       }}
-                      className="h-11 min-h-[44px] px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-[11px] font-semibold text-cyan-100 touch-manipulation"
+                      className="h-11 min-h-[44px] px-3 rounded-lg border border-cyan-300/35 bg-cyan-500/10 text-xs font-semibold text-cyan-100 touch-manipulation"
                     >
                       Refresh
                     </button>
@@ -2951,8 +2975,8 @@ function ArenaSection({
                   <LoadingNextFightsCard
                     text={
                       refillRetryAttempt > 0
-                        ? `Loading next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
-                        : 'Loading next fights...'
+                        ? `Scrying the next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
+                        : 'Scrying the next fights...'
                     }
                   />
                 )}
@@ -2961,8 +2985,8 @@ function ArenaSection({
                 <LoadingNextFightsCard
                   text={
                     refillRetryAttempt > 0
-                      ? `Loading next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
-                      : 'Loading next fights...'
+                      ? `Scrying the next fights... (retry ${Math.min(refillRetryAttempt, 3)})`
+                      : 'Scrying the next fights...'
                   }
                 />
               )}
@@ -3010,7 +3034,7 @@ function ArenaSection({
                     setStackIds(nextIds);
                   }
                 }}
-                className="h-8 px-3 rounded-full border border-white/20 bg-white/8 text-[11px] font-semibold text-white/85"
+                className="h-8 px-3 rounded-full border border-white/20 bg-white/8 text-xs font-semibold text-white/85"
               >
                 See more fights
               </button>
@@ -4689,6 +4713,16 @@ export default function Page() {
     return fallback?.cta?.trim() || 'Start Voting';
   }, [gettingStarted]);
 
+  const isClaimedPlayer = hasCredentials && hasProfileUsername;
+  const heroHeadline = isClaimedPlayer ? 'Welcome back to CatClash.' : 'Forge Your Cat. Battle in the Arena.';
+  const heroSubheadline = isClaimedPlayer
+    ? 'Pick up your next move: forge a new fighter, check the gallery, or jump into a live duel.'
+    : 'Create your fighter in minutes, vote in live duels, and build your name before the arena opens wide.';
+  const heroPrimaryLabel = isClaimedPlayer ? 'Forge Another Cat' : 'Forge Your Cat';
+  const heroKicker = isClaimedPlayer ? 'Your next move starts here' : 'New challengers start here';
+  const shouldShowSpotlights = isClaimedPlayer && Boolean(spotlights.hall_of_fame?.cat || spotlights.cat_of_week?.cat);
+  const shouldShowMissionBoard = isClaimedPlayer && Boolean(gettingStarted && !gettingStarted.completion.complete);
+
   async function handleBookmarkMissionComplete() {
     if (bookmarkMissionBusy) return;
     setBookmarkMissionBusy(true);
@@ -4731,7 +4765,7 @@ export default function Page() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-black text-white flex items-center justify-center"><Loader2 className="w-12 h-12 animate-spin text-white/50" /></div>;
+    return <LoadingState fullPage icon="⚔️" message="Gathering fighters..." />;
   }
 
   return (
@@ -4769,14 +4803,14 @@ export default function Page() {
       {hudDetail && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[92vw] max-w-sm rounded-2xl border border-white/15 bg-black/85 backdrop-blur p-3">
           <p className="text-sm font-bold text-white">{hudDetail.title}</p>
-          <p className="text-[11px] text-white/70 mt-1">{hudDetail.detail}</p>
+          <p className="mt-1 text-xs text-white/60">{hudDetail.detail}</p>
           <button onClick={() => setHudDetail(null)} className="mt-2 h-8 px-3 rounded-lg bg-white/10 text-xs font-semibold">Close</button>
         </div>
       )}
       {missionNudge && (
         <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 w-[92vw] max-w-md rounded-2xl border border-emerald-300/35 bg-emerald-500/20 backdrop-blur p-3 shadow-[0_12px_35px_rgba(16,185,129,0.25)] popup-linger">
           <p className="text-sm font-bold text-emerald-100">Mission Complete. Continue?</p>
-          <p className="text-[11px] text-emerald-100/85 mt-0.5">{missionNudge.title.replace(/^Mission \d+\s+—\s+/, '')}</p>
+          <p className="mt-0.5 text-xs text-emerald-100/80">{missionNudge.title.replace(/^Mission \d+\s+—\s+/, '')}</p>
           <div className="mt-2 flex items-center gap-2">
             <button
               onClick={() => {
@@ -4799,7 +4833,7 @@ export default function Page() {
       {showClaimNamePrompt && hasCredentials && !hasProfileUsername && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[100] w-[92vw] max-w-md rounded-2xl border border-emerald-300/35 bg-emerald-500/20 backdrop-blur p-3 shadow-[0_12px_35px_rgba(16,185,129,0.25)] popup-linger pointer-events-auto">
           <p className="text-sm font-bold text-emerald-100">Claim your Vuxsolian name</p>
-          <p className="text-[11px] text-emerald-100/85 mt-0.5">Lock in rewards and keep your streak across devices.</p>
+          <p className="mt-0.5 text-xs text-emerald-100/80">Lock in rewards and keep your streak across devices.</p>
           <div className="mt-2 flex items-stretch gap-2">
             <Link
               href="/login?next=/"
@@ -4820,43 +4854,87 @@ export default function Page() {
       )}
 
       {/* Hero */}
-      <Suspense fallback={null}>
-        <DebugWidget arenaType={arenaTypeTab} onHydrate={handleDebugWidgetHydrate} />
-      </Suspense>
-      <section className="pt-5 sm:pt-7 lg:pt-8 pb-2 sm:pb-3">
+      {testerMode ? (
+        <Suspense fallback={null}>
+          <DebugWidget arenaType={arenaTypeTab} onHydrate={handleDebugWidgetHydrate} />
+        </Suspense>
+      ) : null}
+      <section className="pt-5 sm:pt-7 lg:pt-8 pb-3 sm:pb-4">
         <div className="max-w-5xl mx-auto px-3.5 sm:px-4">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/25 bg-yellow-500/8 text-[10px]">
-            <Sparkles className="w-3 h-3 text-yellow-400" />
-            <span className="text-yellow-200/95">Unbox. Battle. Evolve.</span>
-          </div>
-          <div className="mt-2.5 flex items-end justify-between gap-2">
-            <div>
-              <h1 className="home-page-title text-lg font-bold tracking-tight text-white">Welcome to CatClash</h1>
-              <p className="home-page-subtitle text-[11px] text-white/55">Vote fast, stack streaks, and catch the next Pulse.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
-              <Suspense fallback={null}>
-                <DebugControls
-                  onDebugChange={setDebugMode}
-                  onRefresh={handleDebugRefreshMatches}
-                  onReset={handleDebugResetMatches}
-                />
-              </Suspense>
+          <div className="relative overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-[radial-gradient(120%_120%_at_0%_0%,rgba(34,211,238,0.18),rgba(6,12,24,0.96)_45%,rgba(0,0,0,1)_100%)] px-5 py-6 sm:px-7 sm:py-7 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),transparent_35%,transparent_65%,rgba(250,204,21,0.08))]" />
+            <div className="pointer-events-none absolute -right-16 top-0 h-44 w-44 rounded-full bg-cyan-400/12 blur-3xl" />
+            <div className="pointer-events-none absolute -left-10 bottom-0 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl" />
+            <div className="relative">
+              <div className="flex items-start justify-between gap-3">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/25 bg-yellow-500/8 px-2.5 py-1 text-[10px]">
+                  <Sparkles className="w-3 h-3 text-yellow-400" />
+                  <span className="text-yellow-200/95">{heroKicker}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
+                  {testerMode ? (
+                    <Suspense fallback={null}>
+                      <DebugControls
+                        onDebugChange={setDebugMode}
+                        onRefresh={handleDebugRefreshMatches}
+                        onReset={handleDebugResetMatches}
+                      />
+                    </Suspense>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 max-w-2xl">
+                <h1 className="home-page-title text-[2rem] sm:text-[2.75rem] leading-[0.96] font-black tracking-[-0.04em] text-white">
+                  {heroHeadline}
+                </h1>
+                <p className="home-page-subtitle mt-3 max-w-xl text-base leading-relaxed text-white/80">
+                  {heroSubheadline}
+                </p>
+              </div>
+
+              <div className="mt-5 flex max-w-xl flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/submit"
+                  className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 via-emerald-400 to-emerald-300 font-black sm:w-auto sm:min-w-[220px]' })}
+                >
+                  {heroPrimaryLabel}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <div className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-white/60 sm:justify-start">
+                  Create a fighter first. Everything else gets better once you own a cat.
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/55">
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
+                  <Target className="h-3.5 w-3.5 text-cyan-300" />
+                  Submit your own cat
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
+                  <Swords className="h-3.5 w-3.5 text-emerald-300" />
+                  Vote in live duels
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
+                  <Crown className="h-3.5 w-3.5 text-yellow-300" />
+                  Climb the leaderboard
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {challengeIntro && (
-        <section className="px-4 mb-4">
+        <section className="mb-6 px-4 sm:mb-8">
           <div className="max-w-2xl mx-auto rounded-2xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-4">
             <p className="text-sm font-bold text-fuchsia-100">48h Challenge</p>
-            <p className="text-xs text-fuchsia-100/80 mt-1">
+            <p className="mt-1 text-sm leading-relaxed text-fuchsia-100/80">
               {challengeIntro.owner_username ? `You joined @${challengeIntro.owner_username}'s challenge.` : 'You joined a 48h challenge link.'}
               {' '}Vote, predict, and battle in Whisker before the timer ends.
             </p>
-            <p className="text-[11px] text-fuchsia-100/70 mt-2">
+            <p className="mt-2 text-xs text-fuchsia-100/55">
               Code: {challengeIntro.code} · {challengeIntro.active ? `${Math.floor(challengeIntro.seconds_left / 3600)}h left` : 'Expired'}
             </p>
           </div>
@@ -4864,56 +4942,85 @@ export default function Page() {
       )}
 
       {error && (
-        <section className="px-4 mb-4">
+        <section className="mb-6 px-4 sm:mb-8">
           <div className="max-w-md mx-auto p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm text-center">{error}</div>
         </section>
       )}
 
-      <section className="px-3.5 mb-3 sm:hidden">
-        <div className="max-w-5xl mx-auto space-y-1.5">
-          <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-              <Flame className="w-3 h-3 text-orange-300" /> {displayStats.streak}
-            </span>
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-              <Zap className="w-3 h-3 text-yellow-300" /> {displayStats.xp}
-            </span>
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-              <SigilIcon className="w-3 h-3" /> {displayStats.sigils}
-            </span>
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-              <Crosshair className="w-3 h-3 text-cyan-300" /> {displayStats.pred}
-            </span>
+      <section className="mb-6 px-3.5 sm:mb-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
+            <Link href="/gallery" className="interactive-card focus-ring group rounded-2xl border border-white/12 bg-white/[0.04] p-4 transition-colors hover:border-cyan-300/35 hover:bg-cyan-400/[0.08]">
+              <div className="flex items-center gap-2 text-cyan-100">
+                <Sparkles className="h-4 w-4 text-cyan-300" />
+                <span className="text-base font-bold text-white">Browse the Gallery</span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-white/60">See who is already in the arena and study the cats setting the tone.</p>
+            </Link>
+            <Link href="/duel" className="interactive-card focus-ring group rounded-2xl border border-white/12 bg-white/[0.04] p-4 transition-colors hover:border-emerald-300/35 hover:bg-emerald-400/[0.08]">
+              <div className="flex items-center gap-2 text-emerald-100">
+                <Swords className="h-4 w-4 text-emerald-300" />
+                <span className="text-base font-bold text-white">Vote in a Live Duel</span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-white/60">Back a fighter, watch the vote move, and learn how the crowd reacts.</p>
+            </Link>
+            <Link href="/crate" className="interactive-card focus-ring group rounded-2xl border border-white/12 bg-white/[0.04] p-4 transition-colors hover:border-yellow-300/35 hover:bg-yellow-400/[0.08]">
+              <div className="flex items-center gap-2 text-yellow-100">
+                <Crown className="h-4 w-4 text-yellow-300" />
+                <span className="text-base font-bold text-white">Claim Your Daily Reward</span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-white/60">Open today’s crate for a quick reward beat and a reason to come back tomorrow.</p>
+            </Link>
           </div>
 
+          {isClaimedPlayer ? (
+            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:hidden">
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
+                <Flame className="w-3 h-3 text-orange-300" /> {displayStats.streak}
+              </span>
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
+                <Zap className="w-3 h-3 text-yellow-300" /> {displayStats.xp}
+              </span>
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
+                <SigilIcon className="w-3 h-3" /> {displayStats.sigils}
+              </span>
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
+                <Crosshair className="w-3 h-3 text-cyan-300" /> {displayStats.pred}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-relaxed text-white/60">
+              New here? Start by forging your cat. Gallery, duels, and daily rewards are ready whenever you want a quick look around.
+            </div>
+          )}
         </div>
       </section>
 
       {/* Spotlights */}
-      {(spotlights.hall_of_fame?.cat || spotlights.cat_of_week?.cat) && (
-        <section className="px-4 mb-4">
-          <div className="max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {shouldShowSpotlights && (
+        <section className="mb-6 px-4 sm:mb-8">
+          <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
             {spotlights.hall_of_fame?.cat && (
-              <Link href={`/cat/${spotlights.hall_of_fame.cat.id}`} className="rounded-2xl border border-yellow-300/25 bg-yellow-500/10 p-3 block">
+              <Link href={`/cat/${spotlights.hall_of_fame.cat.id}`} className="block rounded-2xl border border-yellow-300/25 bg-yellow-500/10 p-4">
                 <p className="text-xs text-yellow-200/90 mb-2">Hall of Fame</p>
                 <img src={canonicalThumbForCat({ id: spotlights.hall_of_fame.cat.id, image_url: spotlights.hall_of_fame.cat.image_url || null })} alt={spotlights.hall_of_fame.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
                 <p className="font-bold text-sm">{spotlights.hall_of_fame.cat.name}</p>
                 <p className="text-xs text-white/70">by {spotlights.hall_of_fame.cat.owner_username || 'Unknown'} · {spotlights.hall_of_fame.cat.rarity}</p>
                 {(spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || spotlights.hall_of_fame.expires_in_hours != null) && (
-                  <p className="text-[11px] text-white/55 mt-1">
+                  <p className="mt-1 text-xs text-white/50">
                     {spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || `Expires in ${spotlights.hall_of_fame.expires_in_hours}h`}
                   </p>
                 )}
               </Link>
             )}
             {spotlights.cat_of_week?.cat && (
-              <Link href={`/cat/${spotlights.cat_of_week.cat.id}`} className="rounded-2xl border border-rose-300/25 bg-rose-500/10 p-3 block">
+              <Link href={`/cat/${spotlights.cat_of_week.cat.id}`} className="block rounded-2xl border border-rose-300/25 bg-rose-500/10 p-4">
                 <p className="text-xs text-rose-200/90 mb-2">Cat of the Week</p>
                 <img src={canonicalThumbForCat({ id: spotlights.cat_of_week.cat.id, image_url: spotlights.cat_of_week.cat.image_url || null })} alt={spotlights.cat_of_week.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
                 <p className="font-bold text-sm">{spotlights.cat_of_week.cat.name}</p>
                 <p className="text-xs text-white/70">by {spotlights.cat_of_week.cat.owner_username || 'Unknown'} · {spotlights.cat_of_week.cat.rarity}</p>
                 {(spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || spotlights.cat_of_week.expires_in_hours != null) && (
-                  <p className="text-[11px] text-white/55 mt-1">
+                  <p className="mt-1 text-xs text-white/50">
                     {spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || `Expires in ${spotlights.cat_of_week.expires_in_hours}h`}
                   </p>
                 )}
@@ -4924,16 +5031,16 @@ export default function Page() {
       )}
 
       {/* Enter the Arena Missions */}
-      {gettingStarted && !gettingStarted.completion.complete && (
-        <section className="px-4 mb-4">
+      {shouldShowMissionBoard && gettingStarted && (
+        <section className="mb-6 px-4 sm:mb-8">
           <div className="max-w-md mx-auto">
-            <div id="mission-board" className="arena-entry-card rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-2.5 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
+            <div id="mission-board" className="arena-entry-card rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div>
                   <h3 className="text-[13px] font-bold text-emerald-200">{gettingStarted.title || 'Enter the Arena'}</h3>
-                  <p className="text-[11px] text-emerald-100/80">{gettingStarted.rank_label || 'Arena Rank 1'} · {gettingStarted.progress.pct}% complete</p>
+                  <p className="text-xs text-emerald-100/80">{gettingStarted.rank_label || 'Arena Rank 1'} · {gettingStarted.progress.pct}% complete</p>
                 </div>
-                <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-300/20 border border-emerald-200/30 text-emerald-100">
+                <span className="rounded-full border border-emerald-200/30 bg-emerald-300/20 px-2 py-1 text-xs text-emerald-100">
                   {gettingStarted.progress.completed}/{gettingStarted.progress.total}
                 </span>
               </div>
@@ -4948,7 +5055,7 @@ export default function Page() {
               </button>
               <button
                 onClick={() => setMissionBoardOpen((v) => !v)}
-                className="mt-1.5 text-[11px] text-emerald-100/80 underline underline-offset-2"
+                className="mt-1.5 text-xs text-emerald-100/80 underline underline-offset-2"
               >
                 {missionBoardOpen ? 'Hide Missions' : 'Show Missions'}
               </button>
@@ -4976,7 +5083,7 @@ export default function Page() {
                           </div>
                         </button>
                         {isComplete && (
-                          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-emerald-100 bg-emerald-400/15 border border-emerald-300/25 rounded-lg px-2 py-1">
+                          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-300/25 bg-emerald-400/15 px-2 py-1 text-xs text-emerald-100">
                             <Check className="w-3.5 h-3.5" />
                             Mission complete
                           </div>
@@ -5059,67 +5166,68 @@ export default function Page() {
         </section>
       )}
 
-      {/* Flame + Crate */}
-      <section className="px-4 mb-4">
-        <div className="max-w-md mx-auto">
-          <div className="mb-1.5 flex items-center justify-between">
-            <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
-          </div>
-        </div>
-        <div className="max-w-md mx-auto grid grid-cols-2 gap-2">
-          <ArenaFlameCard
-            flame={flame}
-            loading={loading && !flame}
-            error={meError}
-            onRetry={loadAll}
-            onNavigateAction={handleFlameAction}
-            compact
-            className="h-full"
-          />
-          <div className="daily-crate-card glass rounded-2xl p-3 min-h-[210px] h-full flex flex-col">
-            <div className="flex items-center justify-center gap-2 mb-1.5">
-              <h3 className="font-bold text-sm">Crate</h3>
+      {isClaimedPlayer ? (
+        <section className="mb-6 px-4 sm:mb-8">
+          <div className="max-w-md mx-auto">
+            <div className="mb-1.5 flex items-center justify-between">
+              <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
             </div>
+          </div>
+          <div className="mx-auto grid max-w-md grid-cols-2 gap-4">
+            <ArenaFlameCard
+              flame={flame}
+              loading={loading && !flame}
+              error={meError}
+              onRetry={loadAll}
+              onNavigateAction={handleFlameAction}
+              compact
+              className="h-full"
+            />
+            <div className="daily-crate-card glass flex h-full min-h-[210px] flex-col rounded-2xl p-4">
+              <div className="flex items-center justify-center gap-2 mb-1.5">
+                <h3 className="font-bold text-sm">Crate</h3>
+              </div>
 
-            <div className="flex-1 flex flex-col items-center justify-center text-center">
-              <div className="crate-hero mb-1.5">
-                <div className="crate-visual">
-                  <div className="crate-lid" />
-                  <div className="crate-box" />
-                  <div className="crate-glow" />
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
+                <div className="crate-hero mb-1.5">
+                  <div className="crate-visual">
+                    <div className="crate-lid" />
+                    <div className="crate-box" />
+                    <div className="crate-glow" />
+                  </div>
+                </div>
+                <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/crate')}
+                    className="crate-open-btn h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    View Crates
+                  </button>
                 </div>
               </div>
-              <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => router.push('/crate')}
-                  className="crate-open-btn h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                >
-                  View Crates
-                </button>
-              </div>
-            </div>
 
-            <div className="mt-2 pt-2 border-t border-white/10 text-center space-y-1">
-              <p className="text-[10px] text-white/55">Daily resets in {crateCountdown}</p>
-              <div className="flex items-center justify-center gap-1 text-[9px]">
-                <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
+              <div className="mt-2 pt-2 border-t border-white/10 text-center space-y-1">
+                <p className="text-[10px] text-white/55">Daily resets in {crateCountdown}</p>
+                <div className="flex items-center justify-center gap-1 text-[9px]">
+                  <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
+                </div>
+                <p className="text-[10px] text-white/60 min-h-[14px]">
+                  Every open builds pity toward Epic+
+                </p>
               </div>
-              <p className="text-[10px] text-white/60 min-h-[14px]">
-                Every open builds pity toward Epic+
-              </p>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Arenas */}
-      <section id="home-arenas" className="px-2.5 sm:px-4 pb-8">
+      <section id="home-arenas" className="px-3 sm:px-4 pb-8">
         <div className="mx-auto w-full max-w-none sm:max-w-5xl">
           <div className="mb-2 sm:mb-3 flex justify-end">
             <Link
@@ -5134,7 +5242,7 @@ export default function Page() {
                 }, 220);
               }}
               data-testid="open-duel-arena-cta-arenas"
-              className="relative z-20 pointer-events-auto text-[11px] text-cyan-200 inline-flex items-center gap-1 tap-target"
+              className="relative z-20 pointer-events-auto inline-flex items-center gap-1 text-xs text-cyan-200 tap-target"
             >
               Open Duel Arena <ArrowRight className="w-3 h-3" />
               {pendingDuelCount > 0 ? (
@@ -5145,56 +5253,80 @@ export default function Page() {
             </Link>
           </div>
 
-          <div className="mb-4">
-            <div className="grid grid-cols-1 gap-2">
-              <Button size="md" variant="primary" className="bg-white text-black border-white">
-                Arena
-              </Button>
-            </div>
-          </div>
+          {isClaimedPlayer ? (
+            <>
+              <div className="mb-4">
+                <div className="grid grid-cols-1 gap-2">
+                  <Button size="md" variant="primary" className="bg-white text-black border-white">
+                    Arena
+                  </Button>
+                </div>
+              </div>
 
-          {!hasMatchesForActiveTab ? (
-            <div className="text-center py-12 glass rounded-2xl">
-              {(hasSeenArenaByType[arenaTypeTab] || Object.keys(votedMatches).length > 0) ? (
-                <>
-                  <p className="text-white/70 mb-2">You've voted on all matches for today. Come back later!</p>
-                  <p className="text-white/45 text-sm">Next Pulse in {pulseCountdown || '--:--:--'}.</p>
-                </>
+              {!hasMatchesForActiveTab ? (
+                <div className="text-center py-12 glass rounded-2xl">
+                  {(hasSeenArenaByType[arenaTypeTab] || Object.keys(votedMatches).length > 0) ? (
+                    <>
+                      <p className="text-white/70 mb-2">You've voted on all matches for today. Come back later!</p>
+                      <p className="text-white/45 text-sm">Next Pulse in {pulseCountdown || '--:--:--'}.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-white/50 mb-4">No active arena today.</p>
+                      <Link href="/submit" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:scale-105 transition-transform">
+                        Submit a Cat
+                      </Link>
+                    </>
+                  )}
+                </div>
               ) : (
-                <>
-                  <p className="text-white/50 mb-4">No active arena today.</p>
-                  <Link href="/submit" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:scale-105 transition-transform">
-                    Submit a Cat
-                  </Link>
-                </>
+                <div className="space-y-4">
+                  {displayedArenas.map((arena) => (
+                    <ArenaSection key={`${arena.tournament_id}:${debugDeckNonce}`} arena={arena} votedMatches={votedMatches} voteSnapshotByMatchId={voteSnapshotByMatchId}
+                      votingMatch={votingMatch}
+                      predictBusyMatch={predictBusyMatch}
+                      calloutBusyMatch={calloutBusyMatch}
+                      socialEnabled={socialLoopEnabled}
+                      availableSigils={progress?.sigils || 0}
+                      voteStreak={voteStreak}
+                      hotMatchBiasEnabled={hotMatchBiasEnabled}
+                      testerMode={testerMode}
+                      globalPageInfo={null}
+                      debugInfo={null}
+                      queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}
+                      pulseCountdown={pulseCountdown}
+                      onSwitchArena={undefined}
+                      onRequestMore={() => debugMode ? handleDebugArenaStackRefill((arena.type as 'main' | 'rookie')) : handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
+                      onVote={handleVote}
+                      onPredict={handlePredict}
+                      onCreateCallout={handleCreateCallout}
+                      debugMode={debugMode}
+                    />
+                  ))}
+                </div>
               )}
-            </div>
+            </>
           ) : (
-            <div className="space-y-4">
-              {displayedArenas.map((arena) => (
-                <ArenaSection key={`${arena.tournament_id}:${debugDeckNonce}`} arena={arena} votedMatches={votedMatches} voteSnapshotByMatchId={voteSnapshotByMatchId}
-                  votingMatch={votingMatch}
-                  predictBusyMatch={predictBusyMatch}
-                  calloutBusyMatch={calloutBusyMatch}
-                  socialEnabled={socialLoopEnabled}
-                  availableSigils={progress?.sigils || 0}
-                  voteStreak={voteStreak}
-                  hotMatchBiasEnabled={hotMatchBiasEnabled}
-                  testerMode={testerMode}
-                  globalPageInfo={null}
-                  debugInfo={null}
-                  queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}
-                  pulseCountdown={pulseCountdown}
-                  onSwitchArena={undefined}
-                  onRequestMore={() => debugMode ? handleDebugArenaStackRefill((arena.type as 'main' | 'rookie')) : handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
-                  onVote={handleVote}
-                  onPredict={handlePredict}
-                  onCreateCallout={handleCreateCallout}
-                  debugMode={debugMode}
-            />
-          ))}
-        </div>
-      )}
+            <div className="rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div className="max-w-xl">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-200/65">Arena Teaser</p>
+                  <h2 className="mt-1 text-2xl font-bold text-white">See the crowd before you jump in.</h2>
+                  <p className="mt-2 text-base leading-relaxed text-white/80">
+                    Browse live duel energy now, then forge your own cat when you're ready to take the spotlight.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:min-w-[220px]">
+                  <Link href="/submit" className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full' })}>
+                    Forge Your Cat
+                  </Link>
+                  <Link href="/leaderboard" className={buttonStyles({ variant: 'secondary', size: 'md', className: 'w-full' })}>
+                    See who's winning
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4" ref={duelSectionRef}>
             <LiveDuelsModule

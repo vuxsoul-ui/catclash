@@ -356,7 +356,30 @@ body {
   }
 
   .focus-ring:focus-visible {
-    box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.92), 0 0 0 4px rgba(56, 189, 248, 0.28);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.98), 0 0 0 4px rgba(56, 189, 248, 0.5);
+  }
+
+  .input-focus {
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+
+  .input-focus:focus-visible {
+    border-color: rgba(34, 211, 238, 0.5);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.98), 0 0 0 4px rgba(34, 211, 238, 0.2);
+  }
+
+  .interactive-card {
+    outline: none;
+    transition: box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease, background-color 150ms ease;
+  }
+
+  .interactive-card:focus-visible {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.98), 0 0 0 4px rgba(56, 189, 248, 0.45);
+  }
+
+  .interactive-card:active {
+    transform: translateY(1px);
   }
 
   .text-balance {
@@ -5857,9 +5880,18 @@ body {
   }
 }
 
-@media (max-width: 340px) {
+@media (max-width: 400px) {
   .header-social-pill {
     display: none !important;
+  }
+
+  .top-nav-actions {
+    gap: 4px;
+  }
+
+  .header-submit-btn {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 

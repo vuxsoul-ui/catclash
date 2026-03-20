@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireGuestId } from '../../_lib/guest';
+import { ECONOMY } from '../../_lib/economyConstants';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,8 +12,6 @@ const sb = createClient(
   (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').replace(/\s/g, '').trim(),
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
-
-const DAILY_SIGILS = 20;
 
 function utcDayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -70,7 +69,7 @@ export async function POST() {
     const streakDay = streakFromClaims(today, (priorClaims || []).map((r) => String(r.reward_key || '')));
     const ins = await sb
       .from('user_reward_claims')
-      .insert({ user_id: userId, reward_key: claimKey, reward_sigils: DAILY_SIGILS });
+      .insert({ user_id: userId, reward_key: claimKey, reward_sigils: ECONOMY.DAILY_REWARD_SIGILS });
     if (ins.error) {
       if (String(ins.error.code || '') === '23505') {
         return NextResponse.json({ ok: true, already_claimed: true });
@@ -79,7 +78,7 @@ export async function POST() {
     }
 
     const { data: progress } = await sb.from('user_progress').select('sigils').eq('user_id', userId).maybeSingle();
-    const nextSigils = Number(progress?.sigils || 0) + DAILY_SIGILS;
+    const nextSigils = Number(progress?.sigils || 0) + ECONOMY.DAILY_REWARD_SIGILS;
     await sb.from('user_progress').update({ sigils: nextSigils }).eq('user_id', userId);
 
     // Timestamp-based tracking when credentials exist.
@@ -92,7 +91,7 @@ export async function POST() {
       ok: true,
       already_claimed: false,
       day: streakDay,
-      sigils_awarded: DAILY_SIGILS,
+      sigils_awarded: ECONOMY.DAILY_REWARD_SIGILS,
       sigils_after: nextSigils,
       next_hint: streakDay + 1 >= 3 ? 'Come back tomorrow for a Rare Crate.' : 'Come back tomorrow to keep your streak going.',
     });

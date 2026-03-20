@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Share2, Swords } from 'lucide-react';
+import { DataLoadError } from '../../../components/DataLoadError';
 
 type DuelCat = { id: string; name: string; image_url: string | null };
 type DuelData = {
@@ -133,11 +134,15 @@ export default function DuelPreviewPage() {
 
   if (error || !duel) {
     return (
-      <main className="min-h-screen bg-black text-white grid place-items-center px-4">
-        <div className="text-center">
-          <p className="text-white/70 mb-3">{error || 'Duel unavailable'}</p>
-          <Link href="/duel" className="text-cyan-300 underline">Open Duel Arena</Link>
-        </div>
+      <main className="min-h-screen bg-black text-white">
+        <DataLoadError
+          title="Duel Preview Unavailable"
+          message={error ? 'We couldn’t load this rivalry card right now. Try again in a moment.' : 'This duel preview isn’t available anymore.'}
+          onRetry={() => window.location.reload()}
+          showRetryButton={!!error}
+          backHref="/duel"
+          backLabel="Open Duel Arena"
+        />
       </main>
     );
   }

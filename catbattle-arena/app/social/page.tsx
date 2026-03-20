@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Coins, Copy, Share2, Swords, Trophy, Users } from 'lucide-react';
+import { LoadingState } from '../components/LoadingState';
 import RecruitmentCard, { type RecruitRow } from '../components/RecruitmentCard';
 import { showGlobalToast } from '../lib/global-toast';
+import { buttonStyles } from '../components/ui/primitives';
 
 type SocialStats = {
   total_recruits: number;
@@ -244,10 +246,10 @@ export default function SocialPage() {
   const stats = social?.stats;
 
   return (
-    <div className="min-h-screen bg-black text-white pb-28 sm:pb-8 px-4 pt-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/55 hover:text-white">
+    <div className="min-h-screen bg-black px-3 pt-4 text-white pb-28 sm:px-4 sm:pb-8 sm:pt-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-6 flex items-center justify-between sm:mb-8">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
           <span className="text-xs rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-emerald-200">
@@ -255,78 +257,81 @@ export default function SocialPage() {
           </span>
         </div>
 
-        <div className="mb-4 rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 via-transparent to-emerald-500/10 p-4">
-          <p className="text-[11px] uppercase tracking-wide text-cyan-200">Guild Commander</p>
-          <h1 className="text-xl sm:text-2xl font-black mt-1">Recruit & Rule</h1>
-          <p className="text-sm text-white/70 mt-1">
+        <div className="mb-6 rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 via-transparent to-emerald-500/10 p-5 sm:mb-8 sm:p-6">
+          <p className="text-xs uppercase tracking-wide text-cyan-200">Guild Commander</p>
+          <h1 className="mt-1 text-2xl sm:text-3xl font-black">Recruit & Rule</h1>
+          <p className="mt-1 text-base leading-relaxed text-white/80">
             Your referrals now feed your faction power. Recruit rivals, grow your guild, and claim your trainer cut.
           </p>
           {social?.share_base?.guild && (
-            <p className="text-xs text-emerald-200 mt-2">
+            <p className="mt-2 text-sm text-emerald-200/85">
               Active guild: {guildName(social.share_base.guild)}. New recruits from your link are pre-pledged.
             </p>
           )}
         </div>
 
         {loading ? (
-          <div className="grid gap-3">
-            <div className="h-28 rounded-2xl border border-white/10 bg-white/5 animate-pulse" />
-            <div className="h-40 rounded-2xl border border-white/10 bg-white/5 animate-pulse" />
-            <div className="h-40 rounded-2xl border border-white/10 bg-white/5 animate-pulse" />
+          <div className="grid gap-4">
+            <LoadingState icon="🏰" message="Building the hall..." />
+            <div className="grid gap-3 sm:gap-4" aria-hidden="true">
+              <div className="h-28 rounded-2xl border border-white/10 bg-white/5 animate-pulse" />
+              <div className="h-40 rounded-2xl border border-white/10 bg-white/5 animate-pulse" />
+              <div className="h-40 rounded-2xl border border-white/10 bg-white/5 animate-pulse" />
+            </div>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="mb-6 grid grid-cols-3 gap-3 sm:mb-8 sm:gap-4">
               <div className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 text-center">
                 <Users className="w-4 h-4 mx-auto text-cyan-300" />
                 <p className="mt-1 text-lg font-black">{stats?.total_recruits || 0}</p>
-                <p className="text-[10px] text-white/50">Total Recruits</p>
+                <p className="text-xs text-white/50">Total Recruits</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 text-center">
                 <Swords className="w-4 h-4 mx-auto text-purple-300" />
                 <p className="mt-1 text-lg font-black">{stats?.active_duels || 0}</p>
-                <p className="text-[10px] text-white/50">Active Duels</p>
+                <p className="text-xs text-white/50">Active Duels</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 text-center">
                 <Coins className="w-4 h-4 mx-auto text-emerald-300" />
                 <p className="mt-1 text-lg font-black">{stats?.sigils_earned || 0}</p>
-                <p className="text-[10px] text-white/50">Sigils Earned</p>
+                <p className="text-xs text-white/50">Sigils Earned</p>
               </div>
             </div>
 
-            <section className="mb-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+            <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:mb-8 sm:p-5">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-cyan-200">Recruit Tree</p>
-                  <h2 className="text-sm font-bold">{social?.recruit_tree?.rank || 'Unranked'}</h2>
-                  <p className="text-[11px] text-white/60">
+                  <p className="text-xs uppercase tracking-wide text-cyan-200">Recruit Tree</p>
+                  <h2 className="text-base font-bold">{social?.recruit_tree?.rank || 'Unranked'}</h2>
+                  <p className="text-xs text-white/50">
                     Direct {social?.recruit_tree?.direct_qualified || 0} · Network {social?.recruit_tree?.network_qualified || 0}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs font-black text-white">{social?.recruit_tree?.points || 0} pts</p>
-                  <p className="text-[10px] text-white/55">
+                  <p className="text-[10px] text-white/45">
                     {social?.recruit_tree?.next_rank ? `${social.recruit_tree.points_to_next} to ${social.recruit_tree.next_rank}` : 'Max rank'}
                   </p>
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
-                  <p className="text-[10px] text-white/50">Depth 1</p>
+                  <p className="text-xs text-white/50">Depth 1</p>
                   <p className="text-sm font-bold">{social?.recruit_tree?.depth_counts?.d1 || 0}</p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
-                  <p className="text-[10px] text-white/50">Depth 2</p>
+                  <p className="text-xs text-white/50">Depth 2</p>
                   <p className="text-sm font-bold">{social?.recruit_tree?.depth_counts?.d2 || 0}</p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
-                  <p className="text-[10px] text-white/50">Depth 3</p>
+                  <p className="text-xs text-white/50">Depth 3</p>
                   <p className="text-sm font-bold">{social?.recruit_tree?.depth_counts?.d3 || 0}</p>
                 </div>
               </div>
               {!!social?.weekly_leaderboard?.length && (
                 <div className="mt-3">
-                  <p className="text-[11px] text-white/65 mb-1">Weekly Recruit Rush</p>
+                  <p className="mb-1 text-xs text-white/55">Weekly Recruit Rush</p>
                   <div className="space-y-1.5">
                     {social.weekly_leaderboard.slice(0, 5).map((row, idx) => (
                       <div key={`wk-${row.user_id}`} className="rounded-lg border border-white/10 bg-black/35 px-2.5 py-1.5 flex items-center justify-between text-xs">
@@ -339,11 +344,11 @@ export default function SocialPage() {
               )}
             </section>
 
-            <div className="grid lg:grid-cols-2 gap-4">
-              <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+              <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <h2 className="text-sm font-bold">War Room</h2>
-                  <div className="text-[11px] text-white/60">Recruit Value Today: +{stats?.recruits_value_today || 0}</div>
+                  <h2 className="text-base font-bold">War Room</h2>
+                  <div className="text-xs text-white/50">Recruit Value Today: +{stats?.recruits_value_today || 0}</div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -359,9 +364,9 @@ export default function SocialPage() {
                           <p className="text-xs font-bold">{g.guild === 'sun' ? 'Solar Claw' : 'Lunar Paw'}</p>
                           {isLeader && <Trophy className="w-3.5 h-3.5 text-amber-300" />}
                         </div>
-                        <p className="text-[11px] text-white/60">Value {g.daily_value}</p>
-                        <p className="text-[11px] text-white/60">Members {g.members}</p>
-                        <p className="text-[11px] text-white/60">Wins {g.wins}</p>
+                        <p className="text-xs text-white/50">Value {g.daily_value}</p>
+                        <p className="text-xs text-white/50">Members {g.members}</p>
+                        <p className="text-xs text-white/50">Wins {g.wins}</p>
                       </div>
                     );
                   })}
@@ -378,20 +383,20 @@ export default function SocialPage() {
                 </div>
 
                 <div className="mt-3 rounded-xl border border-emerald-300/25 bg-emerald-400/10 p-2.5">
-                  <p className="text-[11px] text-emerald-100 font-semibold">Trainer&apos;s Cut</p>
-                  <p className="text-[11px] text-white/75 mt-1">
-                    Launch-safe mode is active. Recruit progress boosts rank/status, while milestone claims grant bonus rolls.
+                  <p className="text-sm font-semibold text-emerald-100">Trainer&apos;s Cut</p>
+                  <p className="mt-1 text-sm leading-relaxed text-white/60">
+                    Recruit progress boosts your rank and status here, while milestone claims grant bonus rolls.
                   </p>
                 </div>
               </section>
 
-              <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+              <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold">Share My Link</h2>
+                  <h2 className="text-base font-bold">Share My Link</h2>
                   <button
                     onClick={claimPouch}
                     disabled={claimingPouch}
-                    className="h-8 rounded-lg border border-emerald-300/30 bg-emerald-400/15 px-2.5 text-[11px] font-bold text-emerald-100 disabled:opacity-50"
+                    className={buttonStyles({ variant: 'secondary', size: 'sm', className: 'px-2.5 text-xs' })}
                   >
                     {claimingPouch ? 'Claiming...' : `Claim Pouch (+${stats?.claimable_pouch || 0})`}
                   </button>
@@ -404,23 +409,23 @@ export default function SocialPage() {
                       <button
                         key={p.slug}
                         onClick={() => setSelectedPitch(p.slug)}
-                        className={`w-full text-left rounded-xl border p-2.5 ${selected ? 'border-cyan-300/35 bg-cyan-400/10' : 'border-white/10 bg-white/[0.03]'}`}
+                        className={`focus-ring w-full rounded-xl border p-2.5 text-left transition-all duration-150 active:translate-y-[1px] ${selected ? 'scale-[1.02] border-cyan-300/35 bg-cyan-400/10 shadow-md' : 'border-white/10 bg-white/[0.03]'}`}
                       >
-                        <p className="text-xs font-bold">{p.title}</p>
-                        <p className="text-[11px] text-white/65 mt-1">{p.copy}</p>
+                        <p className="text-sm font-bold">{p.title}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-white/55">{p.copy}</p>
                       </button>
                     );
                   })}
                 </div>
 
                 <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-2.5">
-                  <p className="text-[11px] text-white/55">Referral link</p>
-                  <p className="text-[11px] text-cyan-200 break-all mt-1">{referralUrl}</p>
+                  <p className="text-xs text-white/50">Referral link</p>
+                  <p className="mt-1 break-all text-xs text-cyan-200">{referralUrl}</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <button onClick={copyPitch} className="h-9 rounded-lg bg-white text-black text-xs font-bold inline-flex items-center justify-center gap-1.5">
+                    <button onClick={copyPitch} className={buttonStyles({ variant: 'secondary', size: 'md', className: 'gap-1.5 text-xs' })}>
                       <Copy className="w-3.5 h-3.5" /> Copy
                     </button>
-                    <button onClick={sharePitch} className="h-9 rounded-lg bg-emerald-400 text-black text-xs font-bold inline-flex items-center justify-center gap-1.5">
+                    <button onClick={sharePitch} className={buttonStyles({ variant: 'primary', size: 'xl', className: 'gap-1.5 text-xs' })}>
                       <Share2 className="w-3.5 h-3.5" /> Recruit Soldiers
                     </button>
                   </div>
@@ -428,8 +433,8 @@ export default function SocialPage() {
               </section>
             </div>
 
-            <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
-              <h2 className="text-sm font-bold mb-3">Recruit Stable</h2>
+            <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:mt-8 sm:p-5">
+              <h2 className="mb-3 text-base font-bold">Recruit Stable</h2>
               {social?.recruits?.length ? (
                 <div className="space-y-3">
                   {social.recruits.map((r) => (
@@ -442,22 +447,22 @@ export default function SocialPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-white/55">No recruits yet. Share your challenge link to start building your stable.</p>
+                <p className="text-sm leading-relaxed text-white/55">No recruits yet. Share your challenge link to start building your stable.</p>
               )}
             </section>
 
-            <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
-              <h2 className="text-sm font-bold mb-2">Arena Social Feed</h2>
+            <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:mt-8 sm:p-5">
+              <h2 className="mb-2 text-base font-bold">Arena Social Feed</h2>
               {social?.events?.length ? (
                 <div className="space-y-2">
                   {social.events.slice(0, 8).map((e) => (
                     <div key={e.id} className="rounded-xl border border-white/10 bg-black/40 p-2.5">
                       <p className="text-xs text-white/85">{e.message}</p>
-                      <p className="text-[11px] text-emerald-200 mt-1">{e.reward_sigils > 0 ? `+${e.reward_sigils} sigils` : 'Social update'}</p>
+                      <p className="mt-1 text-xs text-emerald-200">{e.reward_sigils > 0 ? `+${e.reward_sigils} sigils` : 'Social update'}</p>
                       {typeof e.meta?.action_url === 'string' && String(e.meta.action_url).trim() && (
                         <Link
                           href={String(e.meta.action_url)}
-                          className="mt-2 inline-flex h-7 px-2.5 rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white text-[11px] font-bold items-center justify-center"
+                          className="mt-2 inline-flex h-7 items-center justify-center rounded-lg bg-rose-500/80 px-2.5 text-xs font-bold text-white hover:bg-rose-500"
                         >
                           {typeof e.meta?.action_label === 'string' && String(e.meta.action_label).trim()
                             ? String(e.meta.action_label)
@@ -468,7 +473,7 @@ export default function SocialPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-white/55">No social events yet.</p>
+                <p className="text-sm leading-relaxed text-white/55">No social events yet.</p>
               )}
             </section>
           </>

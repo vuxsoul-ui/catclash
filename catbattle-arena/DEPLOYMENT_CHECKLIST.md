@@ -1,5 +1,42 @@
 # CatClash Launch Deployment Checklist
 
+## Soft-Launch Deployment Checklist
+
+### Environment Variables (set before deploy)
+- [ ] `LAUNCH_GATE_ENABLED=true`
+- [ ] `LAUNCH_GATE_PASSWORD=Testing112`
+- [ ] `NEXTAUTH_SECRET=your-production-secret`
+- [ ] `NODE_ENV=production`
+
+### Pre-Deployment QA
+- [ ] Local build passes (`npm run build`)
+- [ ] Gate works with password `Testing112`
+- [ ] Open routes (`/submit`, `/gallery`, `/login`) accessible without password
+- [ ] Mobile responsiveness verified at `320px`, `375px`, `390px`
+- [ ] Pending cats flow works end-to-end
+
+### Deployment
+- [ ] Deploy code (middleware + launch gate files)
+- [ ] Set environment variables on hosting platform
+- [ ] Verify deployment is live
+- [ ] Test in production:
+  - [ ] Visit `/arena` without cookie → redirects to `/launch`
+  - [ ] Enter password `Testing112` → unlocks
+  - [ ] `/submit` and `/gallery` work without password
+  - [ ] Mobile access works
+
+### Soft Launch
+- [ ] Share early access link with initial users
+- [ ] Password: `Testing112`
+- [ ] Monitor submission rate
+- [ ] Monitor for UX bugs or crashes
+- [ ] Note user behavior patterns
+
+### To Go Public
+- [ ] When ready: set `LAUNCH_GATE_ENABLED=false`
+- [ ] Restart/redeploy so the environment change is picked up
+- [ ] All users now access Arena without password
+
 ## 1) Pre-deploy
 
 - Confirm branch is green (`npm run build`).
@@ -67,4 +104,3 @@
   - disable traffic-heavy features temporarily (UI gates)
   - keep `/api/health` and `/api/me` available
   - re-run smoke tests after rollback.
-

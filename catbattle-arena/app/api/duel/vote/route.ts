@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
         }
 
         status = 'completed';
+        // Duel outcomes stay social-only and do not modify cats.wins/losses/battles_fought.
         await sb
           .from('duel_challenges')
           .update({ winner_cat_id: winnerCatId, status: 'completed', resolved_at: new Date().toISOString() })

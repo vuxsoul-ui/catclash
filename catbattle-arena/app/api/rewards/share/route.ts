@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireGuestId } from '../../_lib/guest';
+import { ECONOMY } from '../../_lib/economyConstants';
 import { requireUsername } from '../../_lib/require-username';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,6 @@ const sb = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const SHARE_REWARD_SIGILS = 25;
 const DAILY_CAP = 3;
 const COOLDOWN_SECONDS = 60;
 
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     const claimKey = `${prefix}${seq}:${catId}:${method}`;
     const ins = await sb
       .from('user_reward_claims')
-      .insert({ user_id: userId, reward_key: claimKey, reward_sigils: SHARE_REWARD_SIGILS });
+      .insert({ user_id: userId, reward_key: claimKey, reward_sigils: ECONOMY.SHARE_REWARD_SIGILS });
     if (ins.error) {
       if (String(ins.error.code || '') === '23505') {
         return NextResponse.json({ ok: true, rewarded: false, reason: 'already_rewarded' });
@@ -92,13 +92,13 @@ export async function POST(request: Request) {
       .select('sigils')
       .eq('user_id', userId)
       .maybeSingle();
-    const nextSigils = Number(progress?.sigils || 0) + SHARE_REWARD_SIGILS;
+    const nextSigils = Number(progress?.sigils || 0) + ECONOMY.SHARE_REWARD_SIGILS;
     await sb.from('user_progress').update({ sigils: nextSigils }).eq('user_id', userId);
 
     return NextResponse.json({
       ok: true,
       rewarded: true,
-      sigils_awarded: SHARE_REWARD_SIGILS,
+      sigils_awarded: ECONOMY.SHARE_REWARD_SIGILS,
       sigils_after: nextSigils,
       shares_today: seq,
       shares_remaining: Math.max(0, DAILY_CAP - seq),

@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarClock, Filter, Loader2, Search, ShieldCheck, Sparkles, Trash2, Zap } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Filter, Loader2, Search, Sparkles, Trash2, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { LoadingState } from '../components/LoadingState';
 import { showGlobalToast } from '../lib/global-toast';
+import { buttonStyles } from '../components/ui/primitives';
 
 type GalleryCat = {
   id: string;
@@ -37,6 +39,14 @@ type MyCatSummary = {
   name: string;
   rarity: string;
   cat_level: number;
+  status: string;
+  image_url: string | null;
+  owner_username: string | null;
+};
+
+type DisplayCat = GalleryCat & {
+  status?: string;
+  pending?: boolean;
 };
 
 const PAGE_SIZE = 12;
@@ -150,9 +160,12 @@ function CatDetailModal({
         </div>
 
         {loading && (
-          <div className="p-6 text-center text-white/70 text-sm inline-flex w-full justify-center gap-2 items-center">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading
-          </div>
+          <LoadingState
+            compact
+            icon="✨"
+            message="Polishing portraits..."
+            className="m-3 border-white/10 bg-white/[0.03] px-4 py-8 shadow-none"
+          />
         )}
 
         {!loading && error && <div className="p-6 text-sm text-red-200">{error}</div>}
@@ -170,7 +183,7 @@ function CatDetailModal({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h4 className="text-xl font-bold text-white">{cat.name}</h4>
-                <p className="text-xs text-white/65">{cat.owner_username ? `@${cat.owner_username}` : 'Unknown owner'} · {cat.rarity}</p>
+                <p className="text-sm text-white/60">{cat.owner_username ? `@${cat.owner_username}` : 'Unknown owner'} · {cat.rarity}</p>
               </div>
               <Link href={`/cat/${cat.id}`} className="h-8 px-3 rounded-lg bg-cyan-400/20 border border-cyan-300/30 text-cyan-100 text-xs inline-flex items-center">
                 Open Profile
@@ -181,18 +194,18 @@ function CatDetailModal({
               <div className="rounded-lg bg-white/5 border border-white/10 p-2 text-white/80">W {cat.wins} / L {cat.losses}</div>
               <div className="rounded-lg bg-white/5 border border-white/10 p-2 text-white/80">{cat.battles_fought} battles</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 inline-flex items-center gap-2 text-white/70">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 inline-flex items-center gap-2 text-white/60">
                 <Zap className="w-3.5 h-3.5 text-yellow-300/80" />
                 <span className="truncate">{cat.ability || cat.power || 'No ability set'}</span>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 inline-flex items-center gap-2 text-white/70">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 inline-flex items-center gap-2 text-white/60">
                 <CalendarClock className="w-3.5 h-3.5 text-cyan-300/80" />
                 <span>{relativeDate(cat.created_at)}</span>
               </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 space-y-1.5">
-              <p className="text-[11px] text-white/55">Core Stats</p>
+              <p className="text-xs text-white/50">Core Stats</p>
               {[
                 ['ATK', cat.stats.attack, 'bg-red-400'],
                 ['DEF', cat.stats.defense, 'bg-blue-400'],
@@ -201,11 +214,11 @@ function CatDetailModal({
                 ['CHS', cat.stats.chaos, 'bg-orange-400'],
               ].map(([label, value, cls]) => (
                 <div key={String(label)} className="flex items-center gap-2">
-                  <span className="text-[10px] text-white/60 w-7">{label}</span>
+                  <span className="text-[10px] text-white/50 w-7">{label}</span>
                   <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
                     <div className={`h-full ${cls}`} style={{ width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` }} />
                   </div>
-                  <span className="text-[10px] text-white/60 w-7 text-right">{Number(value || 0)}</span>
+                  <span className="text-[10px] text-white/50 w-7 text-right">{Number(value || 0)}</span>
                 </div>
               ))}
             </div>
@@ -223,12 +236,17 @@ function GalleryCard({
   onDelete,
   onOpen,
 }: {
-  cat: GalleryCat;
+  cat: DisplayCat;
   canDelete: boolean;
   deleting: boolean;
   onDelete: (catId: string) => void;
   onOpen: (catId: string) => void;
 }) {
+  const isPending = cat.pending || String(cat.status || '').toLowerCase() === 'pending';
+  const subtitle = isPending
+    ? `${cat.owner_username ? `@${cat.owner_username}` : 'Your cat'} · Pending approval`
+    : `${cat.owner_username ? `@${cat.owner_username}` : 'Unknown owner'}${relativeDate(cat.created_at) ? ` · ${relativeDate(cat.created_at)}` : ''}`;
+
   return (
     <div
       role="button"
@@ -241,7 +259,7 @@ function GalleryCard({
           onOpen(cat.id);
         }
       }}
-      className={`group card-lift relative w-full text-left rounded-2xl overflow-hidden border bg-[linear-gradient(160deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] hover:border-cyan-300/40 ${getRarityFrameClass(cat.rarity)}`}
+      className={`focus-ring group card-lift relative w-full text-left rounded-2xl overflow-hidden border bg-[linear-gradient(160deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] transition-all duration-150 hover:border-cyan-300/40 active:translate-y-[1px] ${getRarityFrameClass(cat.rarity)} ${isPending ? 'opacity-75' : ''}`}
     >
       <div className="relative h-44 bg-white/5">
         <img
@@ -260,7 +278,11 @@ function GalleryCard({
           {cat.rarity}
         </span>
 
-        {canDelete && (
+        {isPending ? (
+          <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-lg border border-amber-300/30 bg-amber-500/18 px-2 py-1 text-[10px] font-semibold text-amber-100">
+            <span aria-hidden="true">⏳</span> Pending
+          </span>
+        ) : canDelete ? (
           <button
             type="button"
             aria-label={`Delete ${cat.name}`}
@@ -275,11 +297,11 @@ function GalleryCard({
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
-        )}
+        ) : null}
 
         <div className="absolute bottom-0 left-0 right-0 p-2.5">
           <h3 className="text-sm font-semibold text-white truncate">{cat.name}</h3>
-          <p className="text-[11px] text-white/70 truncate">{cat.owner_username ? `@${cat.owner_username}` : 'Unknown owner'} · {relativeDate(cat.created_at)}</p>
+          <p className="text-xs text-white/50 truncate">{subtitle}</p>
         </div>
       </div>
     </div>
@@ -309,6 +331,14 @@ export default function GalleryPage() {
   useEffect(() => {
     void loadCats({ reset: true });
     void loadMyCats();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get('view') === 'mine') {
+      setViewMode('mine');
+    }
   }, []);
 
   async function loadCats({ reset }: { reset: boolean }) {
@@ -350,11 +380,15 @@ export default function GalleryPage() {
         fetch('/api/me', { cache: 'no-store' }).then((r) => r.json().catch(() => ({}))),
       ]);
       const list = Array.isArray(mineRes?.cats) ? mineRes.cats : [];
+      const ownerUsername = String(meRes?.data?.profile?.username || '').trim() || null;
       const owned = list.map((c: Record<string, unknown>) => ({
         id: String(c.id || ''),
         name: String(c.name || 'Cat'),
         rarity: String(c.rarity || 'Common'),
         cat_level: Math.max(1, Number(c.cat_level || 1)),
+        status: String(c.status || 'approved'),
+        image_url: typeof c.image_url === 'string' ? c.image_url : null,
+        owner_username: ownerUsername,
       }));
       setMyCats(owned);
       const pool = Math.max(0, Number(meRes?.data?.cat_xp_pool || 0));
@@ -421,13 +455,26 @@ export default function GalleryPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    let result = cats;
-    const myIds = new Set(myCats.map((c) => c.id));
+  const displayCats = useMemo<DisplayCat[]>(() => {
+    if (viewMode !== 'mine') return cats;
+    const approvedById = new Map(cats.map((c) => [c.id, { ...c, status: 'approved', pending: false } satisfies DisplayCat]));
+    const pendingMine = myCats
+      .filter((cat) => !approvedById.has(cat.id))
+      .map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        thumb_url: cat.image_url || '/cat-placeholder.svg',
+        rarity: cat.rarity,
+        owner_username: cat.owner_username,
+        created_at: '',
+        status: cat.status,
+        pending: String(cat.status || '').toLowerCase() !== 'approved',
+      }));
+    return [...pendingMine, ...cats];
+  }, [cats, myCats, viewMode]);
 
-    if (viewMode === 'mine') {
-      result = result.filter((c) => myIds.has(c.id));
-    }
+  const filtered = useMemo(() => {
+    let result = displayCats;
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -445,50 +492,47 @@ export default function GalleryPage() {
     }
 
     return result;
-  }, [cats, myCats, viewMode, search, rarityFilter, sortBy]);
+  }, [displayCats, search, rarityFilter, sortBy]);
 
   const rarityCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: cats.length };
-    cats.forEach((c) => {
+    const counts: Record<string, number> = { All: displayCats.length };
+    displayCats.forEach((c) => {
       counts[c.rarity] = (counts[c.rarity] || 0) + 1;
     });
     return counts;
-  }, [cats]);
+  }, [displayCats]);
+
+  const pendingCats = useMemo(
+    () => myCats.filter((cat) => String(cat.status || '').toLowerCase() !== 'approved'),
+    [myCats]
+  );
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-white/50" />
-      </div>
-    );
+    return <LoadingState fullPage icon="📜" message="Unfurling the scroll..." />;
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <div className="mb-4 rounded-2xl border border-cyan-300/15 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(34,211,238,0.12),rgba(2,8,24,0.75)_55%,rgba(0,0,0,0.9)_100%)] p-4">
+    <div className="min-h-screen overflow-x-hidden bg-black text-white">
+      <div className="mx-auto max-w-6xl px-3 py-6 sm:px-4 sm:py-8">
+        <div className="mb-6 rounded-2xl border border-cyan-300/15 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(34,211,238,0.12),rgba(2,8,24,0.75)_55%,rgba(0,0,0,0.9)_100%)] p-5 sm:mb-8 sm:p-6">
           <div className="flex items-center gap-3 mb-1">
             <Link href="/" className="text-white/45 hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
-              <h1 className="text-2xl font-black tracking-tight">Cat Gallery</h1>
-              <p className="text-sm text-white/55">Thumb-first cards, full detail only on open.</p>
+              <h1 className="text-3xl font-black tracking-tight text-white">Cat Gallery</h1>
+              <p className="text-sm leading-relaxed text-white/60">Thumb-first cards, full detail only on open.</p>
             </div>
-          </div>
-          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-100/90">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Lower egress mode active
           </div>
         </div>
 
         {error && <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm text-center">{error}</div>}
 
-        <div id="my-cats" className="mb-6 rounded-2xl border border-cyan-300/20 bg-[linear-gradient(170deg,rgba(8,72,88,0.28),rgba(2,18,28,0.72))] p-4 shadow-[0_14px_34px_rgba(0,0,0,0.35)]">
-          <div className="flex items-center justify-between gap-3 mb-3">
+        <div id="my-cats" className="mb-6 rounded-2xl border border-cyan-300/20 bg-[linear-gradient(170deg,rgba(8,72,88,0.28),rgba(2,18,28,0.72))] p-4 shadow-[0_14px_34px_rgba(0,0,0,0.35)] sm:mb-8 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-bold text-cyan-100">My Cats</h2>
-              <p className="text-xs text-cyan-100/75">Apply your Cat XP bank to a specific cat.</p>
+              <h2 className="text-2xl font-bold text-cyan-50">My Cats</h2>
+              <p className="text-sm leading-relaxed text-cyan-100/65">Apply your Cat XP bank to a specific cat.</p>
             </div>
             <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-cyan-300/20 border border-cyan-200/30 text-cyan-100">
               <Sparkles className="w-3 h-3" /> XP Bank: {catXpPool}
@@ -499,7 +543,7 @@ export default function GalleryPage() {
             <select
               value={selectedCatForXp}
               onChange={(e) => setSelectedCatForXp(e.target.value)}
-              className="h-10 rounded-xl bg-black/30 border border-white/15 px-3 text-sm"
+              className="input-focus h-10 rounded-xl bg-black/30 border border-white/15 px-3 text-sm"
             >
               {myCats.length === 0 && <option value="">No cats yet</option>}
               {myCats.map((c) => (
@@ -513,31 +557,37 @@ export default function GalleryPage() {
                 max={catXpPool}
                 value={xpAmount}
                 onChange={(e) => setXpAmount(Math.min(Math.max(0, Math.floor(Number(e.target.value || 0))), catXpPool))}
-                className="h-10 rounded-xl bg-black/30 border border-white/15 px-3 text-sm"
+                className="input-focus h-10 rounded-xl bg-black/30 border border-white/15 px-3 text-sm"
                 placeholder="XP"
               />
               <button
                 onClick={allocateCatXp}
                 disabled={allocatingXp || !selectedCatForXp || catXpPool <= 0 || xpAmount <= 0}
-                className="h-10 px-4 rounded-xl bg-gradient-to-r from-cyan-300 to-emerald-300 text-black text-sm font-bold disabled:opacity-50"
+                className={buttonStyles({ variant: 'secondary', size: 'md', className: 'px-4' })}
               >
                 {allocatingXp ? 'Applying...' : `Apply ${Math.max(0, Math.floor(Number(xpAmount || 0)))} XP`}
               </button>
             </div>
           </div>
+
+          {viewMode === 'mine' && pendingCats.length > 0 && (
+            <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-500/10 px-3 py-2.5 text-sm leading-relaxed text-amber-100/92">
+              Pending cats: Your submitted cats are waiting for admin approval. They&apos;ll appear in the public gallery once approved. You can still equip skills and earn XP while pending.
+            </div>
+          )}
         </div>
 
-        <div className="space-y-3 mb-6">
+        <div className="mb-6 space-y-4 sm:mb-8">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setViewMode('all')}
-              className={`h-9 px-3 rounded-lg text-xs font-semibold ${viewMode === 'all' ? 'bg-white/15 text-white' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+              className={`focus-ring h-9 px-3 rounded-lg text-sm font-semibold transition-all duration-150 ${viewMode === 'all' ? 'scale-[1.02] bg-white/15 text-white shadow-md' : 'bg-white/5 text-white/50 hover:bg-white/10'} active:translate-y-[1px]`}
             >
-              All Cats ({cats.length})
+              All Cats ({viewMode === 'all' ? displayCats.length : cats.length})
             </button>
             <button
               onClick={() => setViewMode('mine')}
-              className={`h-9 px-3 rounded-lg text-xs font-semibold ${viewMode === 'mine' ? 'bg-cyan-400/20 text-cyan-100 border border-cyan-300/30' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+              className={`focus-ring h-9 px-3 rounded-lg text-sm font-semibold transition-all duration-150 ${viewMode === 'mine' ? 'scale-[1.02] border border-cyan-300/30 bg-cyan-400/20 text-cyan-100 shadow-md' : 'bg-white/5 text-white/50 hover:bg-white/10'} active:translate-y-[1px]`}
             >
               My Cats ({myCats.length})
             </button>
@@ -550,17 +600,17 @@ export default function GalleryPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search cats..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/20 focus:border-white/20 focus:outline-none"
+            className="input-focus w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30"
             />
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex max-w-full flex-wrap gap-1 overflow-x-hidden pb-1 sm:flex-nowrap sm:gap-2 sm:overflow-x-auto">
             {RARITIES.map((r) => (
               <button
                 key={r}
                 onClick={() => setRarityFilter(r)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  rarityFilter === r ? 'bg-white/15 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'
+                className={`focus-ring flex-shrink-0 rounded-lg px-2 py-1 text-xs font-medium transition-all duration-150 sm:px-3 sm:py-1.5 sm:text-sm ${
+                  rarityFilter === r ? 'scale-[1.02] bg-white/15 text-white shadow-md' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70'
                 }`}
               >
                 {r} {rarityCounts[r] ? `(${rarityCounts[r]})` : ''}
@@ -575,7 +625,7 @@ export default function GalleryPage() {
                 <button
                   key={s}
                   onClick={() => setSortBy(s)}
-                  className={`px-2.5 py-1 rounded text-[11px] transition-colors ${sortBy === s ? 'bg-white/10 text-white' : 'text-white/30 hover:text-white/50'}`}
+                  className={`focus-ring rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 ${sortBy === s ? 'scale-[1.02] bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white/60'}`}
                 >
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </button>
@@ -586,18 +636,18 @@ export default function GalleryPage() {
 
         {filtered.length === 0 ? (
           <div className="text-center py-16">
-            {cats.length === 0 ? (
+            {displayCats.length === 0 ? (
               <>
-                <p className="text-white/50 mb-4">No approved cats yet.</p>
+                <p className="mb-4 text-sm text-white/50">No approved cats yet.</p>
                 <Link href="/submit" className="inline-block px-6 py-3 bg-white text-black rounded-xl font-bold">Submit a cat</Link>
               </>
             ) : (
-              <p className="text-white/50">No cats match your filters</p>
+              <p className="text-sm text-white/50">No cats match your filters.</p>
             )}
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 lg:grid-cols-4">
               {filtered.map((cat) => (
                 <GalleryCard
                   key={cat.id}

@@ -61,7 +61,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-black text-white px-4 py-8">
       <div className="max-w-md mx-auto">
-        <Link href="/" className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-5">
+        <Link href="/" className="focus-ring mb-5 inline-flex items-center gap-2 text-sm text-white/50 hover:text-white">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
 
@@ -76,13 +76,13 @@ export default function LoginPage() {
           <div className="grid grid-cols-2 gap-2 mb-4">
             <button
               onClick={() => setMode('login')}
-              className={`h-9 rounded-lg text-xs font-bold ${mode === 'login' ? 'bg-white text-black' : 'bg-white/10 text-white/80'}`}
+              className={`focus-ring h-9 rounded-lg text-xs font-bold transition-all duration-150 ${mode === 'login' ? 'scale-[1.02] bg-white text-black shadow-md' : 'bg-white/10 text-white/80'} active:translate-y-[1px]`}
             >
               Login
             </button>
             <button
               onClick={() => setMode('register')}
-              className={`h-9 rounded-lg text-xs font-bold ${mode === 'register' ? 'bg-emerald-300 text-black' : 'bg-white/10 text-white/80'}`}
+              className={`focus-ring h-9 rounded-lg text-xs font-bold transition-all duration-150 ${mode === 'register' ? 'scale-[1.02] bg-emerald-300 text-black shadow-md' : 'bg-white/10 text-white/80'} active:translate-y-[1px]`}
             >
               Create
             </button>
@@ -93,7 +93,7 @@ export default function LoginPage() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="harry"
-            className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/15 text-sm focus:outline-none focus:border-white/30 mb-3"
+            className="input-focus mb-3 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm"
           />
 
           <label className="text-xs text-white/70 block mb-1">Password</label>
@@ -102,13 +102,13 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
-            className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/15 text-sm focus:outline-none focus:border-white/30 mb-3"
+            className="input-focus mb-3 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm"
           />
 
           <button
             disabled={loading || !username.trim() || !password}
             onClick={handleSubmit}
-            className="w-full py-2 rounded-lg bg-emerald-300 text-black font-bold text-sm disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 py-2 text-sm font-bold text-black transition-all duration-150 active:translate-y-[1px] active:shadow-md disabled:opacity-50 disabled:active:translate-y-0"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {mode === 'login' ? 'Sign In' : 'Create Account'}

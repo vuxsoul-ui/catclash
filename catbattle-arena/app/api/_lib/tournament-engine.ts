@@ -748,7 +748,6 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
   for (const match of resolvable) {
     const rawA = Number(match.locked_votes_a ?? match.votes_a ?? 0);
     const rawB = Number(match.locked_votes_b ?? match.votes_b ?? 0);
-    const hasRealVotes = rawA + rawB > 0;
     const resolution = match.cat_a_id === match.cat_b_id
       ? {
           baseProbA: 0.5,
@@ -796,28 +795,26 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
     await resolvePredictionPayouts(supabase, match.id, winner);
     await recordResolvedMatchHistory(supabase, match, resolution, winner, loser, resolvedAt);
 
-    if (hasRealVotes) {
-      const { data: winnerCat } = await supabase.from('cats').select('wins, battles_fought').eq('id', winner).maybeSingle();
-      if (winnerCat) {
+    const { data: winnerCat } = await supabase.from('cats').select('wins, battles_fought').eq('id', winner).maybeSingle();
+    if (winnerCat) {
+      await supabase
+        .from('cats')
+        .update({
+          wins: (winnerCat.wins || 0) + 1,
+          battles_fought: (winnerCat.battles_fought || 0) + 1,
+        })
+        .eq('id', winner);
+    }
+    if (loser && loser !== winner) {
+      const { data: loserCat } = await supabase.from('cats').select('losses, battles_fought').eq('id', loser).maybeSingle();
+      if (loserCat) {
         await supabase
           .from('cats')
           .update({
-            wins: (winnerCat.wins || 0) + 1,
-            battles_fought: (winnerCat.battles_fought || 0) + 1,
+            losses: (loserCat.losses || 0) + 1,
+            battles_fought: (loserCat.battles_fought || 0) + 1,
           })
-          .eq('id', winner);
-      }
-      if (loser && loser !== winner) {
-        const { data: loserCat } = await supabase.from('cats').select('losses, battles_fought').eq('id', loser).maybeSingle();
-        if (loserCat) {
-          await supabase
-            .from('cats')
-            .update({
-              losses: (loserCat.losses || 0) + 1,
-              battles_fought: (loserCat.battles_fought || 0) + 1,
-            })
-            .eq('id', loser);
-        }
+          .eq('id', loser);
       }
     }
   }

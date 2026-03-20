@@ -1,6 +1,6 @@
-// PLACE AT: app/api/cats/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { calculateWinRate, toSafeCount } from '../../_lib/catStats';
 import { resolveCatImageUrl } from '../../_lib/images';
 import { getGuestId } from '../../_lib/guest';
 import { computePulseWindow } from '../../_lib/pulse';
@@ -98,12 +98,13 @@ export async function GET(
       };
     });
 
-    // Use match-derived totals to avoid stale/overcounted counters from legacy resolve flows.
-    // Note: `.or(...)` is a single filter; keep winner logic *inside* each AND branch to avoid precedence surprises.
-    const safeWins = battleHistory.filter((match) => match.won).length;
-    const safeLosses = battleHistory.filter((match) => !match.won).length;
-    const safeBattles = safeWins + safeLosses;
-    const winRate = safeBattles > 0 ? Math.round((safeWins / safeBattles) * 100) : null;
+    // Cat profile stats must match the leaderboard and other surfaces exactly.
+    // Keep match history for narrative context, but use the authoritative stored columns
+    // for wins/losses/battles so players never see two sources of truth.
+    const safeWins = toSafeCount(cat.wins);
+    const safeLosses = toSafeCount(cat.losses);
+    const safeBattles = toSafeCount(cat.battles_fought);
+    const winRate = calculateWinRate(safeWins, safeLosses);
 
     const totalPower =
       (cat.attack || 0) + (cat.defense || 0) + (cat.speed || 0) + (cat.charisma || 0) + (cat.chaos || 0);

@@ -10,12 +10,12 @@ type BuildInfo = {
 };
 
 export default function BuildStamp() {
-  const [debugEnabled, setDebugEnabled] = useState(process.env.NODE_ENV !== "production");
+  const [debugEnabled, setDebugEnabled] = useState(false);
   const [info, setInfo] = useState<BuildInfo | null>(null);
 
   useEffect(() => {
     const isDebugQuery = new URLSearchParams(window.location.search).get("debug") === "1";
-    setDebugEnabled(process.env.NODE_ENV !== "production" || isDebugQuery);
+    setDebugEnabled(isDebugQuery);
   }, []);
 
   useEffect(() => {

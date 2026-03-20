@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Download, Loader2, Share2, Swords, X } from 'lucide-react';
 import DuelRow from '../components/duel/DuelRow';
 import DuelCardFull from '../components/duel/DuelCardFull';
+import { LoadingState } from '../components/LoadingState';
 import type { DuelRowData } from '../components/duel/types';
-import { Badge, Button, Card, SectionHeader, Tabs } from '../components/ui/primitives';
+import { Badge, Button, Card, SectionHeader, Tabs, buttonStyles } from '../components/ui/primitives';
 
 type MyCat = { id: string; name: string; image_url: string | null; rarity: string; status?: string };
 type PlayerOption = { id: string; username: string; guild?: string | null };
@@ -324,16 +325,12 @@ export default function DuelPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-white/40" />
-      </div>
-    );
+    return <LoadingState fullPage icon="⚔️" message="Summoning combatants..." />;
   }
 
   return (
-    <div className="min-h-screen bg-black text-white px-3.5 py-4 sm:px-4 sm:py-6">
-      <div className="max-w-3xl mx-auto space-y-3">
+    <div className="min-h-screen bg-black px-3 py-6 text-white sm:px-4 sm:py-8">
+      <div className="mx-auto max-w-3xl space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
           <Link href="/" className="inline-flex items-center gap-2 text-white/45 hover:text-white text-xs">
             <ArrowLeft className="w-4 h-4" /> Back
@@ -341,7 +338,7 @@ export default function DuelPage() {
           <button
             onClick={() => setLaunchOpen(true)}
             disabled={disabled || activeCats.length === 0 || players.length === 0}
-            className="h-11 px-3.5 rounded-xl bg-cyan-300 text-black text-xs font-bold disabled:opacity-50 inline-flex items-center gap-2"
+            className={buttonStyles({ variant: 'primary', size: 'xl', className: 'gap-2 text-xs' })}
           >
             <Swords className="w-4 h-4" />
             Launch Duel
@@ -351,8 +348,8 @@ export default function DuelPage() {
         <Card className="bg-white/[0.03]">
           <SectionHeader>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold">Duel Arena</h1>
-              <p className="text-[12px] text-white/60">Battle inbox: live, pending, results.</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-white">Duel Arena</h1>
+              <p className="text-sm leading-relaxed text-white/60">Battle inbox for live clashes, pending challenges, and completed results.</p>
             </div>
             <Button
               onClick={loadAll}
@@ -361,11 +358,11 @@ export default function DuelPage() {
               Refresh
             </Button>
           </SectionHeader>
-          {message && <p className="text-[11px] text-cyan-300 mt-1.5">{message}</p>}
-          {disabled && <p className="text-[11px] text-amber-300 mt-1.5">Duel Arena migration not applied yet on this deployment.</p>}
+          {message && <p className="mt-1.5 text-xs text-cyan-300">{message}</p>}
+          {disabled && <p className="mt-1.5 text-xs text-amber-300">Duel Arena migration not applied yet on this deployment.</p>}
         </Card>
 
-        <Card className="bg-white/[0.03] p-2.5">
+        <Card className="bg-white/[0.03]">
           <Tabs className="grid-cols-3">
             {[
               { key: 'live', label: 'Live', count: liveRows.length },
@@ -382,16 +379,16 @@ export default function DuelPage() {
                 }}
                 role="tab"
                 aria-selected={activeTab === tab.key}
-                className={`h-11 rounded-lg text-[12px] font-semibold border ${activeTab === tab.key ? 'bg-white text-black border-white' : 'bg-white/5 border-white/15 text-white/80'}`}
+                className={`focus-ring h-11 rounded-lg border text-sm font-semibold transition-all duration-150 active:translate-y-[1px] ${activeTab === tab.key ? 'scale-[1.02] bg-white border-white text-black shadow-md' : 'bg-white/5 border-white/15 text-white/70'}`}
               >
-                {tab.label} <span className="text-[10px] opacity-70">{tab.count}</span>
+                {tab.label} <span className="text-xs opacity-60">{tab.count}</span>
               </button>
             ))}
           </Tabs>
 
-          <div className="mt-2.5 space-y-2">
+          <div className="mt-3 space-y-3">
             {activeRows.length === 0 && (
-              <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-[12px] text-white/55">No duels in this tab yet.</div>
+              <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm text-white/50">No duels in this tab yet.</div>
             )}
             {activeRows.map((d) => (
               <DuelRow
@@ -408,7 +405,7 @@ export default function DuelPage() {
         </Card>
 
         {selectedDuel && (
-          <Card className="border-cyan-300/20 bg-cyan-500/8 p-2.5">
+          <Card className="border-cyan-300/20 bg-cyan-500/8">
             <DuelCardFull duel={selectedDuel} meId={meId} busy={!!busy} onVote={voteDuel} onShare={shareDuel} />
             <div className="mt-2 flex items-center justify-between gap-2">
               <Badge>{String(selectedDuel.status || 'voting').toUpperCase()}</Badge>
@@ -424,27 +421,27 @@ export default function DuelPage() {
             </div>
 
             {selectedDuel.status === 'pending' && selectedDuel.challenged_user_id === meId && (
-              <div className="mt-2 rounded-lg border border-white/10 bg-black/30 p-2.5">
-                <p className="text-[11px] text-white/70 mb-2">Choose your defender cat:</p>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3 sm:p-4">
+                <p className="mb-2 text-sm text-white/60">Choose your defender cat:</p>
                 <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
                   <select
                     value={defenderCatsByDuel[selectedDuel.id] || myCatId}
                     onChange={(e) => setDefenderCatsByDuel((prev) => ({ ...prev, [selectedDuel.id]: e.target.value }))}
-                    className="h-11 rounded-lg bg-black/30 border border-white/15 px-2 text-xs"
+                    className="input-focus h-11 rounded-lg bg-black/30 border border-white/15 px-2 text-xs"
                   >
                     {activeCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <button
                     onClick={() => respond(selectedDuel.id, 'accept')}
                     disabled={!!busy}
-                    className="h-11 px-3 rounded-lg bg-emerald-400/25 text-emerald-200 text-xs font-bold disabled:opacity-50"
+                    className={buttonStyles({ variant: 'primary', size: 'md', className: 'px-3 text-xs' })}
                   >
                     Accept
                   </button>
                   <button
                     onClick={() => respond(selectedDuel.id, 'decline')}
                     disabled={!!busy}
-                    className="h-11 px-3 rounded-lg bg-red-400/20 text-red-200 text-xs font-bold disabled:opacity-50"
+                    className={buttonStyles({ variant: 'danger', size: 'md', className: 'px-3 text-xs' })}
                   >
                     Decline
                   </button>
@@ -452,13 +449,13 @@ export default function DuelPage() {
               </div>
             )}
             {selectedDuel.status === 'completed' && (selectedDuel.challenger_user_id === meId || selectedDuel.challenged_user_id === meId) && (
-              <div className="mt-2 rounded-lg border border-cyan-300/30 bg-cyan-500/10 p-2.5">
+              <div className="mt-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 p-3 sm:p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-cyan-100">Run it back with the same opponent.</p>
+                  <p className="text-sm text-cyan-100">Run it back with the same opponent.</p>
                   <button
                     onClick={() => void rematch(selectedDuel)}
                     disabled={!!busy}
-                    className="h-10 px-3 rounded-lg bg-cyan-300 text-black text-xs font-bold disabled:opacity-50"
+                    className={buttonStyles({ variant: 'primary', size: 'md', className: 'px-3 text-xs' })}
                   >
                     {busy?.startsWith('rematch:') ? 'Creating…' : 'Rematch'}
                   </button>
@@ -470,25 +467,25 @@ export default function DuelPage() {
       </div>
 
       {launchOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
-          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-neutral-950/95 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-            <div className="flex items-center justify-between mb-3">
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-neutral-950/95 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:p-5 sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-base font-bold">Launch Duel</h3>
               <button
                 onClick={() => setLaunchOpen(false)}
                 aria-label="Close launch duel"
-                className="h-11 w-11 rounded-lg bg-white/10 inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                className="focus-ring inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white/10 transition-all duration-150 active:translate-y-[1px]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-white/60 mb-2">1) Select your fighter</p>
-            <div className="flex gap-2 overflow-x-auto pb-1 mb-3">
+            <p className="mb-2 text-sm text-white/60">1) Select your fighter</p>
+            <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
               {activeCats.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setMyCatId(c.id)}
-                  className={`min-w-[132px] rounded-xl border p-2 text-left ${myCatId === c.id ? 'border-cyan-300 bg-cyan-500/10' : 'border-white/15 bg-white/[0.03]'}`}
+                  className={`focus-ring min-w-[132px] rounded-xl border p-2 text-left transition-all duration-150 active:translate-y-[1px] ${myCatId === c.id ? 'scale-[1.02] border-cyan-300 bg-cyan-500/10 shadow-md' : 'border-white/15 bg-white/[0.03]'}`}
                 >
                   <img
                     src={c.image_url || '/cat-placeholder.svg'}
@@ -499,20 +496,20 @@ export default function DuelPage() {
                     loading="lazy"
                   />
                   <p className="text-xs font-semibold truncate">{c.name}</p>
-                  <p className="text-[10px] text-white/60">{c.rarity}</p>
+                  <p className="text-xs text-white/50">{c.rarity}</p>
                 </button>
               ))}
             </div>
-            <p className="text-xs text-white/60 mb-2">2) Select target</p>
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 mb-3">
-              <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} className="h-11 rounded-xl bg-black/30 border border-white/15 px-3 text-sm">
+            <p className="mb-2 text-sm text-white/60">2) Select target</p>
+            <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+              <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} className="input-focus h-11 rounded-xl bg-black/30 border border-white/15 px-3 text-sm">
                 {players.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.username}{p.guild ? ` · ${p.guild === 'sun' ? 'Solar' : 'Lunar'}` : ''}
                   </option>
                 ))}
               </select>
-              <button onClick={pickRandomTraitor} className="h-11 px-3 rounded-xl bg-white/10 border border-white/15 text-xs font-semibold">
+              <button onClick={pickRandomTraitor} className={buttonStyles({ variant: 'secondary', size: 'md', className: 'px-3 text-xs' })}>
                 Random
               </button>
             </div>
@@ -522,7 +519,7 @@ export default function DuelPage() {
                 if (ok) setLaunchOpen(false);
               }}
               disabled={disabled || !targetUserId || !myCatId || busy === 'create'}
-              className="h-11 w-full rounded-xl bg-cyan-300 text-black text-sm font-bold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2' })}
             >
               {busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
               Confirm Duel
@@ -532,8 +529,8 @@ export default function DuelPage() {
       )}
 
       {shareSheetDuelId && (
-        <div className="fixed inset-0 z-[130] bg-black/65 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-neutral-950/95 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+        <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/65 p-3 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-neutral-950/95 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:p-5 sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-bold">Share Match</h3>
               <button

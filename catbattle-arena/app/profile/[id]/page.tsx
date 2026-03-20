@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, LogOut } from 'lucide-react';
 import CosmeticFrame from '../../components/cosmetics/CosmeticFrame';
 import CosmeticTitle from '../../components/cosmetics/CosmeticTitle';
 import CosmeticThemeProvider from '../../components/cosmetics/CosmeticThemeProvider';
+import { DataLoadError } from '../../components/DataLoadError';
 import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from '../../_lib/cosmetics/effectsRegistry';
 
 interface ProfileCat {
@@ -292,19 +293,21 @@ export default function ProfilePage() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-white/50 mb-3">{error || 'Profile not found'}</p>
-          <Link href="/" className="text-white/70 hover:text-white">Back to Home</Link>
-        </div>
-      </div>
+      <DataLoadError
+        title="Trainer Profile Unavailable"
+        message={error ? 'We couldn’t load this trainer card right now. Try again in a moment.' : 'That trainer profile isn’t available right now.'}
+        onRetry={() => window.location.reload()}
+        showRetryButton={!!error}
+        backHref="/"
+        backLabel="Back to Home"
+      />
     );
   }
 
   return (
     <div className="page-content min-h-screen bg-[#06050e] text-white pb-[72px] sm:pb-[72px]">
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mx-auto max-w-5xl px-3 py-6 sm:px-4 sm:py-8">
+        <div className="mb-6 flex items-center justify-between gap-3 sm:mb-8">
           <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
@@ -312,7 +315,7 @@ export default function ProfilePage() {
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 disabled:opacity-50"
+              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 transition-all duration-150 hover:bg-white/10 active:translate-y-[1px] disabled:opacity-50 disabled:active:translate-y-0"
             >
               <LogOut className="w-3.5 h-3.5" />
               {loggingOut ? 'Logging out...' : 'Logout'}
@@ -321,7 +324,7 @@ export default function ProfilePage() {
         </div>
 
         <CosmeticThemeProvider colorSlug={activeColorSlug}>
-        <CosmeticFrame borderSlug={activeBorderSlug} className="profile-hero-shell mb-6 overflow-hidden p-0">
+        <CosmeticFrame borderSlug={activeBorderSlug} className="profile-hero-shell mb-6 overflow-hidden p-0 sm:mb-8">
           <div className="profile-hero">
             <div className="profile-hero-bg" />
             <div className="profile-hero-content">
@@ -340,7 +343,7 @@ export default function ProfilePage() {
               <div className="min-w-0 flex-1">
                 <h1 className={`profile-hero-name ${profileAccentClass}`}>{usernameDisplay}</h1>
                 {activeTitle && (
-                  <p className="mt-1 text-[11px] uppercase tracking-wider">
+                  <p className="mt-1 text-xs uppercase tracking-wider">
                     <CosmeticTitle title={activeTitle} titleSlug={activeTitleSlug} />
                   </p>
                 )}
@@ -393,7 +396,7 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        <div className="grid gap-6">
+        <div className="grid gap-6 sm:gap-8">
           {showOverview ? (
             <>
           <section className="profile-section-card">
@@ -441,7 +444,7 @@ export default function ProfilePage() {
                       value={newUsername}
                       onChange={(e) => setNewUsername(e.target.value)}
                       placeholder="username"
-                      className="flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm focus:outline-none focus:border-white/30"
+                      className="input-focus flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
                     />
                     <button onClick={saveUsername} disabled={savingName} className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-black disabled:opacity-50">
                       {savingName ? 'Saving...' : 'Save'}
@@ -486,7 +489,7 @@ export default function ProfilePage() {
                       { slot: 'Badge', cosmetic: null },
                     ] : data.equipped_cosmetics).slice(0, 4).map((e, idx) => (
                       <div key={`${e.slot}-${idx}`} className="rounded-lg border border-white/8 bg-white/[0.03] p-3 flex items-center justify-between">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">{e.slot}</p>
+                        <p className="text-xs uppercase tracking-[0.16em] text-white/45">{e.slot}</p>
                         <p className="text-sm text-white/78">{e.cosmetic?.name || 'Empty'}</p>
                       </div>
                     ))}
@@ -515,7 +518,7 @@ export default function ProfilePage() {
                         <div key={c.id} className="rounded-lg border border-white/8 bg-white/[0.03] p-3 flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold">{c.name}</p>
-                            <p className="text-[11px] text-white/50">{cosmeticTypeLabel(c)} · {c.rarity}</p>
+                            <p className="text-xs text-white/50">{cosmeticTypeLabel(c)} · {c.rarity}</p>
                           </div>
                           <button onClick={() => equipFromProfile(c.slug)} disabled={!!equippingSlug || !!c.equipped_slot} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs disabled:opacity-50 hover:bg-white/20">
                             {c.equipped_slot ? 'Equipped' : (equippingSlug === c.slug ? '...' : 'Equip')}
@@ -573,7 +576,7 @@ export default function ProfilePage() {
                       Voted for <span className="font-bold">{v.voted_for_name}</span>
                       {v.against_name ? ` vs ${v.against_name}` : ''}
                     </p>
-                    <p className="mt-1 text-xs text-white/45">{new Date(v.created_at).toLocaleString()}</p>
+                    <p className="mt-1 text-xs text-white/50">{new Date(v.created_at).toLocaleString()}</p>
                   </div>
                 ))}
               </div>
@@ -604,16 +607,16 @@ export default function ProfilePage() {
                     <div className="flex gap-3">
                       <img src={cat.image_url || '/cat-placeholder.svg'} alt={cat.name} className="w-14 h-14 rounded-lg object-cover" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold truncate">{cat.name}</p>
+                        <p className="truncate text-sm font-bold text-white">{cat.name}</p>
                         <p className="text-xs text-white/50">{cat.rarity} · {cat.status} · Lvl {cat.level}</p>
                         <p className="text-xs text-white/40">W {cat.wins} / L {cat.losses} · Fans {cat.fan_count || 0}</p>
-                        {cat.stance ? <p className="text-[10px] uppercase text-cyan-300">Stance: {cat.stance}</p> : null}
+                        {cat.stance ? <p className="text-xs uppercase text-cyan-300">Stance: {cat.stance}</p> : null}
                       </div>
                       {data.is_owner && (
                         <button
                           onClick={(e) => { e.preventDefault(); pinSignature(cat.id); }}
                           disabled={!!pinningCatId}
-                          className="rounded-md bg-white/10 px-2 py-1 text-[10px] hover:bg-white/20"
+                          className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
                         >
                           {pinningCatId === cat.id ? 'Pinning...' : 'Pin'}
                         </button>
@@ -663,7 +666,7 @@ export default function ProfilePage() {
                         <div className="p-3">
                           <div className="flex items-center justify-between gap-2">
                             <p className="truncate font-bold text-white">{receipt.name}</p>
-                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/55">{receipt.rarity}</span>
+                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-xs uppercase tracking-[0.18em] text-white/55">{receipt.rarity}</span>
                           </div>
                           <p className="mt-2 text-xs text-white/55">Power {receipt.power_rating} · {new Date(receipt.minted_at).toLocaleDateString()}</p>
                         </div>

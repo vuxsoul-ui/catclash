@@ -10,6 +10,7 @@ import { withTimeout } from "../../_lib/timeout";
 import { logReferralEvent } from "../../_lib/referrals";
 import { uploadCatImageDerivatives } from "../../_lib/cat-image-storage";
 import { utcWeekStartIso } from "../../_lib/weeklyCaps";
+import { ECONOMY } from "../../_lib/economyConstants";
 import { normalizeStatsForRarity } from "../../_lib/stat-balance";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,6 @@ function getSupabase() {
   );
 }
 
-const REROLL_COST = 25; // sigils per re-roll
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const SUBMIT_WEEKLY_LIMIT = Math.max(1, Number(process.env.SUBMIT_WEEKLY_LIMIT || 8));
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
 
     // If rerolls were used, deduct sigils
     if (rerollCount > 0) {
-      const totalCost = rerollCount * REROLL_COST;
+      const totalCost = rerollCount * ECONOMY.REROLL_COST_SIGILS;
 
       // Check user's sigils balance
       const { data: progress } = await sb

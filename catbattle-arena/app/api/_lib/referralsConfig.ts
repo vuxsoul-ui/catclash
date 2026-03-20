@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { ECONOMY } from './economyConstants';
 import { LAUNCH_CONFIG } from './launchConfig';
 
 export const REFERRAL_CONFIG = {
-  inviteeRewardSigils: 100,
-  inviterRewardSigilsOnQualified: 100,
+  inviteeRewardSigils: ECONOMY.REFERRAL_INVITEE_REWARD_SIGILS,
+  inviterRewardSigilsOnQualified: ECONOMY.REFERRAL_INVITER_REWARD_SIGILS,
   enableInviterRewardOnQualified: true,
   qualifiedWindowHours: 72,
   qualifiedDailyCapPerInviter: Number(LAUNCH_CONFIG.qualifiedDailyCapPerInviter),

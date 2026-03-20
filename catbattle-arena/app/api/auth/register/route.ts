@@ -5,6 +5,7 @@ import { hashPassword, normalizeUsername, validatePassword } from '../../_lib/pa
 import { markReferralSignedUp } from '../../_lib/referrals';
 import { checkRateLimitMany, getClientIp, hashValue } from '../../_lib/rateLimit';
 import { trackAppEvent } from '../../_lib/telemetry';
+import { ECONOMY } from '../../_lib/economyConstants';
 import { LAUNCH_CONFIG } from '../../_lib/launchConfig';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,6 @@ function isUuid(v: string): boolean {
 }
 
 const LOYALTY_XP_BONUS = 75;
-const SABOTEUR_SIGIL_BONUS = 50;
 const VALID_GUILDS = new Set(['sun', 'moon']);
 
 function isMissingTable(message: string): boolean {
@@ -211,16 +211,16 @@ export async function POST(req: NextRequest) {
         const saboteurKey = `ref_saboteur_bonus:${normalizedReferrerId}:${guestId}`;
         const saboteurIns = await supabase
           .from('user_reward_claims')
-          .insert({ user_id: guestId, reward_key: saboteurKey, reward_sigils: SABOTEUR_SIGIL_BONUS });
+          .insert({ user_id: guestId, reward_key: saboteurKey, reward_sigils: ECONOMY.SABOTEUR_SIGIL_BONUS });
         if (!saboteurIns.error) {
           const { data: prog } = await supabase
             .from('user_progress')
             .select('sigils')
             .eq('user_id', guestId)
             .maybeSingle();
-          const nextSigils = Number(prog?.sigils || 0) + SABOTEUR_SIGIL_BONUS;
+          const nextSigils = Number(prog?.sigils || 0) + ECONOMY.SABOTEUR_SIGIL_BONUS;
           await supabase.from('user_progress').update({ sigils: nextSigils }).eq('user_id', guestId);
-          saboteurBonusSigilsAwarded = SABOTEUR_SIGIL_BONUS;
+          saboteurBonusSigilsAwarded = ECONOMY.SABOTEUR_SIGIL_BONUS;
         }
         referralOutcome = 'traitor';
         await safeSocialEventInsert({

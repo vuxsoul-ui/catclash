@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireGuestId } from "../../_lib/guest";
+import { ECONOMY } from "../../_lib/economyConstants";
 import { normalizeStatsForRarity } from "../../_lib/stat-balance";
 
 export const dynamic = "force-dynamic";
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim();
 const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').trim();
-
-const REROLL_COST = 50;
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,7 +33,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await sb.rpc('reroll_cat_stats', {
       p_cat_id: catId,
       p_user_id: guestId,
-      p_reroll_cost: REROLL_COST,
+      p_reroll_cost: ECONOMY.REROLL_COST_SIGILS,
     });
 
     if (error) {
@@ -80,7 +79,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       stats: normalizedStats,
       remainingSigils: result.new_sigils,
-      cost: REROLL_COST,
+      cost: ECONOMY.REROLL_COST_SIGILS,
     });
 
   } catch (e) {

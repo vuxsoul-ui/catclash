@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import CatShareButton from '../../components/CatShareButton';
+import { DataLoadError } from '../../components/DataLoadError';
 
 interface CatProfile {
   id: string;
@@ -286,12 +287,14 @@ export default function CatProfilePage() {
 
   if (error || !cat) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
-        <div className="text-center">
-          <p className="text-white/60 mb-4">{error || 'Cat not found'}</p>
-          <Link href="/" className="text-white/40 hover:text-white">Back to Arena</Link>
-        </div>
-      </div>
+      <DataLoadError
+        title="Cat Profile Unavailable"
+        message={error ? 'We couldn’t pull this fighter card right now. Give it another try in a moment.' : 'That cat profile isn’t available right now.'}
+        onRetry={() => window.location.reload()}
+        showRetryButton={!!error}
+        backHref="/gallery"
+        backLabel="Back to Gallery"
+      />
     );
   }
 
@@ -562,7 +565,11 @@ export default function CatProfilePage() {
             ) : (
               <div className="text-center py-6 rounded-xl bg-white/[0.02]">
                 <Swords className="w-6 h-6 mx-auto mb-2 text-white/20" />
-                <p className="text-sm text-white/30">No battles yet. Enter the Arena to start fighting.</p>
+                <p className="text-sm text-white/30">
+                  {hasBattles
+                    ? 'Detailed battle history is still syncing for this fighter.'
+                    : 'No battles yet. Enter the Arena to start fighting.'}
+                </p>
               </div>
             )}
 

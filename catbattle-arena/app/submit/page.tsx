@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Upload, Loader2, Sparkles, Swords, Shield, Wind, Heart, Skull, Zap, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ECONOMY } from '@/app/api/_lib/economyConstants';
+import { LoadingState } from '../components/LoadingState';
+import { PostSubmitSuccess } from '../components/PostSubmitSuccess';
 import SigilBalanceChip from '../components/SigilBalanceChip';
+import { buttonStyles } from '../components/ui/primitives';
 
 const RARITIES = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythic', 'God-Tier'];
 const RARITY_COLORS: Record<string, string> = {
@@ -101,41 +105,73 @@ export default function SubmitPage() {
 
   const [rerollCount, setRerollCount] = useState(0);
   const [sigils, setSigils] = useState(0);
-  const REROLL_COST = 25;
 
-  const [submittedCatId, setSubmittedCatId] = useState<string | null>(null);
   const [mintingShare, setMintingShare] = useState(false);
 
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState('');
   const [savingNotify, setSavingNotify] = useState(false);
-  const [hasUsername, setHasUsername] = useState(false);
+  const [hasUsername, setHasUsername] = useState<boolean | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | null>(null);
   const cropSourceRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    async function loadState() {
-      try {
-        const [meRes, prefRes] = await Promise.all([
-          fetch('/api/me', { cache: 'no-store' }),
-          fetch('/api/notifications/preferences', { cache: 'no-store' }),
-        ]);
-        const me = await meRes.json().catch(() => ({}));
-        const pref = await prefRes.json().catch(() => ({}));
-        setSigils(me?.data?.progress?.sigils || 0);
-        setHasUsername(!!String(me?.data?.profile?.username || '').trim());
-        if (prefRes.ok && pref?.ok) {
-          setNotifyEnabled(!!pref.preference?.cat_photo_approved_enabled);
-          setNotifyEmail(pref.preference?.email || '');
-        }
-      } catch {
-        // ignore
+  const loadState = useCallback(async () => {
+    try {
+      const [meRes, prefRes] = await Promise.all([
+        fetch('/api/me', { cache: 'no-store' }),
+        fetch('/api/notifications/preferences', { cache: 'no-store' }),
+      ]);
+      const me = await meRes.json().catch(() => ({}));
+      const pref = await prefRes.json().catch(() => ({}));
+      const resolvedHasUsername = !!String(me?.data?.profile?.username || '').trim();
+      setSigils(me?.data?.progress?.sigils || 0);
+      setHasUsername(resolvedHasUsername);
+      if (prefRes.ok && pref?.ok) {
+        setNotifyEnabled(!!pref.preference?.cat_photo_approved_enabled);
+        setNotifyEmail(pref.preference?.email || '');
       }
+      return resolvedHasUsername;
+    } catch {
+      return false;
     }
-    loadState();
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    let retryTimerA: number | null = null;
+    let retryTimerB: number | null = null;
+
+    const refreshState = async () => {
+      const resolved = await loadState();
+      if (!alive) return;
+      if (!resolved) {
+        retryTimerA = window.setTimeout(() => { void loadState(); }, 350);
+        retryTimerB = window.setTimeout(() => { void loadState(); }, 1200);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void loadState();
+    };
+    const handleWindowFocus = () => { void loadState(); };
+    const handlePageShow = () => { void loadState(); };
+
+    void refreshState();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('pageshow', handlePageShow);
+
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pageshow', handlePageShow);
+      if (retryTimerA) window.clearTimeout(retryTimerA);
+      if (retryTimerB) window.clearTimeout(retryTimerB);
+    };
+  }, [loadState]);
 
   useEffect(() => {
     if (previewUrlRef.current && previewUrlRef.current.startsWith('blob:') && previewUrlRef.current !== preview) {
@@ -306,7 +342,7 @@ export default function SubmitPage() {
 
   async function submitCat() {
     if (phase !== 'reveal') return;
-    if (!hasUsername) {
+    if (hasUsername !== true) {
       setError('Set a username before submitting a cat.');
       router.push('/login?next=%2Fsubmit');
       return;
@@ -343,7 +379,6 @@ export default function SubmitPage() {
         return;
       }
       const createdCatId = String(data?.cat_id || '');
-      setSubmittedCatId(createdCatId);
       if (createdCatId) {
         const slug = await mintShareCard(createdCatId);
         if (slug) {
@@ -384,40 +419,52 @@ export default function SubmitPage() {
   }
 
   const rarityStyle = RARITY_COLORS[rarity] || RARITY_COLORS.Common;
+  const usernameResolved = hasUsername !== null;
+  const nextRerollCost = (rerollCount + 1) * ECONOMY.REROLL_COST_SIGILS;
+  const canAffordReroll = sigils >= nextRerollCost;
+  const sigilsNeededForReroll = Math.max(0, nextRerollCost - sigils);
 
   return (
     <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
-      <div className="max-w-lg mx-auto px-4 py-6">
-        <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm mb-6">
+      <div className="mx-auto max-w-lg px-3 py-6 sm:px-4 sm:py-8">
+        <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm text-white/40 hover:text-white sm:mb-8">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
 
         <h1 className="text-2xl font-bold mb-2">Build Your Cat Entry</h1>
-        <div className="flex items-start justify-between mb-5 gap-3">
-          <p className="text-white/40 text-sm">Submit your own cat, roll stats, and jump straight into Arena play.</p>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <p className="text-sm leading-relaxed text-white/60">Submit your own cat, roll stats, and jump straight into Arena play.</p>
           <SigilBalanceChip balance={sigils} size="sm" className="shrink-0" />
         </div>
-        {!hasUsername && (
-          <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3">
-            <p className="text-xs text-amber-100">
+        {hasUsername === null && (
+          <LoadingState
+            compact
+            icon="✨"
+            message="Checking trainer access..."
+            className="mb-4 border-cyan-300/25 bg-cyan-500/10 px-4 py-5 shadow-[0_14px_34px_rgba(8,145,178,0.12)]"
+          />
+        )}
+        {hasUsername === false && (
+          <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 sm:p-4">
+            <p className="text-sm text-amber-100">
               Choose a username to unlock submissions.
             </p>
             <Link
               href="/login?next=%2Fsubmit"
-              className="mt-2 inline-flex h-9 items-center rounded-lg bg-amber-300 px-3 text-xs font-bold text-black"
+              className={buttonStyles({ variant: 'primary', size: 'md', className: 'mt-2 justify-center px-4 text-xs' })}
             >
               Claim Username
             </Link>
           </div>
         )}
 
-        <details className="mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-3 group">
+        <details className="group mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:mb-8">
           <summary className="list-none cursor-pointer select-none flex items-center justify-between">
-            <p className="text-xs font-bold text-white">Tutorial</p>
-            <span className="text-[11px] text-white/45 group-open:hidden">Open</span>
-            <span className="text-[11px] text-white/45 hidden group-open:inline">Close</span>
+            <p className="text-sm font-bold text-white">Tutorial</p>
+            <span className="text-xs text-white/45 group-open:hidden">Open</span>
+            <span className="text-xs text-white/45 hidden group-open:inline">Close</span>
           </summary>
-          <div className="space-y-1.5 text-xs text-white/65 mt-2">
+          <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-white/60">
             <p><span className="text-cyan-300 font-bold">How it works:</span> Vote and predict in active arenas to earn XP and sigils.</p>
             <p><span className="text-emerald-300 font-bold">Submission:</span> upload your own cat to enter live arenas.</p>
             <p><span className="text-orange-300 font-bold">Skills and stats:</span> each cat gets an ability plus Attack/Defense/Speed/Charisma/Chaos profile.</p>
@@ -431,32 +478,36 @@ export default function SubmitPage() {
           <div className="space-y-3">
             <button
               onClick={() => {
-                if (!hasUsername) {
+                if (hasUsername !== true) {
                   setError('Set a username before submitting a cat.');
                   router.push('/login?next=%2Fsubmit');
                   return;
                 }
                 setPhase('form');
               }}
-              disabled={!hasUsername}
-              className="w-full text-left rounded-xl border border-blue-400/30 bg-blue-500/10 p-4"
+              disabled={hasUsername !== true}
+              className="w-full text-left rounded-xl border border-blue-400/30 bg-blue-500/10 p-4 disabled:opacity-55"
             >
-              <p className="text-sm font-bold text-blue-200">Submit Your Own Cat (Personal Start)</p>
-              <p className="text-xs text-white/60 mt-1">Upload your own cat photo, roll stats/ability, and build identity.</p>
+              <p className="text-base font-bold text-blue-200">Submit Your Own Cat (Personal Start)</p>
+              <p className="mt-1 text-sm leading-relaxed text-white/60">
+                {usernameResolved
+                  ? 'Upload your own cat photo, roll stats/ability, and build identity.'
+                  : 'Syncing your trainer access before unlocking cat forging.'}
+              </p>
             </button>
 
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-              <p className="text-xs font-bold text-white mb-2">Optional Email</p>
-              <p className="text-xs text-white/60 mb-2">Get notified when your cat photo is approved.</p>
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="mb-2 text-sm font-bold text-white">Optional Email</p>
+              <p className="mb-2 text-sm leading-relaxed text-white/60">Get notified when your cat photo is approved.</p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="email"
                   value={notifyEmail}
                   onChange={(e) => setNotifyEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm focus:outline-none focus:border-white/30"
+                  className="input-focus flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
                 />
-                <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 text-xs">
+                <label className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/80">
                   <input
                     type="checkbox"
                     checked={notifyEnabled}
@@ -477,19 +528,19 @@ export default function SubmitPage() {
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-white/30 mb-1 block">Cat Name</label>
+              <label className="mb-1 block text-xs uppercase tracking-wider text-white/40">Cat Name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={30}
                 placeholder="e.g. Sir Whiskers III"
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 focus:border-yellow-500/50 focus:outline-none"
+                className="input-focus w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30"
               />
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-white/30 mb-1 block">Portrait</label>
+              <label className="mb-1 block text-xs uppercase tracking-wider text-white/40">Portrait</label>
               <input type="file" ref={fileRef} accept="image/*" onChange={handleFile} className="hidden" />
               {preview ? (
                 <div className="relative rounded-xl overflow-hidden cursor-pointer" onClick={() => fileRef.current?.click()}>
@@ -503,11 +554,11 @@ export default function SubmitPage() {
               ) : (
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="w-full aspect-[4/3] rounded-xl border-2 border-dashed border-white/10 hover:border-white/20 flex flex-col items-center justify-center gap-2 transition-colors"
+                  className="focus-ring flex w-full aspect-[4/3] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/10 transition-all duration-150 hover:border-white/20 active:translate-y-[1px]"
                 >
                   <Upload className="w-8 h-8 text-white/20" />
-                  <span className="text-sm text-white/30">Tap to upload</span>
-                  <span className="text-xs text-white/15">JPG, PNG, max 5MB</span>
+                  <span className="text-sm text-white/50">Tap to upload</span>
+                  <span className="text-xs text-white/30">JPG, PNG, max 5MB</span>
                 </button>
               )}
               {preview && file && (
@@ -522,7 +573,7 @@ export default function SubmitPage() {
                       setCropY(50);
                       setCropModalOpen(true);
                     }}
-                    className="h-8 px-3 rounded-lg bg-white/10 border border-white/15 text-[11px] font-semibold hover:bg-white/15"
+                    className="focus-ring h-8 rounded-lg border border-white/15 bg-white/10 px-3 text-xs font-semibold transition-all duration-150 hover:bg-white/15 active:translate-y-[1px]"
                   >
                     Re-crop Photo
                   </button>
@@ -531,22 +582,22 @@ export default function SubmitPage() {
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-white/30 mb-1 block">Description <span className="text-white/15">(optional)</span></label>
+              <label className="mb-1 block text-xs uppercase tracking-wider text-white/40">Description <span className="text-white/30">(optional)</span></label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 maxLength={200}
                 placeholder="A fearsome floof with a taste for chaos..."
                 rows={2}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 focus:border-yellow-500/50 focus:outline-none resize-none text-sm"
+                className="input-focus w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30"
               />
-              <span className="text-[10px] text-white/15 mt-0.5 block text-right">{description.length}/200</span>
+              <span className="mt-0.5 block text-right text-[10px] text-white/30">{description.length}/200</span>
             </div>
 
             <button
               onClick={startRoll}
               disabled={!name.trim() || !file || savingNotify}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-400 to-rose-400 text-black font-bold hover:from-orange-300 hover:to-rose-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2 bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300' })}
             >
               <Sparkles className="w-4 h-4" /> Roll Stats
             </button>
@@ -561,12 +612,12 @@ export default function SubmitPage() {
                   <img src={rollingPreview} alt="" className="w-full h-full object-cover object-center" />
                 </div>
               )}
-              <h2 className="text-xl font-bold mb-2">{rollingName}</h2>
+              <h2 className="mb-2 text-2xl font-bold">{rollingName}</h2>
             </div>
             <div className="text-3xl font-black animate-pulse">
               <span className={RARITY_COLORS[rollingText]?.split(' ')[0] || 'text-white'}>{rollingText}</span>
             </div>
-            <p className="text-xs text-white/30 mt-4">Rolling rarity...</p>
+            <p className="mt-4 text-sm text-white/50">Rolling rarity...</p>
           </div>
         )}
 
@@ -583,18 +634,18 @@ export default function SubmitPage() {
                     </span>
                   </div>
                   <div className="absolute bottom-3 left-3">
-                    <h2 className="text-xl font-black">{name}</h2>
+                    <h2 className="text-2xl font-black">{name}</h2>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <Zap className="w-3 h-3 text-yellow-400" />
-                      <span className="text-xs text-white/60">{power}</span>
+                      <span className="text-sm text-white/60">{power}</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="p-4 space-y-3">
+              <div className="space-y-3 p-5 sm:p-6">
                 {description && (
-                  <p className="text-xs text-white/40 italic pb-2 border-b border-white/5">&ldquo;{description}&rdquo;</p>
+                  <p className="border-b border-white/5 pb-2 text-sm italic leading-relaxed text-white/50">&ldquo;{description}&rdquo;</p>
                 )}
                 {Object.entries(stats).map(([key, val]) => (
                   <div key={key} className="flex items-center gap-2">
@@ -605,97 +656,84 @@ export default function SubmitPage() {
                     <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
                       <div className={`h-full rounded-full ${STAT_BAR_COLORS[key]}`} style={{ width: `${val}%`, opacity: 0.7, transition: 'width 1s ease-out' }} />
                     </div>
-                    <span className="text-xs font-mono text-white/50 w-7 text-right">{val}</span>
+                    <span className="w-7 text-right text-xs font-mono text-white/60">{val}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {rerollCount > 0 && (
-              <div className="text-center text-xs text-yellow-400/60">
-                {rerollCount} re-roll{rerollCount > 1 ? 's' : ''} used · {rerollCount * REROLL_COST} sigils will be charged on submit
+              <div className="text-center text-sm text-yellow-400/60">
+                {rerollCount} re-roll{rerollCount > 1 ? 's' : ''} used · {rerollCount * ECONOMY.REROLL_COST_SIGILS} sigils will be charged on submit
               </div>
             )}
 
             <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  const nextCost = (rerollCount + 1) * REROLL_COST;
-                  if (sigils < nextCost) {
-                    setError(`Not enough sigils for re-roll. Need ${REROLL_COST} more, have ${sigils - rerollCount * REROLL_COST} remaining.`);
-                    return;
-                  }
-                  setRerollCount((prev) => prev + 1);
-                  setPhase('form');
-                  setRarity('');
-                  setStats({});
-                  setPower('');
-                  setError(null);
-                }}
-                className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 font-bold text-sm transition-colors"
-              >
-                Re-Roll ({REROLL_COST} ✦)
-              </button>
+              {canAffordReroll ? (
+                <button
+                  onClick={() => {
+                    setRerollCount((prev) => prev + 1);
+                    setPhase('form');
+                    setRarity('');
+                    setStats({});
+                    setPower('');
+                    setError(null);
+                  }}
+                  className={buttonStyles({ variant: 'secondary', size: 'md', className: 'flex-1' })}
+                >
+                  Re-Roll ({ECONOMY.REROLL_COST_SIGILS} ✦)
+                </button>
+              ) : (
+                <div className="flex flex-1 items-center justify-center rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 text-center text-sm text-amber-200/80">
+                  Need {sigilsNeededForReroll} more Sigils to re-roll
+                </div>
+              )}
               <button
                 onClick={submitCat}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-black font-bold hover:from-cyan-300 hover:to-emerald-300 transition-colors flex items-center justify-center gap-2"
+                className={buttonStyles({ variant: 'primary', size: 'xl', className: 'flex-1 gap-2' })}
               >
-                <Sparkles className="w-4 h-4" /> Submit{rerollCount > 0 ? ` (-${rerollCount * REROLL_COST} ✦)` : ''}
+                <Sparkles className="w-4 h-4" /> Submit{rerollCount > 0 ? ` (-${rerollCount * ECONOMY.REROLL_COST_SIGILS} ✦)` : ''}
               </button>
             </div>
           </div>
         )}
 
         {phase === 'submitting' && (
-          <div className="text-center py-12">
-            <Loader2 className="w-12 h-12 animate-spin text-yellow-400 mx-auto mb-4" />
-            <p className="text-white/60">Submitting your warrior...</p>
-          </div>
+          <LoadingState
+            icon="🔥"
+            message="Forging your cat..."
+            className="py-12"
+          />
         )}
 
         {phase === 'done' && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-green-400" />
-            </div>
-            <h2 className="text-xl font-bold mb-2">Submitted!</h2>
-            <p className="text-white/50 text-sm mb-6">{name} is live now. The photo stays hidden until admin approval, then appears across Gallery and profiles.</p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => {
-                  setPhase('choose');
-                  setName('');
-                  setDescription('');
-                  setFile(null);
-                  setPreview(null);
-                  setRarity('');
-                  setStats({});
-                  setPower('');
-                  setRerollCount(0);
-                  setSubmittedCatId(null);
-                  setError(null);
-                }}
-                className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold transition-colors"
-              >
-                Add Another Cat
-              </button>
-              <Link href="/tournament" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-400 to-rose-400 text-black text-sm font-bold hover:from-orange-300 hover:to-rose-300 transition-colors">
-                Open Arenas
-              </Link>
-            </div>
-          </div>
+          <PostSubmitSuccess
+            catName={name}
+            onDismiss={() => {
+              setPhase('choose');
+              setName('');
+              setDescription('');
+              setFile(null);
+              setPreview(null);
+              setRarity('');
+              setStats({});
+              setPower('');
+              setRerollCount(0);
+              setError(null);
+            }}
+          />
         )}
 
         {(phase === 'form' || phase === 'choose') && (
-          <p className="text-center text-xs text-white/15 mt-6">Drop rates: 50% Common · 25% Rare · 15% Epic · 7% Legendary · 2.5% Mythic · 0.5% God-Tier</p>
+          <p className="mt-6 text-center text-xs text-white/30">Drop rates: 50% Common · 25% Rare · 15% Epic · 7% Legendary · 2.5% Mythic · 0.5% God-Tier</p>
         )}
       </div>
 
       {cropModalOpen && cropSourceUrl && (
-        <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm px-4 py-6 flex items-center justify-center">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0d0d0d] p-4">
-            <h3 className="text-sm font-bold mb-2">Crop your cat photo</h3>
-            <p className="text-[11px] text-white/55 mb-3">Move and zoom before submitting.</p>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0d0d0d] p-5 sm:p-6">
+            <h3 className="mb-2 text-base font-bold">Crop your cat photo</h3>
+            <p className="mb-3 text-sm text-white/55">Move and zoom before submitting.</p>
 
             <div className="relative w-full aspect-square rounded-xl overflow-hidden border border-white/10 bg-black mb-3">
               <img
@@ -712,7 +750,7 @@ export default function SubmitPage() {
             </div>
 
             <div className="space-y-2 mb-4">
-              <label className="block text-[11px] text-white/60">
+              <label className="block text-xs text-white/50">
                 Zoom
                 <input
                   type="range"
@@ -724,7 +762,7 @@ export default function SubmitPage() {
                   className="w-full mt-1"
                 />
               </label>
-              <label className="block text-[11px] text-white/60">
+              <label className="block text-xs text-white/50">
                 Horizontal
                 <input
                   type="range"
@@ -736,7 +774,7 @@ export default function SubmitPage() {
                   className="w-full mt-1"
                 />
               </label>
-              <label className="block text-[11px] text-white/60">
+              <label className="block text-xs text-white/50">
                 Vertical
                 <input
                   type="range"

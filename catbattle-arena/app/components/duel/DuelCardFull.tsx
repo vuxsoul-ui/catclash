@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Share2 } from 'lucide-react';
 import type { DuelRowData } from './types';
+import { buttonStyles } from '../ui/primitives';
 
 function percent(a: number, b: number): [number, number] {
   const total = a + b;
@@ -174,7 +175,7 @@ export default function DuelCardFull({
               />
               <div className="min-w-0">
                 <p className="text-[12px] font-bold text-white truncate">{cat?.name || 'Unknown'}</p>
-                <p className="text-[10px] text-white/60 truncate">{user}</p>
+                <p className="text-xs text-white/50 truncate">{user}</p>
                 <p className="text-[9px] text-white/45 truncate">{cat?.rarity || 'Common'}</p>
               </div>
             </div>
@@ -203,14 +204,34 @@ export default function DuelCardFull({
           <button
             onClick={() => void handleVote('A', duel.challenger_cat?.id)}
             disabled={!canVote || voteLocked || !duel.challenger_cat?.id}
-            className={`h-11 rounded-lg text-[12px] font-bold disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70 touch-manipulation transition-all duration-500 ${pendingVote === 'A' ? 'bg-orange-500/35 text-orange-50 ring-2 ring-orange-300/70 shadow-[0_0_18px_rgba(251,146,60,0.45)]' : pendingVote === 'B' ? 'bg-orange-500/10 text-orange-100/70' : 'bg-orange-500/20 text-orange-100'}`}
+            className={buttonStyles({
+              variant: 'primary',
+              size: 'xl',
+              className: `rounded-lg text-[12px] touch-manipulation focus-visible:ring-orange-300/70 ${
+                pendingVote === 'A'
+                  ? 'border-orange-300/70 bg-gradient-to-r from-orange-300 to-amber-300 text-black ring-2 ring-orange-300/65 shadow-[0_0_20px_rgba(251,146,60,0.45)]'
+                  : pendingVote === 'B'
+                    ? 'border-orange-300/20 bg-orange-500/10 text-orange-100/70 shadow-none hover:scale-100'
+                    : 'border-orange-300/45 bg-gradient-to-r from-orange-400 to-amber-300 text-black shadow-lg shadow-orange-500/20 hover:from-orange-300 hover:to-amber-200'
+              }`
+            })}
           >
             {pendingVote === 'A' && !voteSubmitted ? 'Submitting…' : 'Vote A'}
           </button>
           <button
             onClick={() => void handleVote('B', duel.challenged_cat?.id)}
             disabled={!canVote || voteLocked || !duel.challenged_cat?.id}
-            className={`h-11 rounded-lg text-[12px] font-bold disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 touch-manipulation transition-all duration-500 ${pendingVote === 'B' ? 'bg-cyan-500/35 text-cyan-50 ring-2 ring-cyan-300/70 shadow-[0_0_18px_rgba(34,211,238,0.45)]' : pendingVote === 'A' ? 'bg-cyan-500/10 text-cyan-100/70' : 'bg-cyan-500/20 text-cyan-100'}`}
+            className={buttonStyles({
+              variant: 'primary',
+              size: 'xl',
+              className: `rounded-lg text-[12px] touch-manipulation focus-visible:ring-cyan-300/70 ${
+                pendingVote === 'B'
+                  ? 'border-cyan-300/70 bg-gradient-to-r from-cyan-300 to-emerald-300 text-black ring-2 ring-cyan-300/65 shadow-[0_0_20px_rgba(34,211,238,0.45)]'
+                  : pendingVote === 'A'
+                    ? 'border-cyan-300/20 bg-cyan-500/10 text-cyan-100/70 shadow-none hover:scale-100'
+                    : 'border-cyan-300/45 bg-gradient-to-r from-cyan-400 to-emerald-400 text-black shadow-lg shadow-cyan-500/20 hover:from-cyan-300 hover:to-emerald-300'
+              }`
+            })}
           >
             {pendingVote === 'B' && !voteSubmitted ? 'Submitting…' : 'Vote B'}
           </button>
@@ -219,7 +240,7 @@ export default function DuelCardFull({
           <div className={`bg-orange-400/90 transition-all duration-700 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${pendingVote === 'A' ? 'shadow-[0_0_14px_rgba(251,146,60,0.75)]' : ''}`} style={{ width: `${localPctA}%` }} />
           <div className={`bg-cyan-400/90 transition-all duration-700 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${pendingVote === 'B' ? 'shadow-[0_0_14px_rgba(34,211,238,0.75)]' : ''}`} style={{ width: `${localPctB}%` }} />
         </div>
-        <div className="mt-1 flex items-center justify-between text-[10px] text-white/65 min-h-[14px]">
+        <div className="mt-1 flex min-h-[14px] items-center justify-between text-xs text-white/50">
           <span>{votesA} votes</span>
           <span>
             {pendingVote ? (
@@ -231,27 +252,27 @@ export default function DuelCardFull({
           <span>{votesB} votes</span>
         </div>
         {voteSubmitted && (
-          <p className="mt-1 text-[10px] text-emerald-200">Voted ✅</p>
+          <p className="mt-1 text-xs text-emerald-200">Voted ✅</p>
         )}
         {xpGainPop != null && (
-          <p className="mt-1 text-[10px] text-emerald-200 animate-pulse">+{xpGainPop} XP</p>
+          <p className="mt-1 text-xs text-emerald-200 animate-pulse">+{xpGainPop} XP</p>
         )}
         {voteError && (
-          <p className="mt-1 text-[10px] text-red-300">{voteError}</p>
+          <p className="mt-1 text-xs text-red-300">{voteError}</p>
         )}
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="h-10 px-3 rounded-lg border border-white/15 bg-white/5 text-[11px] font-semibold text-white/85 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 touch-manipulation"
+          className={buttonStyles({ variant: 'secondary', size: 'sm', className: 'gap-1.5 text-xs touch-manipulation' })}
         >
           Details
           {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={() => onShare(duel.id)}
-          className="h-10 px-3 rounded-lg bg-white text-black text-[11px] font-bold inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 touch-manipulation"
+          className={buttonStyles({ variant: 'secondary', size: 'sm', className: 'gap-1.5 text-xs touch-manipulation bg-white text-black hover:bg-white/90' })}
         >
           <Share2 className="w-3.5 h-3.5" />
           Share
@@ -259,7 +280,7 @@ export default function DuelCardFull({
       </div>
 
       {expanded && (
-        <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2.5 text-[11px] text-white/70 space-y-1">
+        <div className="mt-2 space-y-1 rounded-lg border border-white/10 bg-black/20 p-2.5 text-xs text-white/60">
           <p>Status: <span className="text-white/90 capitalize">{String(duel.status || 'voting')}</span></p>
           <p>Challenger: <span className="text-white/90">{duel.challenger_username}</span></p>
           <p>Challenged: <span className="text-white/90">{duel.challenged_username}</span></p>

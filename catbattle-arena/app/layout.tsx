@@ -91,7 +91,6 @@ export default function RootLayout({
         </HeaderSystem>
         <GlobalToastHost />
         <BuildStamp />
-        <div className="vuxsolia-watermark" aria-hidden="true">Property of Vuxsolia.</div>
       </body>
     </html>
   );

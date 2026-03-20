@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ECONOMY } from '../../_lib/economyConstants';
 import { getGuestId } from '../../_lib/guest';
 import { isPlaceholderLikeImage, resolveCatImageUrl, stableNpcImageUrl } from '../../_lib/images';
 import { FEATURES } from '../../_lib/flags';
@@ -7,7 +8,7 @@ import { getActiveWhiskerModifier } from '../../_lib/whisker-modifier';
 
 export const dynamic = 'force-dynamic';
 
-const REWARD_SIGILS = 25;
+const REWARD_SIGILS = ECONOMY.DAILY_BOSS_REWARD_SIGILS;
 
 const supabase = createClient(
   (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim(),

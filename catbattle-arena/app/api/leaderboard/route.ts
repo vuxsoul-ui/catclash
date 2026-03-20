@@ -1,6 +1,6 @@
-// PLACE AT: app/api/leaderboard/route.ts
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { calculateWinRate } from '../_lib/catStats';
 import { resolveCatImageUrl } from '../_lib/images';
 import { pickXboxStyleUsername } from '../_lib/xbox-usernames';
 
@@ -17,6 +17,19 @@ const PLACEHOLDER_USERNAME_PATTERNS = [
   /^user[_\-\s]?[0-9a-z]+$/i,
   /^anon(ymous)?[_\-\s]?[0-9a-z]*$/i,
 ];
+const LOOKUP_BATCH_SIZE = 150;
+
+type ApprovedCatRow = {
+  id: string;
+  name: string;
+  image_path: string | null;
+  rarity: string;
+  user_id: string | null;
+  wins: number | null;
+  losses: number | null;
+  battles_fought: number | null;
+  prestige_weight?: number | null;
+};
 
 function normalizeUsername(value: string): string {
   return String(value || '').trim().toLowerCase();
@@ -28,19 +41,33 @@ function isPlaceholderUsername(value: string | null | undefined): boolean {
   return PLACEHOLDER_USERNAME_PATTERNS.some((re) => re.test(v));
 }
 
-function pickUniqueXboxUsername(seed: string, used: Set<string>): string {
+function pickDisplayUsername(userId: string, username: string | null | undefined, used: Set<string>): string {
+  const current = String(username || '').trim();
+  if (!isPlaceholderUsername(current)) {
+    const lower = normalizeUsername(current);
+    if (lower) used.add(lower);
+    return current;
+  }
   for (let attempt = 0; attempt < 500; attempt += 1) {
-    const candidate = pickXboxStyleUsername(seed, attempt);
+    const candidate = pickXboxStyleUsername(userId, attempt);
     const lower = normalizeUsername(candidate);
     if (!used.has(lower)) {
       used.add(lower);
       return candidate;
     }
   }
-  const fallback = `Arena${pickXboxStyleUsername(seed, 777)}`.replace(/[^a-zA-Z_]/g, '');
-  const lower = normalizeUsername(fallback);
-  used.add(lower);
+  const fallback = `Player ${String(userId).slice(0, 8)}`;
+  used.add(normalizeUsername(fallback));
   return fallback;
+}
+
+function chunkValues<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 export async function GET() {
@@ -50,14 +77,12 @@ export async function GET() {
     });
 
     const [
-      { data: allCats, error: catsErr },
+      { data: approvedCats, error: catsErr },
       { data: progressTop, error: progressErr },
-      { data: tournamentMatches, error: tmErr },
-      { data: duelMatches, error: duelErr },
     ] = await Promise.all([
       supabase
         .from('cats')
-        .select('id, name, image_path, rarity, user_id, status, origin, prestige_weight')
+        .select('id, name, image_path, rarity, user_id, wins, losses, battles_fought, prestige_weight')
         .eq('status', 'approved')
         .limit(5000),
       supabase
@@ -67,159 +92,95 @@ export async function GET() {
         .order('xp', { ascending: false })
         .order('sigils', { ascending: false })
         .limit(500),
-      supabase
-        .from('tournament_matches')
-        .select('winner_id, cat_a_id, cat_b_id, status')
-        .eq('status', 'complete')
-        .order('created_at', { ascending: false })
-        .limit(10000),
-      supabase
-        .from('duel_challenges')
-        .select('winner_cat_id, challenger_cat_id, challenged_cat_id, status')
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(10000),
     ]);
 
-    if (catsErr || progressErr || tmErr || duelErr) {
-      const msg = catsErr?.message || progressErr?.message || tmErr?.message || duelErr?.message || 'Failed to load leaderboard';
+    if (catsErr || progressErr) {
+      const msg = catsErr?.message || progressErr?.message || 'Failed to load leaderboard';
       return NextResponse.json({ ok: false, error: msg }, { status: 500 });
     }
 
-    const catsList = (allCats || []) as Array<{
-      id: string;
-      name: string;
-      image_path: string | null;
-      rarity: string;
-      user_id: string | null;
-      status: string;
-      origin?: string | null;
-      prestige_weight?: number | null;
-    }>;
-    const catOwnerMap = Object.fromEntries(catsList.map((c) => [String(c.id), c]));
-    const catWinsMap: Record<string, number> = {};
-    const catBattlesMap: Record<string, number> = {};
-
-    for (const m of (tournamentMatches || []) as Array<{ winner_id?: string | null; cat_a_id?: string | null; cat_b_id?: string | null }>) {
-      const a = String(m.cat_a_id || '');
-      const b = String(m.cat_b_id || '');
-      const w = String(m.winner_id || '');
-      if (a && catOwnerMap[a]) catBattlesMap[a] = (catBattlesMap[a] || 0) + 1;
-      if (b && catOwnerMap[b]) catBattlesMap[b] = (catBattlesMap[b] || 0) + 1;
-      if (w && catOwnerMap[w]) catWinsMap[w] = (catWinsMap[w] || 0) + 1;
-    }
-    for (const d of (duelMatches || []) as Array<{ winner_cat_id?: string | null; challenger_cat_id?: string | null; challenged_cat_id?: string | null }>) {
-      const a = String(d.challenger_cat_id || '');
-      const b = String(d.challenged_cat_id || '');
-      const w = String(d.winner_cat_id || '');
-      if (a && catOwnerMap[a]) catBattlesMap[a] = (catBattlesMap[a] || 0) + 1;
-      if (b && catOwnerMap[b]) catBattlesMap[b] = (catBattlesMap[b] || 0) + 1;
-      if (w && catOwnerMap[w]) catWinsMap[w] = (catWinsMap[w] || 0) + 1;
-    }
-
+    const catsList = (approvedCats || []) as ApprovedCatRow[];
     const topCats = catsList
-      .map((cat) => ({
-        ...cat,
-        trusted_wins: Number(catWinsMap[cat.id] || 0),
-        trusted_battles: Number(catBattlesMap[cat.id] || 0),
-      }))
-      .filter((cat) => cat.trusted_battles > 0)
+      .map((cat) => {
+        const battles = Math.max(0, Number(cat.battles_fought || 0));
+        const wins = Math.max(0, Number(cat.wins || 0));
+        const losses = Math.max(0, Number(cat.losses || 0));
+        return {
+          ...cat,
+          wins,
+          losses,
+          battles_fought: battles,
+        };
+      })
       .sort((a, b) => {
-        if (b.trusted_wins !== a.trusted_wins) return b.trusted_wins - a.trusted_wins;
-        if (b.trusted_battles !== a.trusted_battles) return b.trusted_battles - a.trusted_battles;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        if (b.battles_fought !== a.battles_fought) return b.battles_fought - a.battles_fought;
         return String(a.id).localeCompare(String(b.id));
       })
       .slice(0, 25);
 
-    const catsWithUrls = await Promise.all(topCats.map(async (cat) => {
-      const image_url = (await resolveCatImageUrl(supabase, cat.image_path)) || '';
-      const safeBattles = Math.max(0, Number(cat.trusted_battles || 0));
-      const safeWins = Math.max(0, Math.min(Number(cat.trusted_wins || 0), safeBattles));
-      const safeLosses = Math.max(0, safeBattles - safeWins);
-      return {
-        id: cat.id,
-        name: cat.name,
-        image_url,
-        rarity: cat.rarity,
-        wins: safeWins,
-        losses: safeLosses,
-        battles_fought: safeBattles,
-        user_id: cat.user_id || null,
-      };
-    }));
-
-    const winsMap = catsList.reduce((acc, row) => {
-      const key = String(row.user_id || '');
-      if (!key) return acc;
-      const weight = Number(row.prestige_weight || 1);
-      const safeWins = Math.max(0, Number(catWinsMap[row.id] || 0));
-      acc[key] = (acc[key] || 0) + Math.round(safeWins * weight);
+    const progressMap = Object.fromEntries((progressTop || []).map((p) => [String(p.user_id), p]));
+    const winsMap = catsList.reduce((acc, cat) => {
+      const userId = String(cat.user_id || '');
+      if (!userId) return acc;
+      acc[userId] = (acc[userId] || 0) + Math.max(0, Number(cat.wins || 0));
       return acc;
     }, {} as Record<string, number>);
 
-    const progressMap = Object.fromEntries((progressTop || []).map((p) => [String(p.user_id), p]));
-    const topWinUserIds = Object.entries(winsMap)
-      .sort((a, b) => Number(b[1]) - Number(a[1]))
-      .slice(0, 500)
-      .map(([id]) => id);
-    const candidateIds = Array.from(new Set([
+    const playerIds = Array.from(new Set([
+      ...catsList.map((cat) => String(cat.user_id || '')).filter(Boolean),
       ...(progressTop || []).map((p) => String(p.user_id || '')).filter(Boolean),
-      ...topWinUserIds,
     ]));
 
     let profiles: Array<{ id: string; username: string | null }> = [];
     let streaks: Array<{ user_id: string; current_streak: number | null }> = [];
-    if (candidateIds.length > 0) {
-      const [{ data: pRows, error: profilesErr }, { data: sRows, error: streaksErr }] = await Promise.all([
-        supabase.from('profiles').select('id, username').in('id', candidateIds),
-        supabase.from('streaks').select('user_id, current_streak').in('user_id', candidateIds),
+    if (playerIds.length > 0) {
+      const playerChunks = chunkValues(playerIds, LOOKUP_BATCH_SIZE);
+      const [profileBatches, streakBatches] = await Promise.all([
+        Promise.all(playerChunks.map((ids) => supabase.from('profiles').select('id, username').in('id', ids))),
+        Promise.all(playerChunks.map((ids) => supabase.from('streaks').select('user_id, current_streak').in('user_id', ids))),
       ]);
+      const profilesErr = profileBatches.find((batch) => batch.error)?.error;
+      const streaksErr = streakBatches.find((batch) => batch.error)?.error;
       if (profilesErr || streaksErr) {
         return NextResponse.json({ ok: false, error: profilesErr?.message || streaksErr?.message || 'Failed to load leaderboard candidates' }, { status: 500 });
       }
-      profiles = (pRows || []) as typeof profiles;
-      streaks = (sRows || []) as typeof streaks;
-
-      // Launch safety: normalize placeholder names into Xbox-style usernames for leaderboard clarity.
-      const used = new Set<string>();
-      for (const p of profiles) {
-        const n = normalizeUsername(String(p.username || ''));
-        if (n) used.add(n);
-      }
-      const profileMapRaw = Object.fromEntries((profiles || []).map((p) => [String(p.id), p])) as Record<string, { id: string; username: string | null }>;
-      const profileUpdates: Array<{ id: string; username: string }> = [];
-      for (const userId of candidateIds) {
-        const row = profileMapRaw[userId];
-        const current = row?.username || null;
-        if (isPlaceholderUsername(current)) {
-          const next = pickUniqueXboxUsername(userId, used);
-          profileUpdates.push({ id: userId, username: next });
-          if (row) row.username = next;
-          else profileMapRaw[userId] = { id: userId, username: next };
-        }
-      }
-      if (profileUpdates.length > 0) {
-        await Promise.all(profileUpdates.map((u) =>
-          supabase.from('profiles').update({ username: u.username }).eq('id', u.id)
-        ));
-      }
-      profiles = Object.values(profileMapRaw);
+      profiles = profileBatches.flatMap((batch) => (batch.data || []) as Array<{ id: string; username: string | null }>);
+      streaks = streakBatches.flatMap((batch) => (batch.data || []) as Array<{ user_id: string; current_streak: number | null }>);
     }
-    const profileMap = Object.fromEntries((profiles || []).map((p) => [String(p.id), p]));
+
+    const usedNames = new Set<string>();
+    const profileMap = Object.fromEntries(
+      profiles.map((profile) => [
+        String(profile.id),
+        pickDisplayUsername(String(profile.id), profile.username, usedNames),
+      ])
+    );
     const streakMap = Object.fromEntries((streaks || []).map((s) => [String(s.user_id), Number(s.current_streak || 0)]));
 
-    const players = candidateIds
+    const catsWithUrls = await Promise.all(
+      topCats.map(async (cat) => ({
+        id: cat.id,
+        name: cat.name,
+        image_url: (await resolveCatImageUrl(supabase, cat.image_path)) || '',
+        rarity: cat.rarity,
+        wins: cat.wins,
+        losses: cat.losses,
+        battles_fought: cat.battles_fought,
+        win_rate: calculateWinRate(cat.wins, cat.losses),
+        user_id: cat.user_id || null,
+      }))
+    );
+
+    const players = playerIds
       .map((id) => {
-        const pr = progressMap[id] || {};
-        const rawUsername = String(profileMap[id]?.username || '').trim();
-        const fallback = `Player ${String(id).slice(0, 8)}`;
-        const username = rawUsername || fallback;
+        const progress = progressMap[id] || {};
         return {
           id,
-          username,
-          level: Number(pr.level || 1),
-          xp: Number(pr.xp || 0),
-          sigils: Number(pr.sigils || 0),
+          username: profileMap[id] || `Player ${String(id).slice(0, 8)}`,
+          level: Number(progress.level || 1),
+          xp: Number(progress.xp || 0),
+          sigils: Number(progress.sigils || 0),
           current_streak: Number(streakMap[id] || 0),
           total_wins: Number(winsMap[id] || 0),
         };

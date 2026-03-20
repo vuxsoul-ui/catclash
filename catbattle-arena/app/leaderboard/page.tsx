@@ -2,9 +2,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Trophy, ArrowLeft, Loader2, Flame, Zap, TrendingUp, TrendingDown } from 'lucide-react';
+import { Trophy, ArrowLeft, Flame, Zap, TrendingUp, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
 import { thumbUrlForCat } from '../lib/cat-images';
+import { DataLoadError } from '../components/DataLoadError';
+import { LoadingState } from '../components/LoadingState';
 
 type LeaderCat = {
   id: string;
@@ -14,6 +16,7 @@ type LeaderCat = {
   wins: number;
   losses: number;
   battles_fought: number;
+  win_rate?: number | null;
 };
 
 type LeaderPlayer = {
@@ -114,11 +117,25 @@ export default function LeaderboardPage() {
     return `#${rank + 1}`;
   }
 
+  const isEmpty = !loading && !error && ((tab === 'players' && players.length === 0) || (tab === 'cats' && cats.length === 0));
+
   if (loading) {
+    return <LoadingState fullPage icon="🏆" message="Calculating ranks..." />;
+  }
+
+  if (error) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-white/50" />
-      </div>
+      <DataLoadError
+        title="Leaderboard Unavailable"
+        message="We're refreshing the rankings right now. Give it another try in a moment."
+        onRetry={() => {
+          setLoading(true);
+          void loadLeaderboard();
+        }}
+        showRetryButton
+        backHref="/"
+        backLabel="Back to Arena"
+      />
     );
   }
 
@@ -137,10 +154,6 @@ export default function LeaderboardPage() {
           <h1 className="text-3xl font-bold mb-2">Leaderboard</h1>
           <p className="text-white/50">Top battle cats ranked by wins</p>
         </div>
-
-        {error && (
-          <div className="mb-6 p-4 rounded-xl bg-red-500/20 text-red-200 text-center">{error}</div>
-        )}
 
         <div className="mb-4 flex items-center gap-2">
           <button
@@ -203,9 +216,12 @@ export default function LeaderboardPage() {
         ) : (
           <div className="space-y-3">
             {cats.map((cat, i) => {
-            const winRate = cat.battles_fought > 0
-              ? Math.round((cat.wins / cat.battles_fought) * 100)
-              : 0;
+            const totalMatches = Number(cat.wins || 0) + Number(cat.losses || 0);
+            const winRate = typeof cat.win_rate === 'number'
+              ? cat.win_rate
+              : totalMatches > 0
+                ? Number(((Number(cat.wins || 0) / totalMatches) * 100).toFixed(1))
+                : 0;
 
             return (
               <div
@@ -273,11 +289,18 @@ export default function LeaderboardPage() {
           </div>
         )}
 
-        {((tab === 'cats' && cats.length === 0) || (tab === 'players' && players.length === 0)) && !error && (
-          <div className="text-center py-12 glass rounded-2xl">
-            <p className="text-white/60">No battle results yet. Tournaments are just getting started!</p>
+        {isEmpty ? (
+          <div className="mt-4">
+            <DataLoadError
+              title="No Leaderboard Yet"
+              message="The rankings will light up once more cats start battling. Check back after the next wave of arena fights."
+              showRetryButton={false}
+              backHref="/submit"
+              backLabel="Forge Your Cat"
+              fullPage={false}
+            />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

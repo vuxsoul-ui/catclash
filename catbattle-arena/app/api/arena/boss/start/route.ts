@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getGuestId } from '../../../_lib/guest';
 import { createBattleState, type ArenaAction, type ArenaBehavior } from '../../../_lib/arena-engine';
+import { ECONOMY } from '../../../_lib/economyConstants';
 import { FEATURES } from '../../../_lib/flags';
 import { getActiveWhiskerModifier } from '../../../_lib/whisker-modifier';
 import { trackWhiskerEvent } from '../../../_lib/whisker-telemetry';
 
 export const dynamic = 'force-dynamic';
 
-const REWARD_SIGILS = 25;
+const REWARD_SIGILS = ECONOMY.DAILY_BOSS_REWARD_SIGILS;
 
 const supabase = createClient(
   (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim(),
@@ -67,7 +68,7 @@ async function claimMainToWhiskerBonus(userId: string): Promise<number> {
   const today = new Date().toISOString().slice(0, 10);
   const dayStart = `${today}T00:00:00.000Z`;
   const bonusKey = `cross_mode_whisker_bonus:${today}`;
-  const bonusSigils = 25;
+  const bonusSigils = ECONOMY.CROSS_MODE_WHISKER_BONUS_SIGILS;
 
   const { data: already } = await supabase
     .from('user_reward_claims')

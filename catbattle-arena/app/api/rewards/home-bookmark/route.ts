@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ECONOMY } from '../../_lib/economyConstants';
 import { requireGuestId } from '../../_lib/guest';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,6 @@ const sb = createClient(
 );
 
 const CLAIM_KEY = 'starter_home_bookmark_v1';
-const REWARD_SIGILS = 50;
 
 export async function POST() {
   try {
@@ -39,7 +39,7 @@ export async function POST() {
 
     const ins = await sb
       .from('user_reward_claims')
-      .insert({ user_id: userId, reward_key: CLAIM_KEY, reward_sigils: REWARD_SIGILS });
+      .insert({ user_id: userId, reward_key: CLAIM_KEY, reward_sigils: ECONOMY.HOME_BOOKMARK_REWARD_SIGILS });
     if (ins.error) {
       if (String(ins.error.code || '') === '23505') {
         return NextResponse.json({ ok: true, already_claimed: true, sigils_awarded: 0 });
@@ -52,10 +52,15 @@ export async function POST() {
       .select('sigils')
       .eq('user_id', userId)
       .maybeSingle();
-    const nextSigils = Number(progress?.sigils || 0) + REWARD_SIGILS;
+    const nextSigils = Number(progress?.sigils || 0) + ECONOMY.HOME_BOOKMARK_REWARD_SIGILS;
     await sb.from('user_progress').update({ sigils: nextSigils }).eq('user_id', userId);
 
-    return NextResponse.json({ ok: true, already_claimed: false, sigils_awarded: REWARD_SIGILS, sigils_after: nextSigils });
+    return NextResponse.json({
+      ok: true,
+      already_claimed: false,
+      sigils_awarded: ECONOMY.HOME_BOOKMARK_REWARD_SIGILS,
+      sigils_after: nextSigils,
+    });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }

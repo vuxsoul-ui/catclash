@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import CardShareActions from '../../../components/CardShareActions';
 import type { FighterCardView } from '../../../components/FighterCard';
+import { PostSubmitSuccess } from '../../../components/PostSubmitSuccess';
 import { getOrCreateShareCardByCatId, getShareCard } from '../../_lib/cards';
 import { preferCardImage } from '../../../api/_lib/images';
 
@@ -79,6 +80,13 @@ export default async function SharePage({
         )}
 
         <CardShareActions card={view} publicUrl={publicUrl} isNewCat={isNewCat} />
+
+        {isNewCat && (
+          <PostSubmitSuccess
+            inline
+            catName={view.name}
+          />
+        )}
       </div>
     </main>
   );

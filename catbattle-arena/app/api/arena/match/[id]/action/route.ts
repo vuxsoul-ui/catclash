@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ECONOMY } from '../../../../_lib/economyConstants';
 import { getGuestId } from '../../../../_lib/guest';
 import { ratingTier, runBattleTurn, toStance, xpForBattle, type ArenaAction, type ArenaBattleState } from '../../../../_lib/arena-engine';
 import { trackWhiskerEvent } from '../../../../_lib/whisker-telemetry';
@@ -303,7 +304,7 @@ export async function POST(
     const mode = String(match.summary?.mode || '');
     if (myWon && mode === 'daily_boss') {
       const bossDate = String(match.summary?.boss_date || new Date().toISOString().slice(0, 10));
-      const rewardSigils = Math.max(0, Number(match.summary?.boss_reward_sigils || 25));
+      const rewardSigils = Math.max(0, Number(match.summary?.boss_reward_sigils || ECONOMY.DAILY_BOSS_REWARD_SIGILS));
       const rewardKey = `daily_boss_win:${bossDate}`;
       const { error: claimErr } = await supabase
         .from('user_reward_claims')
