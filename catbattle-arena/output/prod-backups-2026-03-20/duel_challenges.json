@@ -1,0 +1,86 @@
+[
+  {
+    "id": "c2a12270-35a9-4b2b-974d-dd37be1c8fb2",
+    "challenger_user_id": "a312a27a-3156-4b76-97e8-6151454acd59",
+    "challenged_user_id": "faafe317-338c-47fc-9e9a-9678dfcce92d",
+    "challenger_cat_id": "d59eee21-96f1-4ea0-b8d6-4f10f1b5b88a",
+    "challenged_cat_id": null,
+    "status": "pending",
+    "winner_cat_id": null,
+    "created_at": "2026-02-19T07:15:52.73831+00:00",
+    "responded_at": null,
+    "resolved_at": null
+  },
+  {
+    "id": "0c7bcab4-1d42-42ac-a5e4-6e5beb9d6a8e",
+    "challenger_user_id": "d1b394e1-8de7-4981-aad3-70d81bda9e6c",
+    "challenged_user_id": "d3a7945a-289d-4cb8-b590-0273a87bab71",
+    "challenger_cat_id": "a324c022-a20b-4d8f-91e1-4103c5385c6f",
+    "challenged_cat_id": null,
+    "status": "pending",
+    "winner_cat_id": null,
+    "created_at": "2026-02-23T01:20:36.818791+00:00",
+    "responded_at": null,
+    "resolved_at": null
+  },
+  {
+    "id": "f4e6ac71-a280-4f46-a1bc-401e85fc3fed",
+    "challenger_user_id": "d1b394e1-8de7-4981-aad3-70d81bda9e6c",
+    "challenged_user_id": "178e7a56-d1a8-44bc-83c3-f346e3ec876d",
+    "challenger_cat_id": "7d6408af-d6ec-4aeb-8923-5f274a565e6d",
+    "challenged_cat_id": null,
+    "status": "pending",
+    "winner_cat_id": null,
+    "created_at": "2026-02-25T21:01:20.083422+00:00",
+    "responded_at": null,
+    "resolved_at": null
+  },
+  {
+    "id": "cbd82285-b8b7-4e20-ae38-6032344e0817",
+    "challenger_user_id": "5d26f862-c7cf-4770-ac38-283ae1cd0697",
+    "challenged_user_id": "c56b3d21-c5e2-4cce-9e4c-8c6dd3746724",
+    "challenger_cat_id": "30e39373-ec15-4fef-9064-bb40d387f8e5",
+    "challenged_cat_id": "ebabe889-548c-4d03-aca7-cf594f6f334c",
+    "status": "completed",
+    "winner_cat_id": "30e39373-ec15-4fef-9064-bb40d387f8e5",
+    "created_at": "2026-02-19T05:16:41.988438+00:00",
+    "responded_at": "2026-02-19T05:16:41.972+00:00",
+    "resolved_at": "2026-03-19T06:55:00.521+00:00"
+  },
+  {
+    "id": "120626bd-d1d6-4008-abb4-03c3d532f5fe",
+    "challenger_user_id": "b71da2ea-b9e0-44f7-8c73-fd273a0ba97b",
+    "challenged_user_id": "b97f3fa3-bcd6-45ec-a4a0-df7422764135",
+    "challenger_cat_id": "b1b6a551-14e1-4cbc-b4c1-d63fcda8e6fa",
+    "challenged_cat_id": null,
+    "status": "pending",
+    "winner_cat_id": null,
+    "created_at": "2026-03-19T07:02:30.633941+00:00",
+    "responded_at": null,
+    "resolved_at": null
+  },
+  {
+    "id": "c6cc071b-95f8-412a-9e06-c044a8d49c40",
+    "challenger_user_id": "b71da2ea-b9e0-44f7-8c73-fd273a0ba97b",
+    "challenged_user_id": "47888505-17c7-4628-9015-32ddd7bf08f6",
+    "challenger_cat_id": "b1b6a551-14e1-4cbc-b4c1-d63fcda8e6fa",
+    "challenged_cat_id": null,
+    "status": "pending",
+    "winner_cat_id": null,
+    "created_at": "2026-03-19T12:15:56.837736+00:00",
+    "responded_at": null,
+    "resolved_at": null
+  },
+  {
+    "id": "38f7d4bc-aab4-494a-ada9-1a7cc804d85b",
+    "challenger_user_id": "1ed393d8-0d62-49a6-b005-d4b73478d15b",
+    "challenged_user_id": "d1b394e1-8de7-4981-aad3-70d81bda9e6c",
+    "challenger_cat_id": "9c69eff6-b847-41e6-860f-bf01a68d968c",
+    "challenged_cat_id": null,
+    "status": "pending",
+    "winner_cat_id": null,
+    "created_at": "2026-03-19T16:37:08.942206+00:00",
+    "responded_at": null,
+    "resolved_at": null
+  }
+]

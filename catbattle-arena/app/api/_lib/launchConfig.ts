@@ -44,6 +44,8 @@ export const LAUNCH_GATE_CONFIG = {
     '/',
     '/submit',
     '/gallery',
+    '/shop',
+    '/profile',
     '/social',
     '/login',
     '/launch',

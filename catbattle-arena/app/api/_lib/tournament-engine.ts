@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logStatChange } from './statAuditLog';
 import {
   impliedProbability,
   isRelationMissingError,
@@ -25,7 +26,7 @@ type MatchRow = {
   tournament_id?: string;
   round: number;
   cat_a_id: string;
-  cat_b_id: string;
+  cat_b_id: string | null;
   votes_a: number | null;
   votes_b: number | null;
   locked_votes_a?: number | null;
@@ -105,6 +106,10 @@ async function recordResolvedMatchHistory(
   loserId: string | null,
   resolvedAt: string
 ) {
+  if (match.cat_a_id === match.cat_b_id || (winnerId && loserId && winnerId === loserId)) {
+    return;
+  }
+
   const lockedVotesA = Number(match.locked_votes_a ?? match.votes_a ?? 0);
   const lockedVotesB = Number(match.locked_votes_b ?? match.votes_b ?? 0);
   await supabase.from('match_history').upsert({
@@ -740,45 +745,55 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
   if (roundMatches.length === 0) return { ok: true, action: 'no_matches' };
 
   const resolvable = roundMatches.filter((m) => m.status === 'locked' || m.status === 'active' || m.status === 'pending');
-  const catIds = Array.from(new Set(resolvable.flatMap((m) => [m.cat_a_id, m.cat_b_id])));
+  const catIds = Array.from(
+    new Set(
+      resolvable
+        .flatMap((m) => [m.cat_a_id, m.cat_b_id])
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    )
+  );
   const [lockedSkillMap, streakMap] = await Promise.all([
     loadLockedSkillsForCats(supabase, catIds),
     loadCurrentStreakMap(supabase, catIds),
   ]);
   for (const match of resolvable) {
+    const isByeMatch = match.cat_a_id === match.cat_b_id;
+    if (isByeMatch) {
+      const resolvedAt = new Date().toISOString();
+      await supabase
+        .from('tournament_matches')
+        .update({
+          status: 'complete',
+          winner_id: match.cat_a_id,
+          resolved_at: resolvedAt,
+          resolution_source: 'bye_auto_advance',
+        })
+        .eq('id', match.id);
+      continue;
+    }
+
+    const catBId = match.cat_b_id;
+    if (!catBId) {
+      continue;
+    }
+
     const rawA = Number(match.locked_votes_a ?? match.votes_a ?? 0);
     const rawB = Number(match.locked_votes_b ?? match.votes_b ?? 0);
-    const resolution = match.cat_a_id === match.cat_b_id
-      ? {
-          baseProbA: 0.5,
-          baseProbB: 0.5,
-          skillDeltaA: 0,
-          skillDeltaB: 0,
-          netSkillDelta: 0,
-          finalProbA: 0.5,
-          finalProbB: 0.5,
-          skillATriggered: false,
-          skillBTriggered: false,
-          skillAId: lockedSkillMap[match.cat_a_id]?.id || null,
-          skillBId: lockedSkillMap[match.cat_b_id]?.id || null,
-          skillsCancelled: false,
-          winnerSide: 'a' as const,
-        }
-      : resolveMatchup(
-          {
-            votes: rawA,
-            skill: lockedSkillMap[match.cat_a_id] || null,
-            opponentStreak: Math.max(0, Number(streakMap[match.cat_b_id] || 0)),
-          },
-          {
-            votes: rawB,
-            skill: lockedSkillMap[match.cat_b_id] || null,
-            opponentStreak: Math.max(0, Number(streakMap[match.cat_a_id] || 0)),
-          },
-          String(match.tournament_id || '')
-        );
+    const resolution = resolveMatchup(
+      {
+        votes: rawA,
+        skill: lockedSkillMap[match.cat_a_id] || null,
+        opponentStreak: Math.max(0, Number(streakMap[catBId] || 0)),
+      },
+      {
+        votes: rawB,
+        skill: lockedSkillMap[catBId] || null,
+        opponentStreak: Math.max(0, Number(streakMap[match.cat_a_id] || 0)),
+      },
+      String(match.tournament_id || '')
+    );
     const side = resolution.winnerSide;
-    const winner = side === 'a' ? match.cat_a_id : match.cat_b_id;
+    const winner = side === 'a' ? match.cat_a_id : catBId;
     const loser = winner === match.cat_a_id ? match.cat_b_id : match.cat_a_id;
     const resolvedAt = new Date().toISOString();
 
@@ -804,6 +819,20 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
           battles_fought: (winnerCat.battles_fought || 0) + 1,
         })
         .eq('id', winner);
+      await logStatChange({
+        catId: winner,
+        catName: null,
+        changeType: 'match_recorded',
+        previousWins: Number(winnerCat.wins || 0),
+        newWins: Number(winnerCat.wins || 0) + 1,
+        previousLosses: 0,
+        newLosses: 0,
+        previousBattles: Number(winnerCat.battles_fought || 0),
+        newBattles: Number(winnerCat.battles_fought || 0) + 1,
+        timestamp: resolvedAt,
+        source: 'tournament-engine',
+        matchId: match.id,
+      });
     }
     if (loser && loser !== winner) {
       const { data: loserCat } = await supabase.from('cats').select('losses, battles_fought').eq('id', loser).maybeSingle();
@@ -815,6 +844,20 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
             battles_fought: (loserCat.battles_fought || 0) + 1,
           })
           .eq('id', loser);
+        await logStatChange({
+          catId: loser,
+          catName: null,
+          changeType: 'match_recorded',
+          previousWins: 0,
+          newWins: 0,
+          previousLosses: Number(loserCat.losses || 0),
+          newLosses: Number(loserCat.losses || 0) + 1,
+          previousBattles: Number(loserCat.battles_fought || 0),
+          newBattles: Number(loserCat.battles_fought || 0) + 1,
+          timestamp: resolvedAt,
+          source: 'tournament-engine',
+          matchId: match.id,
+        });
       }
     }
   }
@@ -851,7 +894,22 @@ async function resolveTournamentRound(supabase: SupabaseClient, tournament: Tour
     const inserts: Record<string, unknown>[] = [];
     for (let i = 0; i < winners.length; i += 2) {
       const a = winners[i];
-      const b = winners[i + 1] || winners[i];
+      const b = winners[i + 1] || null;
+      if (!b) {
+        inserts.push({
+          tournament_id: tournament.id,
+          round: nextRound,
+          cat_a_id: a,
+          cat_b_id: null,
+          status: 'complete',
+          winner_id: a,
+          votes_a: 0,
+          votes_b: 0,
+          resolved_at: new Date().toISOString(),
+          resolution_source: 'bye_auto_advance',
+        });
+        continue;
+      }
       inserts.push({
         tournament_id: tournament.id,
         round: nextRound,
