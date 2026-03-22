@@ -30,6 +30,7 @@ import { pickFairMatches } from "./api/_lib/pickFairMatches";
 import { checkTapTarget, warnOnce } from "./lib/dev-click-guards";
 import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
 import { canonicalThumbForCat } from "./lib/cat-images";
+import { countLiveVotableDuels } from "./lib/duel-live";
 import DebugControls from "./components/DebugControls";
 import DebugWidget from "./components/DebugWidget";
 import CosmicStatsBar from "./components/CosmicStatsBar";
@@ -388,7 +389,7 @@ function LiveDuelsModule({
           className="focus-ring relative z-20 pointer-events-auto inline-flex items-center gap-1 rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-1 text-[10px] text-cyan-100 tap-target transition-all duration-150 hover:bg-cyan-500/22 active:translate-y-[1px]"
         >
           Open Duel Arena <ArrowRight className="w-3 h-3" />
-          {pendingDuelCount > 0 && (
+          {visibleDuels.length > 0 && pendingDuelCount > 0 && (
             <span className="absolute -top-2 -right-4 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center border border-red-300/40">
               {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
             </span>
@@ -1112,9 +1113,9 @@ const MatchCard = React.memo(function MatchCard({
         </div>
       )}
 
-      <div className="grid grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)] items-start gap-2">
+      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)]">
         <div className="min-w-0">
-          <div className="arena-flip-scene h-[220px] md:h-[300px]">
+          <div className="arena-flip-scene h-auto min-h-[332px] md:h-[300px] md:min-h-0">
             <div className={`arena-flip-card ${flipA && !forceFront ? 'is-flipped' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/15 p-1.5 ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
@@ -1172,12 +1173,12 @@ const MatchCard = React.memo(function MatchCard({
           </div>
         </div>
 
-        <div className="pt-12 flex flex-col items-center justify-center gap-1">
+        <div className="flex flex-row items-center justify-center gap-1 py-0.5 sm:pt-12 sm:flex-col">
           <div className="arena-vs-separator text-[9px] text-white/65 font-bold tracking-[0.12em]">VS</div>
         </div>
 
         <div className="min-w-0">
-          <div className="arena-flip-scene h-[220px] md:h-[300px]">
+          <div className="arena-flip-scene h-auto min-h-[332px] md:h-[300px] md:min-h-0">
             <div className={`arena-flip-card ${flipB && !forceFront ? 'is-flipped' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/15 p-1.5 ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
@@ -4001,9 +4002,8 @@ export default function Page() {
     const cm = await fetch('/api/cross-mode/status', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
     setCrossMode(cm?.ok ? cm : null);
     const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
-    if (duel?.ok && Array.isArray(duel.incoming)) {
-      const pending = duel.incoming.filter((d: { status?: string | null }) => String(d?.status || '').toLowerCase() === 'pending').length;
-      setPendingDuelCount(pending);
+    if (duel?.ok) {
+      setPendingDuelCount(countLiveVotableDuels(duel.open));
       const open = Array.isArray(duel.open) ? duel.open : [];
       const top = open
         .filter((d: DuelRow) => !!d?.challenger_cat?.id && !!d?.challenged_cat?.id)
@@ -5245,7 +5245,7 @@ export default function Page() {
               className="relative z-20 pointer-events-auto inline-flex items-center gap-1 text-xs text-cyan-200 tap-target"
             >
               Open Duel Arena <ArrowRight className="w-3 h-3" />
-              {pendingDuelCount > 0 ? (
+              {liveDuels.length > 0 && pendingDuelCount > 0 ? (
                 <span className="px-1 py-0.5 rounded-full bg-red-500/20 border border-red-300/35 text-[9px] text-red-100 font-semibold">
                   {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
                 </span>

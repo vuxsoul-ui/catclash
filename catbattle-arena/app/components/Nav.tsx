@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
+import { countLiveVotableDuels } from '../lib/duel-live';
 import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
 import { scanDuplicateTestIds } from '../lib/dev-testid-guard';
 
@@ -28,9 +29,8 @@ export default function Nav() {
         } else {
           setMyProfileHref('/login');
         }
-        if (duel?.ok && Array.isArray(duel.incoming)) {
-          const pending = duel.incoming.filter((d: { status?: string | null }) => String(d?.status || '').toLowerCase() === 'pending').length;
-          setPendingDuelCount(pending);
+        if (duel?.ok) {
+          setPendingDuelCount(countLiveVotableDuels(duel.open));
         } else {
           setPendingDuelCount(0);
         }

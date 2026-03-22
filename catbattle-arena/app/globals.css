@@ -3284,6 +3284,23 @@ body {
 
   .arena-flip-scene {
     border-radius: 0.9rem;
+    height: auto !important;
+    min-height: 400px;
+  }
+
+  .arena-flip-card,
+  .arena-flip-front,
+  .arena-flip-back,
+  .arena-fighter-pane,
+  .arena-duel-card {
+    min-height: inherit;
+    height: auto;
+  }
+
+  .arena-flip-front.arena-fighter-pane,
+  .arena-flip-back.arena-fighter-pane {
+    display: flex;
+    flex-direction: column;
   }
 
   .arena-flip-front {
@@ -3316,6 +3333,12 @@ body {
 
   .arena-card-shimmer {
     opacity: 0.66;
+  }
+}
+
+@media (max-width: 390px) {
+  .arena-flip-scene {
+    min-height: 448px;
   }
 }
 

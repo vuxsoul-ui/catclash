@@ -1,7 +1,35 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { ArenaMatch } from '../../page';
+
+type ArenaCat = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  rarity: string;
+  owner_username?: string | null;
+  owner_guild?: 'sun' | 'moon' | null;
+  ability?: string | null;
+  stats?: {
+    attack: number;
+    defense: number;
+    speed: number;
+    charisma: number;
+    chaos: number;
+  };
+};
+
+type ArenaMatch = {
+  match_id: string;
+  cat_a: ArenaCat;
+  cat_b: ArenaCat;
+  votes_a: number;
+  votes_b: number;
+  status: string;
+  winner_id?: string | null;
+  is_close_match?: boolean;
+  user_prediction?: { predicted_cat_id: string; bet_sigils: number } | null;
+};
 
 type MatchCardProps = {
   match: ArenaMatch;

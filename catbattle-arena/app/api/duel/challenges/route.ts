@@ -69,6 +69,18 @@ function isMissingTable(message: string): boolean {
   return (m.includes('duel_challenges') || m.includes('duel_votes')) && (m.includes('does not exist') || m.includes('relation'));
 }
 
+function isLiveOpenDuel(duel: {
+  status?: string | null;
+  challenger_cat?: { id?: string | null } | null;
+  challenged_cat?: { id?: string | null } | null;
+} | null | undefined): boolean {
+  return (
+    String(duel?.status || '').toLowerCase() === 'voting' &&
+    !!duel?.challenger_cat?.id &&
+    !!duel?.challenged_cat?.id
+  );
+}
+
 export async function GET() {
   try {
     const userId = await getGuestId();
@@ -215,11 +227,15 @@ export async function GET() {
       votes: voteMap.get(String(r.id)) || { cat_a: 0, cat_b: 0, total: 0, user_vote_cat_id: null },
     });
 
+    const formattedIncoming = (incomingRes.data || []).map((r) => format(r as never));
+    const formattedOutgoing = (outgoingRes.data || []).map((r) => format(r as never));
+    const formattedOpen = (openRes.data || []).map((r) => format(r as never)).filter(isLiveOpenDuel);
+
     return NextResponse.json({
       ok: true,
-      incoming: (incomingRes.data || []).map((r) => format(r as never)),
-      outgoing: (outgoingRes.data || []).map((r) => format(r as never)),
-      open: (openRes.data || []).map((r) => format(r as never)),
+      incoming: formattedIncoming,
+      outgoing: formattedOutgoing,
+      open: formattedOpen,
       recent_votes_2m: Number((recentVotes2mRes as { count?: number | null })?.count || 0),
     });
   } catch (e) {
