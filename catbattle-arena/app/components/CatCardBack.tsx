@@ -31,12 +31,6 @@ function cleanText(value: unknown): string {
   return s;
 }
 
-function heatLabel(votes: number): string | null {
-  if (votes >= 16) return 'HOT';
-  if (votes >= 8) return 'HEATING';
-  return null;
-}
-
 function rarityTierClass(rarity: string): string {
   const key = cleanText(rarity).toLowerCase();
   if (key === 'rare') return 'tier-rare';
@@ -51,15 +45,19 @@ export default function CatCardBack({
   role,
   votes,
   sharePct,
+  statEdge,
   onClose,
   className,
+  stacked = false,
 }: {
   cat: BackCat;
   role: 'Challenger' | 'Defender';
   votes: number;
   sharePct: number;
+  statEdge?: { label: string; tone: 'a' | 'b' | 'neutral' } | null;
   onClose: () => void;
   className?: string;
+  stacked?: boolean;
 }) {
   const desc =
     cleanText(cat.description) ||
@@ -71,20 +69,22 @@ export default function CatCardBack({
   const wins = Math.max(0, Number(cat.wins || 0));
   const losses = Math.max(0, Number(cat.losses || 0));
   const guild = cat.owner_guild === 'sun' ? 'Solar' : cat.owner_guild === 'moon' ? 'Lunar' : null;
-  const heat = heatLabel(votes);
   const ability = cleanText(cat.ability);
   const abilityDesc = cleanText(cat.ability_description);
   const equippedSkillName = cleanText(cat.equipped_skill_name);
   const equippedSkillTrigger = cleanText(cat.equipped_skill_trigger_label);
   const tierClass = rarityTierClass(cat.rarity);
   const meta = [
-    { k: 'Rarity', v: cat.rarity },
     { k: 'Level', v: String(Math.max(1, Number(cat.level || 1))) },
-    { k: 'Faction', v: guild || 'Unaligned' },
-    { k: 'Role', v: role },
     { k: 'Record', v: `${wins}-${losses}` },
-    { k: 'Share', v: `${Math.max(0, Math.min(100, Math.round(sharePct)))}%` },
+    { k: 'Guild', v: guild || 'Unaligned' },
   ];
+  const statEdgeToneClass =
+    statEdge?.tone === 'a'
+      ? 'border-blue-300/35 bg-blue-500/14 text-blue-100'
+      : statEdge?.tone === 'b'
+        ? 'border-rose-300/35 bg-rose-500/14 text-rose-100'
+        : 'border-white/12 bg-white/[0.06] text-white/82';
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
@@ -104,7 +104,7 @@ export default function CatCardBack({
   }, [cat.id]);
 
   return (
-    <div className={`arena-flip-face arena-flip-back arena-fighter-pane cat-card-back-shell ${tierClass} rounded-2xl min-h-0 flex flex-col ${className || ''}`}>
+    <div className={`${stacked ? '' : 'arena-flip-face arena-flip-back'} arena-fighter-pane cat-card-back-shell ${tierClass} rounded-2xl min-h-0 flex flex-col ${className || ''}`}>
       <div className="cat-card-back-accent" />
 
       <div className="relative z-[1] flex items-center justify-between gap-2 px-3 pt-2.5">
@@ -123,20 +123,37 @@ export default function CatCardBack({
         </div>
 
         <div className="cat-card-back-grid mt-2">
+          <div className="cat-card-back-cell min-w-0">
+            <p className="cat-card-back-cell-label">Rarity</p>
+            <p className="cat-card-back-cell-value cat-card-back-cell-value--tier truncate">
+              {cat.rarity}
+            </p>
+          </div>
+          <div className="cat-card-back-cell min-w-0">
+            <p className="cat-card-back-cell-label">Vote share</p>
+            <p className="cat-card-back-cell-value truncate">
+              {Math.max(0, Math.min(100, Math.round(sharePct)))}%
+            </p>
+          </div>
           {meta.map((item) => {
             const isRecord = item.k === 'Record';
-            const isTier = item.k === 'Rarity';
-            const isRoleMeta = item.k === 'Role' || item.k === 'Faction';
+            const isRoleMeta = item.k === 'Guild';
             return (
               <div key={item.k} className="cat-card-back-cell min-w-0">
                 <p className="cat-card-back-cell-label">{item.k}</p>
-                <p className={`cat-card-back-cell-value truncate ${isTier ? 'cat-card-back-cell-value--tier' : ''} ${isRecord ? 'cat-card-back-cell-value--record' : ''} ${isRoleMeta ? 'cat-card-back-cell-value--meta' : ''}`}>
+                <p className={`cat-card-back-cell-value truncate ${isRecord ? 'cat-card-back-cell-value--record' : ''} ${isRoleMeta ? 'cat-card-back-cell-value--meta' : ''}`}>
                   {item.v}
                 </p>
               </div>
             );
           })}
         </div>
+
+        {statEdge ? (
+          <div className={`mt-2 inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statEdgeToneClass}`}>
+            {statEdge.label}
+          </div>
+        ) : null}
 
         {ability ? (
           <div className="cat-card-back-ability mt-2 min-w-0">
@@ -153,7 +170,7 @@ export default function CatCardBack({
         <div className="cat-card-back-footer mt-2">
           <div className="min-w-0 flex-1">
             <div className="cat-card-back-footer-top">
-              <span>Vote Heat</span>
+              <span>Current votes</span>
               <span>{votes}</span>
             </div>
             <div className="cat-card-back-progress">
@@ -163,11 +180,10 @@ export default function CatCardBack({
               />
             </div>
             <div className="cat-card-back-footer-bottom">
-              <span>{Math.max(0, Math.min(100, Math.round(sharePct)))} / 100</span>
+              <span>{Math.max(0, Math.min(100, Math.round(sharePct)))}% share</span>
               <span>{wins}-{losses}</span>
             </div>
           </div>
-          {heat ? <span className="cat-card-back-heat">{heat}</span> : null}
         </div>
       </div>
 

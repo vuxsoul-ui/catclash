@@ -13,7 +13,8 @@ import { isAdminAuthorized } from "../../_lib/adminAuth";
 import { isFeatureTesterId } from "../../_lib/tester";
 import { computeVoteStats } from "../../_lib/vote-stats";
 import { computePulseWindow } from "../../_lib/pulse";
-import { loadCurrentStreakMap, loadEquippedSkillsForCats, loadLockedSkillsForCats, resolveMatchup } from "../../_lib/skill-resolution";
+import { loadCurrentStreakMap, loadEquippedSkillsForCats, resolveMatchup } from "../../_lib/skill-resolution";
+import { deriveTournamentMatchState } from "../../../lib/tournament-state";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
     });
 
     const now = new Date();
+    const pulse = await computePulseWindow(now);
     const healedArenaState = await ensureActiveArenasUtc(supabase, now);
     const today = healedArenaState.computedDayKey;
 
@@ -115,7 +117,9 @@ export async function GET(request: NextRequest) {
       .in('status', [...VISIBLE_MATCH_STATUSES] as any)
       .limit(1);
 
-    if ((!activeMatchProbe || activeMatchProbe.length === 0) && LAUNCH_CONFIG.seedMatchupAutoFill) {
+    const activeVotingProbe = activeMatchProbe;
+
+    if (((!activeMatchProbe || activeMatchProbe.length === 0) || (!activeVotingProbe || activeVotingProbe.length === 0)) && LAUNCH_CONFIG.seedMatchupAutoFill) {
       await runTournamentTick({ includeOldActive: false, resolveRounds: true });
       await Promise.all([
         loadArenaPage({ arena: 'main', tab: 'voting', pageIndex: 0, dayKey: today, targetCount: 4 }),
@@ -206,10 +210,9 @@ export async function GET(request: NextRequest) {
         (cats as Array<{ user_id?: string | null }>).map((c) => c.user_id).filter(Boolean) as string[]
       )
     );
-    const pulse = await computePulseWindow(now);
     const skillCatIds = Array.from(catIds);
     const [skillMap, streakMap] = await Promise.all([
-      pulse.isLocked ? loadLockedSkillsForCats(supabase, skillCatIds) : loadEquippedSkillsForCats(supabase, skillCatIds),
+      loadEquippedSkillsForCats(supabase, skillCatIds),
       loadCurrentStreakMap(supabase, skillCatIds),
     ]);
     const { data: profileRows } = userIds.length > 0
@@ -316,7 +319,15 @@ export async function GET(request: NextRequest) {
       .filter((m) => {
         const t = todayTournaments.find((tt) => tt.id === m.tournament_id);
         if (!t) return false;
-        return m.round === (t.round || 1) && (m.status === 'active' || m.status === 'locked');
+        const state = deriveTournamentMatchState({
+          matchId: String(m.id || ''),
+          status: String(m.status || ''),
+          round: Number(m.round || 1),
+          currentRound: Number(t.round || 1),
+          voted: false,
+          pulseLocked: false,
+        });
+        return state.isCurrentRound && state.state !== 'resolved';
       })
       .map((m) => m.id);
     const votedMatches: Record<string, string> = {};
@@ -381,7 +392,9 @@ export async function GET(request: NextRequest) {
       const votesA = Number(m.votes_a || 0);
       const votesB = Number(m.votes_b || 0);
       const stats = computeVoteStats(votesA, votesB);
-      const votingLocked = pulse.isLocked || String(m.status || '').toLowerCase() === 'locked';
+      const rawStatus = String(m.status || '').toLowerCase();
+      const votingLocked = false;
+      const effectiveStatus = rawStatus === 'locked' ? 'active' : rawStatus;
       const resolution = resolveMatchup(
         {
           votes: votesA,
@@ -397,7 +410,7 @@ export async function GET(request: NextRequest) {
       );
       return {
         match_id: m.id,
-        status: testerMode ? 'active' : m.status,
+        status: testerMode ? 'active' : effectiveStatus,
         created_at: m.created_at || null,
         votes_a: votesA,
         votes_b: votesB,
@@ -414,8 +427,8 @@ export async function GET(request: NextRequest) {
         skill_b_id: resolution.skillBId,
         probability_display: `Cat A: ${(resolution.finalProbA * 100).toFixed(2)}%  ·  Cat B: ${(resolution.finalProbB * 100).toFixed(2)}%`,
         voting_locked: votingLocked,
-        vote_locks_at: pulse.voteLocksAt,
-        resolves_at: pulse.resolvesAt,
+        vote_locks_at: null,
+        resolves_at: null,
         winner_id: testerMode ? null : m.winner_id,
         is_close_match: Math.abs(votesA - votesB) <= 2,
         user_prediction: userPredictions[m.id] || null,
@@ -440,16 +453,11 @@ export async function GET(request: NextRequest) {
         .map(([roundNum, matches]) => {
           const round = Number(roundNum);
           const mapped = matches.map(mapMatch).filter(Boolean) as Array<any>;
-          const isCurrentRound = round === Number(t.round || 1);
-          const fairMatches = isCurrentRound
-            ? pickFairMatches(mapped, Math.min(mapped.length, 16), {
-              maxPerOwner: 2,
-              avoidSameOwnerMatch: true,
-            })
-            : mapped;
           return {
             round,
-            matches: fairMatches,
+            // Keep full round truth intact so spotlight, bracket, and overview
+            // all derive match states from the same complete current-round set.
+            matches: mapped,
           };
         });
 

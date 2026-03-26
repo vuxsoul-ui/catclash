@@ -112,12 +112,29 @@ export async function computePulseWindow(now = new Date()): Promise<PulseWindow>
 
     const rows = (data || []) as PulseRow[];
     const unresolved = rows.filter((row) => row.status === 'pending' || row.status === 'locked');
-    const active = unresolved[0] || null;
+    const active = unresolved.find((row) => new Date(row.scheduled_at).getTime() > now.getTime()) || null;
     const latestResolved = [...rows]
-      .filter((row) => row.status === 'resolved' || !!row.resolved_at)
+      .filter((row) => row.status === 'resolved' || !!row.resolved_at || new Date(row.scheduled_at).getTime() <= now.getTime())
       .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())[0] || null;
     const current = active || latestResolved;
     if (!current) return fallback;
+
+    if (!active && latestResolved) {
+      // If the most recent pulse is already resolved and there is no pending/locked
+      // row yet, derive the next pulse instead of returning a stale past timestamp.
+      let nextScheduledAt = new Date(latestResolved.scheduled_at);
+      while (nextScheduledAt.getTime() <= now.getTime()) {
+        nextScheduledAt = new Date(nextScheduledAt.getTime() + PULSE_DURATION_MS);
+      }
+      const nextLockedAt = new Date(nextScheduledAt.getTime() - VOTE_LOCK_MS);
+      return buildPulseWindow({
+        pulseId: `derived:${nextScheduledAt.toISOString().slice(0, 10)}`,
+        scheduledAt: nextScheduledAt,
+        lockedAt: nextLockedAt,
+        isResolved: false,
+        nextPulseAt: nextScheduledAt,
+      }, now);
+    }
 
     const scheduledAt = new Date(current.scheduled_at);
     const lockedAt = new Date(current.locked_at);

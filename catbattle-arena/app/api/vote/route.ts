@@ -11,7 +11,6 @@ import { markReferralQualifiedFromVote } from "../_lib/referrals";
 import { trackAppEvent } from "../_lib/telemetry";
 import { applyFeatureTesterBoost, isFeatureTesterId } from "../_lib/tester";
 import { computeVoteStats } from "../_lib/vote-stats";
-import { computePulseWindow } from "../_lib/pulse";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +26,11 @@ function logVoteEvent(payload: Record<string, unknown>) {
   // Structured log for launch debugging (no secrets).
   // eslint-disable-next-line no-console
   console.info("[VOTE_LOG]", JSON.stringify({ ts: new Date().toISOString(), ...payload }));
+}
+
+function isDuplicateVoteError(errorCode: unknown): boolean {
+  const code = String(errorCode || "").toLowerCase();
+  return code === "duplicate_vote_user" || code === "duplicate_vote_ip";
 }
 
 async function fetchMatchVotes(supabase: any, matchId: string) {
@@ -120,11 +124,6 @@ export async function POST(req: NextRequest) {
         logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat" });
         return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
       }
-      const pulse = await computePulseWindow(new Date());
-      if (pulse.isLocked || match.status === 'locked') {
-        return NextResponse.json({ ok: false, error: "voting_locked", vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
-      }
-
       const voteA = votedFor === match.cat_a_id;
       const beforeVotes = {
         votes_a: Number(match.votes_a || 0),
@@ -171,6 +170,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ipHash = hashValue(getClientIpPrefix(req));
+    const voteIpHash = isRegistered ? null : ipHash;
     const limitResult = await checkRateLimitManyPersistent([
       { key: `rl:vote:user:${voterUserId}`, limit: 10, windowMs: 60_000 },
       { key: `rl:vote:ip:${ipHash || "unknown"}`, limit: 30, windowMs: 60_000 },
@@ -199,22 +199,53 @@ export async function POST(req: NextRequest) {
       logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat_preflight" });
       return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
     }
-    const pulse = await computePulseWindow(new Date());
-    if (pulse.isLocked || String(preflightMatch.status || '').toLowerCase() === 'locked') {
-      logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "vote_locked" });
-      return NextResponse.json({ ok: false, error: "voting_locked", vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
-    }
-
     const { data: rpcData, error: rpcError } = await supabase.rpc("cast_vote", {
       p_match_id: matchId,
       p_voter_user_id: voterUserId,
       p_voted_for: votedFor,
-      p_ip_hash: ipHash,
+      p_ip_hash: voteIpHash,
       p_user_agent: userAgent,
     });
 
     // If RPC works, return its result
     if (!rpcError) {
+      const rpcPayload = rpcData && typeof rpcData === 'object' ? (rpcData as Record<string, unknown>) : null;
+      const rpcErrorCode = String(rpcPayload?.error || "");
+      if (rpcPayload && isDuplicateVoteError(rpcErrorCode)) {
+        const afterVotes = await fetchMatchVotes(supabase, matchId);
+        logVoteEvent({
+          request_id: requestId,
+          match_id: matchId,
+          voted_for: votedFor,
+          user_id: voterUserId,
+          outcome: "duplicate",
+          rpc: true,
+          detail: rpcErrorCode,
+        });
+        const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
+        return NextResponse.json({
+          ok: true,
+          alreadyVoted: true,
+          matchId,
+          choice: votedFor,
+          ...(afterVotes || {}),
+          ...pageVoteMeta,
+        });
+      }
+      if (rpcPayload && rpcPayload.ok === false) {
+        logVoteEvent({
+          request_id: requestId,
+          match_id: matchId,
+          voted_for: votedFor,
+          user_id: voterUserId,
+          outcome: "rpc_rejected",
+          detail: rpcErrorCode || "unknown",
+        });
+        return NextResponse.json(
+          { ok: false, error: rpcErrorCode || "vote_rejected" },
+          { status: 400 }
+        );
+      }
       const afterVotes = await fetchMatchVotes(supabase, matchId);
       logVoteEvent({
         request_id: requestId,
@@ -237,9 +268,9 @@ export async function POST(req: NextRequest) {
         }
       }
       // RPC might return { ok: true } or similar
-      if (rpcData && typeof rpcData === 'object') {
+      if (rpcPayload) {
         return NextResponse.json({
-          ...(rpcData as Record<string, unknown>),
+          ...rpcPayload,
           ok: true,
           matchId,
           choice: votedFor,
@@ -272,12 +303,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "match_not_found" }, { status: 404 });
     }
 
-    if (match.status !== "active") {
+    if (!["active", "in_progress", "locked"].includes(String(match.status || "").toLowerCase())) {
       logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_state", detail: "match_closed" });
       return NextResponse.json({ ok: false, error: "match_closed" }, { status: 400 });
-    }
-    if (pulse.isLocked || String(match.status || '').toLowerCase() === 'locked') {
-      return NextResponse.json({ ok: false, error: "voting_locked", vote_locks_at: pulse.voteLocksAt, resolves_at: pulse.resolvesAt }, { status: 409 });
     }
 
     // Verify voted_for is one of the two cats
@@ -306,12 +334,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Also check by IP hash
-    if (ipHash) {
+    if (!isRegistered && voteIpHash) {
       const { data: ipVote } = await supabase
         .from("votes")
         .select("id, voted_for")
         .eq("battle_id", matchId)
-        .eq("ip_hash", ipHash)
+        .eq("ip_hash", voteIpHash)
         .limit(1)
         .single();
 
@@ -332,7 +360,7 @@ export async function POST(req: NextRequest) {
       .insert({
         battle_id: matchId,
         voter_user_id: voterUserId,
-        ip_hash: ipHash,
+        ip_hash: voteIpHash,
         user_agent: userAgent,
         voted_for: votedFor,
       });

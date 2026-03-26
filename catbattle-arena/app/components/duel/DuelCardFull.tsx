@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Share2 } from 'lucide-react';
 import type { DuelRowData } from './types';
 import { buttonStyles } from '../ui/primitives';
+import { isLiveDuel } from '../../lib/duel-live';
 
 function percent(a: number, b: number): [number, number] {
   const total = a + b;
@@ -61,7 +62,7 @@ export default function DuelCardFull({
   const localPctA = pendingVote === 'A' ? 62 : pendingVote === 'B' ? 38 : pctA;
   const localPctB = pendingVote === 'A' ? 38 : pendingVote === 'B' ? 62 : pctB;
   const canVote =
-    duel.status === 'voting' &&
+    isLiveDuel(duel) &&
     !duel.votes?.user_vote_cat_id &&
     meId !== duel.challenger_user_id &&
     meId !== duel.challenged_user_id;

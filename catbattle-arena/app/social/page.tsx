@@ -88,6 +88,12 @@ const PITCHES = [
   },
 ] as const;
 
+const SOCIAL_STEPS = [
+  'Claim your pouch if it is ready.',
+  'Pick a pitch and copy or share your link.',
+  'Watch recruits and milestones fill the page.',
+];
+
 function guildName(guild: string | null): string {
   if (guild === 'sun') return 'Solar Claw';
   if (guild === 'moon') return 'Lunar Paw';
@@ -270,6 +276,24 @@ export default function SocialPage() {
           )}
         </div>
 
+        <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:mb-8 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-cyan-200">Start here</p>
+              <h2 className="text-base font-bold">How Social Works</h2>
+            </div>
+            <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-[10px] font-semibold text-white/70">Clear path</span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {SOCIAL_STEPS.map((step, index) => (
+              <div key={step} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-200/70">Step {index + 1}</p>
+                <p className="mt-1 text-sm leading-relaxed text-white/78">{step}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {loading ? (
           <div className="grid gap-4">
             <LoadingState icon="🏰" message="Building the hall..." />
@@ -447,12 +471,12 @@ export default function SocialPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm leading-relaxed text-white/55">No recruits yet. Share your challenge link to start building your stable.</p>
+                <p className="text-sm leading-relaxed text-white/55">No recruits yet. Share your link from the section above to start building your stable.</p>
               )}
             </section>
 
             <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:mt-8 sm:p-5">
-              <h2 className="mb-2 text-base font-bold">Arena Social Feed</h2>
+              <h2 className="mb-2 text-base font-bold">Recent Activity</h2>
               {social?.events?.length ? (
                 <div className="space-y-2">
                   {social.events.slice(0, 8).map((e) => (
@@ -473,7 +497,7 @@ export default function SocialPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm leading-relaxed text-white/55">No social events yet.</p>
+                <p className="text-sm leading-relaxed text-white/55">No activity yet. Recruit someone or claim a reward to start the feed.</p>
               )}
             </section>
           </>

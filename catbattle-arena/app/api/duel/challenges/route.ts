@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getGuestId } from '../../_lib/guest';
 import { duelSb as sb } from '../_lib';
 import { resolveCatImageUrl } from '../../_lib/images';
+import { isLiveDuel } from '../../../lib/duel-live';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,18 +68,6 @@ function pickCosmetics(rows: CosmeticRow[], userId: string, catId: string | null
 function isMissingTable(message: string): boolean {
   const m = String(message || '').toLowerCase();
   return (m.includes('duel_challenges') || m.includes('duel_votes')) && (m.includes('does not exist') || m.includes('relation'));
-}
-
-function isLiveOpenDuel(duel: {
-  status?: string | null;
-  challenger_cat?: { id?: string | null } | null;
-  challenged_cat?: { id?: string | null } | null;
-} | null | undefined): boolean {
-  return (
-    String(duel?.status || '').toLowerCase() === 'voting' &&
-    !!duel?.challenger_cat?.id &&
-    !!duel?.challenged_cat?.id
-  );
 }
 
 export async function GET() {
@@ -229,7 +218,7 @@ export async function GET() {
 
     const formattedIncoming = (incomingRes.data || []).map((r) => format(r as never));
     const formattedOutgoing = (outgoingRes.data || []).map((r) => format(r as never));
-    const formattedOpen = (openRes.data || []).map((r) => format(r as never)).filter(isLiveOpenDuel);
+    const formattedOpen = (openRes.data || []).map((r) => format(r as never)).filter(isLiveDuel);
 
     return NextResponse.json({
       ok: true,

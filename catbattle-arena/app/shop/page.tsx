@@ -501,15 +501,23 @@ export default function ShopPage() {
   return (
     <div className="min-h-screen bg-black text-white px-4 py-5 pb-28 sm:py-6 sm:pb-6">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4 sm:mb-5">
           <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
-          <SigilWidget balance={sigils} size="shop" />
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-bold mb-1">Cosmetics Shop</h1>
-        <p className="text-white/45 text-sm mb-5">What you preview is what you equip.</p>
+        <div className="mb-5 sm:mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-1">Cosmetics Shop</h1>
+          <p className="text-white/45 text-sm">What you preview is what you equip.</p>
+          <div className="shop-wallet-strip mt-4 sm:mt-5">
+            <div className="shop-wallet-caption">
+              <p className="shop-wallet-kicker">Wallet Balance</p>
+              <p className="shop-wallet-subcopy">Spend sigils on profile flex, vote flair, and premium cosmetics.</p>
+            </div>
+            <SigilWidget balance={sigils} size="shop" className="w-full" />
+          </div>
+        </div>
 
         <Card className="mb-5 border-cyan-300/20 bg-gradient-to-br from-cyan-500/8 via-white/0 to-indigo-500/12">
           <SectionHeader>

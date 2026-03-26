@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
+    "test:e2e:clean": "bash scripts/e2e-local-clean.sh",
+    "test:e2e:local": "bash scripts/e2e-local-safe.sh",
+    "test:e2e:launch": "playwright test tests/launch-smoke.spec.ts",
     "test:e2e:ui": "playwright test tests/vote-new-user-flow.spec.ts",
     "test:e2e:api": "playwright test tests/vote-new-user-api-flow.spec.ts",
     "deploy:prod": "vercel deploy --prod --yes --scope ks-projects-50fd40d7",
@@ -22,8 +25,7 @@
     "crates:idempotency:smoke": "node scripts/crates-idempotency-smoke.mjs",
     "qa:mobile-smoke": "node scripts/mobile-smoke.mjs",
     "images:backfill:dry": "node scripts/backfill-cat-image-derivatives.mjs",
-    "images:backfill": "node scripts/backfill-cat-image-derivatives.mjs --write",
-    "test:e2e": "playwright test tests/vote-new-user-flow.spec.ts"
+    "images:backfill": "node scripts/backfill-cat-image-derivatives.mjs --write"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

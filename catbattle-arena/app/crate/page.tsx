@@ -205,6 +205,22 @@ export default function CratePage() {
     return () => window.clearTimeout(t);
   }, [notice]);
 
+  useEffect(() => {
+    if (!overlayActive || typeof document === 'undefined') return;
+    const { body, documentElement } = document;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyTouchAction = body.style.touchAction;
+    const prevDocOverflow = documentElement.style.overflow;
+    body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+    documentElement.style.overflow = 'hidden';
+    return () => {
+      body.style.overflow = prevBodyOverflow;
+      body.style.touchAction = prevBodyTouchAction;
+      documentElement.style.overflow = prevDocOverflow;
+    };
+  }, [overlayActive]);
+
   const spawnSparks = useCallback((count = 28) => {
     const next = Array.from({ length: count }, (_, i) => ({
       id: Date.now() + i,
@@ -591,8 +607,9 @@ export default function CratePage() {
             )}
 
             {(stage === 'reveal' || stage === 'settle') && (
-              <div className="absolute inset-x-0 bottom-0 z-[130] mx-auto w-full max-w-[430px] px-4 pb-[max(env(safe-area-inset-bottom),16px)]">
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 top-0">
+              <div className="fixed inset-0 z-[1510] flex items-center justify-center px-4 py-4 sm:py-6">
+                <div className="relative w-full max-w-[430px]">
+                  <div className="pointer-events-none absolute inset-0">
                   <div
                     className="sunburst"
                     style={{ ['--ray-color' as string]: rarityStyle.rays }}
@@ -607,117 +624,122 @@ export default function CratePage() {
                   </div>
                 )}
 
-                <div className={`loot-sheet ${canClaim ? 'landed' : 'rising'} border ${rarityStyle.border} ${rarityStyle.bg} ${rarityStyle.glow}`}>
-                  {!reward ? (
-                    <div className="p-5 sm:p-6">
-                      <LoadingState compact icon="📦" message="Preparing rewards..." className="h-[240px] border-white/10 bg-white/[0.03] shadow-none" />
-                    </div>
-                  ) : (
-                    <div className="p-5 sm:p-6">
-                      <div className="loot-sheet-shimmer" style={{ ['--ray-color' as string]: rarityStyle.rays }} />
-                      <div className="loot-preview-shell">
-                        {reward.cat_drop ? (
-                          <img src={reward.cat_drop.image_url || '/cat-placeholder.svg'} alt={reward.cat_drop.name} className="h-20 w-20 rounded-2xl border border-white/15 object-cover shadow-[0_0_26px_rgba(0,0,0,0.3)]" />
-                        ) : reward.cosmetic ? (
-                          <div className="loot-preview-text">
-                            <Sparkles className="h-7 w-7 text-amber-200" />
-                            <span>{reward.cosmetic.name}</span>
-                          </div>
-                        ) : (
-                          <div className="loot-preview-text">
-                            <span className="text-3xl font-black text-amber-100">+{reward.xp_gained > 0 ? reward.xp_gained : reward.sigils_gained}</span>
-                            <span>{reward.xp_gained > 0 ? 'XP' : 'SIGILS'}</span>
-                          </div>
-                        )}
+                  <div className={`loot-sheet ${canClaim ? 'landed' : 'rising'} border ${rarityStyle.border} ${rarityStyle.bg} ${rarityStyle.glow} max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain`}>
+                    {!reward ? (
+                      <div className="p-5 sm:p-6">
+                        <LoadingState compact icon="📦" message="Preparing rewards..." className="h-[240px] border-white/10 bg-white/[0.03] shadow-none" />
                       </div>
-
-                      <div className="mt-4 text-center">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider ${rarityStyle.text} ${rarityStyle.border}`}>
-                          {reward.rarity === 'Legendary' && <Crown className="h-3 w-3" />}
-                          {reward.rarity === 'Epic' && <Star className="h-3 w-3" />}
-                          {reward.rarity === 'Rare' && <Zap className="h-3 w-3" />}
-                          {(reward.rarity === 'xp_sigils' || reward.rarity === 'duplicate') ? 'BONUS' : reward.rarity}
-                        </span>
-                        <h3 className={`mt-3 text-2xl font-black ${rarityStyle.text}`}>
-                          {reward.cosmetic?.name || reward.cat_drop?.name || (reward.xp_gained > 0 ? `+${reward.xp_gained} XP` : `+${reward.sigils_gained} Sigils`)}
-                        </h3>
-                        <p className="mt-1 text-sm text-white/60">
-                          Awarded from {reward.reward_type === 'paid_crate' ? 'Paid Crate' : 'Daily Crate'} · {new Date().toLocaleDateString()}
-                        </p>
-                        {reward.cosmetic ? (
-                          <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/60">{reward.cosmetic.description}</p>
-                        ) : null}
-                        {reward.cat_drop ? (
-                          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-left">
-                            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/75">Special Ability</p>
-                            <p className="mt-1 text-sm font-bold text-cyan-100">{reward.cat_drop.special_ability_name || 'Unknown Ability'}</p>
-                            <p className="mt-1 text-xs leading-relaxed text-white/60">{reward.cat_drop.special_ability_description || 'Ability data unavailable.'}</p>
+                    ) : (
+                      <>
+                        <div className="p-5 pb-4 sm:p-6 sm:pb-5">
+                          <div className="loot-sheet-shimmer" style={{ ['--ray-color' as string]: rarityStyle.rays }} />
+                          <div className="loot-preview-shell">
+                            {reward.cat_drop ? (
+                              <img src={reward.cat_drop.image_url || '/cat-placeholder.svg'} alt={reward.cat_drop.name} className="h-20 w-20 rounded-2xl border border-white/15 object-cover shadow-[0_0_26px_rgba(0,0,0,0.3)]" />
+                            ) : reward.cosmetic ? (
+                              <div className="loot-preview-text">
+                                <Sparkles className="h-7 w-7 text-amber-200" />
+                                <span>{reward.cosmetic.name}</span>
+                              </div>
+                            ) : (
+                              <div className="loot-preview-text">
+                                <span className="text-3xl font-black text-amber-100">+{reward.xp_gained > 0 ? reward.xp_gained : reward.sigils_gained}</span>
+                                <span>{reward.xp_gained > 0 ? 'XP' : 'SIGILS'}</span>
+                              </div>
+                            )}
                           </div>
-                        ) : null}
-                        <div className="mt-4 flex items-center justify-center gap-3">
-                          {reward.xp_gained > 0 ? (
-                            <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
-                              <Zap className="h-4 w-4 text-blue-400" />
-                              <span className="text-sm font-bold text-blue-300">+{reward.xp_gained} XP</span>
+
+                          <div className="mt-4 text-center">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider ${rarityStyle.text} ${rarityStyle.border}`}>
+                              {reward.rarity === 'Legendary' && <Crown className="h-3 w-3" />}
+                              {reward.rarity === 'Epic' && <Star className="h-3 w-3" />}
+                              {reward.rarity === 'Rare' && <Zap className="h-3 w-3" />}
+                              {(reward.rarity === 'xp_sigils' || reward.rarity === 'duplicate') ? 'BONUS' : reward.rarity}
+                            </span>
+                            <h3 className={`mt-3 text-2xl font-black ${rarityStyle.text}`}>
+                              {reward.cosmetic?.name || reward.cat_drop?.name || (reward.xp_gained > 0 ? `+${reward.xp_gained} XP` : `+${reward.sigils_gained} Sigils`)}
+                            </h3>
+                            <p className="mt-1 text-sm text-white/60">
+                              Awarded from {reward.reward_type === 'paid_crate' ? 'Paid Crate' : 'Daily Crate'} · {new Date().toLocaleDateString()}
+                            </p>
+                            {reward.cosmetic ? (
+                              <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/60">{reward.cosmetic.description}</p>
+                            ) : null}
+                            {reward.cat_drop ? (
+                              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-left">
+                                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/75">Special Ability</p>
+                                <p className="mt-1 text-sm font-bold text-cyan-100">{reward.cat_drop.special_ability_name || 'Unknown Ability'}</p>
+                                <p className="mt-1 text-xs leading-relaxed text-white/60">{reward.cat_drop.special_ability_description || 'Ability data unavailable.'}</p>
+                              </div>
+                            ) : null}
+                            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                              {reward.xp_gained > 0 ? (
+                                <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+                                  <Zap className="h-4 w-4 text-blue-400" />
+                                  <span className="text-sm font-bold text-blue-300">+{reward.xp_gained} XP</span>
+                                </div>
+                              ) : null}
+                              {reward.sigils_gained > 0 ? (
+                                <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
+                                  <span className="inline-flex items-center gap-1 text-sm font-bold text-cyan-100"><SigilIcon className="h-3.5 w-3.5" />+{reward.sigils_gained}</span>
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
-                          {reward.sigils_gained > 0 ? (
-                            <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5">
-                              <span className="inline-flex items-center gap-1 text-sm font-bold text-cyan-100"><SigilIcon className="h-3.5 w-3.5" />+{reward.sigils_gained}</span>
-                            </div>
-                          ) : null}
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="mt-4 text-center">
-                  {reward?.cat_drop ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/c/${reward.cat_drop!.id}/share?new_cat=1`); }}
-                        disabled={!canClaim || !reward}
-                        className="px-4 py-2.5 rounded-xl bg-white text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Go to Cat
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); flexCatDrop(); }}
-                        disabled={!canClaim || !reward}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-400 text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Share to Flex
-                      </button>
-                    </div>
-                  ) : reward?.cosmetic ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); equipDroppedCosmetic(); }}
-                        disabled={!canClaim || !reward}
-                        className="px-4 py-2.5 rounded-xl bg-cyan-300 text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Equip
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); claimAndClose(); }}
-                        disabled={!canClaim || !reward}
-                        className="px-4 py-2.5 rounded-xl bg-white/15 text-white font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); claimAndClose(); }}
-                      disabled={!canClaim || !reward}
-                      className="px-6 py-2.5 rounded-xl bg-white text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      Done
-                    </button>
-                  )}
-                  <div className="mt-2 text-xs text-white/50">
-                    {reward ? (reward.used_bonus_roll ? `Bonus roll consumed. Remaining: ${reward.remaining_bonus_rolls || 0}` : `Bonus rolls: ${reward.remaining_bonus_rolls || 0}`) : 'Rolling...'}
+                        <div className="sticky bottom-0 z-10 border-t border-white/10 bg-[linear-gradient(180deg,rgba(8,12,18,0.18),rgba(8,12,18,0.94)_22%,rgba(8,12,18,0.98))] px-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3 sm:px-6">
+                          <div className="text-center">
+                            {reward?.cat_drop ? (
+                              <div className="flex flex-wrap items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); router.push(`/c/${reward.cat_drop!.id}/share?new_cat=1`); }}
+                                  disabled={!canClaim || !reward}
+                                  className="px-4 py-2.5 rounded-xl bg-white text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  Go to Cat
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); flexCatDrop(); }}
+                                  disabled={!canClaim || !reward}
+                                  className="px-4 py-2.5 rounded-xl bg-emerald-400 text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  Share to Flex
+                                </button>
+                              </div>
+                            ) : reward?.cosmetic ? (
+                              <div className="flex flex-wrap items-center justify-center gap-2">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); equipDroppedCosmetic(); }}
+                                  disabled={!canClaim || !reward}
+                                  className="px-4 py-2.5 rounded-xl bg-cyan-300 text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  Equip
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); claimAndClose(); }}
+                                  disabled={!canClaim || !reward}
+                                  className="px-4 py-2.5 rounded-xl bg-white/15 text-white font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); claimAndClose(); }}
+                                disabled={!canClaim || !reward}
+                                className="px-6 py-2.5 rounded-xl bg-white text-black font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Done
+                              </button>
+                            )}
+                            <div className="mt-2 text-xs text-white/50">
+                              {reward ? (reward.used_bonus_roll ? `Bonus roll consumed. Remaining: ${reward.remaining_bonus_rolls || 0}` : `Bonus rolls: ${reward.remaining_bonus_rolls || 0}`) : 'Rolling...'}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

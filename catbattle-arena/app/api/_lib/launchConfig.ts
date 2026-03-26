@@ -36,7 +36,7 @@ export const LAUNCH_CONFIG = {
 const DEFAULT_LAUNCH_GATE_COOKIE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const LAUNCH_GATE_CONFIG = {
-  enabled: parseBool(process.env.LAUNCH_GATE_ENABLED, false),
+  enabled: false,
   password: String(process.env.LAUNCH_GATE_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'catclash')).trim(),
   cookieName: 'catclash-launch-access',
   cookieMaxAgeMs: parseDurationMs(process.env.LAUNCH_GATE_COOKIE_MAX_AGE, DEFAULT_LAUNCH_GATE_COOKIE_MS),

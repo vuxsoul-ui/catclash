@@ -24,7 +24,7 @@ export default function DuelRow({
   const label = actionLabel || (duel.status === 'voting' ? 'Vote' : 'View');
 
   return (
-    <div className="h-[84px] rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2.5 flex items-center gap-2.5">
+    <div className="min-h-[84px] rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2.5 flex items-center gap-2.5">
       <div className="relative shrink-0 w-[52px] h-[36px]">
         <img
           src={duel.challenger_cat?.image_url || '/cat-placeholder.svg'}

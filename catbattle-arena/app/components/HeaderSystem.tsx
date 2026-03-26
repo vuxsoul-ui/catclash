@@ -1,7 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
 import Nav from './Nav';
 
 type HeaderSystemContextValue = {
@@ -21,16 +20,13 @@ export function useHeaderExtension(node: React.ReactNode | null) {
 }
 
 export default function HeaderSystem({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
   const [extension, setExtension] = useState<React.ReactNode | null>(null);
-  const showNav = pathname !== '/';
-
   const value = useMemo(() => ({ setExtension }), []);
 
   return (
     <HeaderSystemContext.Provider value={value}>
       <div className="header-system">
-        {showNav ? <Nav /> : null}
+        <Nav />
         {extension}
       </div>
       {children}
