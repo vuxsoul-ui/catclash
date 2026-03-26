@@ -555,7 +555,7 @@ function MiniMatchPreview({
 }) {
   if (!match) {
     return (
-      <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(160deg,rgba(4,12,24,0.96),rgba(8,14,28,0.92))] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.34),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
+      <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(160deg,rgba(4,12,24,0.96),rgba(8,14,28,0.92))] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.34),0_0_22px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200/54">Starter Vote</p>
@@ -565,7 +565,7 @@ function MiniMatchPreview({
           <button
             type="button"
             onClick={onOpenTournament}
-            className="rounded-xl bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-white shadow-[inset_0_0_0_1px_rgba(103,232,249,0.12)] transition-transform active:scale-[0.96]"
+            className="rounded-xl bg-[linear-gradient(180deg,rgba(34,211,238,0.14),rgba(14,116,144,0.08))] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(103,232,249,0.16)] transition-all hover:bg-[linear-gradient(180deg,rgba(34,211,238,0.18),rgba(14,116,144,0.1))] active:scale-[0.96]"
           >
             Open Tournament
           </button>
@@ -584,7 +584,7 @@ function MiniMatchPreview({
   const lockLabel = pulseCountdown ? `Votes reopen in ${pulseCountdown}.` : 'Voting is between pulses right now.';
 
   return (
-    <div className="relative overflow-hidden rounded-[1.85rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.98),rgba(6,14,26,0.94),rgba(11,20,33,0.92))] p-4 shadow-[0_26px_60px_rgba(0,0,0,0.35),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
+    <div className="relative overflow-hidden rounded-[1.85rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.98),rgba(6,14,26,0.94),rgba(11,20,33,0.92))] p-4 shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_26px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(250,204,21,0.12),transparent_34%)]" />
       <div className="relative">
         <div className="mb-4 flex items-start justify-between gap-3">
@@ -601,7 +601,7 @@ function MiniMatchPreview({
           <button
             type="button"
             onClick={onOpenTournament}
-            className="rounded-xl bg-white/[0.05] px-3 py-2 text-xs font-semibold text-white/82 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-all hover:bg-white/[0.08] active:scale-[0.96]"
+            className="rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] px-3 py-2 text-xs font-semibold text-white/82 shadow-[0_10px_18px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-all hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.11),rgba(255,255,255,0.05))] hover:text-white active:scale-[0.96]"
           >
             View Tournament
           </button>
@@ -649,7 +649,7 @@ function MiniMatchPreview({
             type="button"
             onClick={() => onVote(match.cat_a.id)}
             disabled={voting || votingLocked}
-            className={`h-11 rounded-xl text-sm font-semibold transition-transform active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'a' ? 'bg-blue-500/20 text-blue-100 shadow-[0_10px_24px_rgba(59,130,246,0.18),inset_0_0_0_1px_rgba(147,197,253,0.32)]' : 'bg-blue-500/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-blue-500/18'}`}
+            className={`h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'a' ? 'bg-blue-500/20 text-blue-100 shadow-[0_12px_26px_rgba(59,130,246,0.2),0_0_18px_rgba(59,130,246,0.12),inset_0_0_0_1px_rgba(147,197,253,0.32)]' : 'bg-[linear-gradient(180deg,rgba(59,130,246,0.16),rgba(37,99,235,0.12))] text-white shadow-[0_10px_20px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[linear-gradient(180deg,rgba(59,130,246,0.2),rgba(37,99,235,0.15))] hover:shadow-[0_14px_24px_rgba(0,0,0,0.16),0_0_18px_rgba(59,130,246,0.1)]'}`}
           >
             {votingLocked ? 'Locked' : voting ? 'Voting...' : votedSide === 'a' ? 'Voted A' : 'Vote A'}
           </button>
@@ -657,7 +657,7 @@ function MiniMatchPreview({
             type="button"
             onClick={() => onVote(match.cat_b.id)}
             disabled={voting || votingLocked}
-            className={`h-11 rounded-xl text-sm font-semibold transition-transform active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'b' ? 'bg-rose-500/20 text-rose-100 shadow-[0_10px_24px_rgba(244,63,94,0.18),inset_0_0_0_1px_rgba(253,164,175,0.32)]' : 'bg-rose-500/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-rose-500/18'}`}
+            className={`h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'b' ? 'bg-rose-500/20 text-rose-100 shadow-[0_12px_26px_rgba(244,63,94,0.2),0_0_18px_rgba(244,63,94,0.12),inset_0_0_0_1px_rgba(253,164,175,0.32)]' : 'bg-[linear-gradient(180deg,rgba(244,63,94,0.16),rgba(225,29,72,0.12))] text-white shadow-[0_10px_20px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[linear-gradient(180deg,rgba(244,63,94,0.2),rgba(225,29,72,0.15))] hover:shadow-[0_14px_24px_rgba(0,0,0,0.16),0_0_18px_rgba(244,63,94,0.1)]'}`}
           >
             {votingLocked ? 'Locked' : voting ? 'Voting...' : votedSide === 'b' ? 'Voted B' : 'Vote B'}
           </button>
@@ -679,7 +679,7 @@ function MiniMatchPreview({
             <button
               type="button"
               onClick={onOpenTournament}
-              className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-white/10 px-4 text-sm font-bold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition-transform active:scale-[0.96]"
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))] px-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(255,255,255,0.1)] transition-all hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.08))] active:scale-[0.96]"
             >
               Follow the Tournament
             </button>
@@ -693,7 +693,7 @@ function MiniMatchPreview({
             <button
               type="button"
               onClick={onOpenTournament}
-              className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-400 via-emerald-400 to-emerald-300 px-4 text-sm font-bold text-black transition-transform active:scale-[0.96]"
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-400 via-sky-300 to-emerald-300 px-4 text-sm font-bold text-black shadow-[0_12px_28px_rgba(16,185,129,0.18),0_0_18px_rgba(34,211,238,0.12)] transition-all hover:shadow-[0_16px_32px_rgba(16,185,129,0.22),0_0_22px_rgba(34,211,238,0.14)] active:scale-[0.96]"
             >
               Continue to Tournament
             </button>
