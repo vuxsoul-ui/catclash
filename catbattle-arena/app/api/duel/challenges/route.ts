@@ -3,6 +3,7 @@ import { getGuestId } from '../../_lib/guest';
 import { duelSb as sb } from '../_lib';
 import { resolveCatImageUrl } from '../../_lib/images';
 import { isLiveDuel } from '../../../lib/duel-live';
+import { logInvalidSupabaseKey } from '../../_lib/server-supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,8 @@ type CosmeticRow = {
   cosmetic_id: string | null;
   cosmetic?: { slug: string | null; name: string | null; category: string | null; rarity: string | null } | null;
 };
+
+type SchemaishError = { message?: string; code?: string; details?: string; hint?: string } | null | undefined;
 
 function normalizeSlot(slot: string): 'border' | 'title' | 'vote_effect' | 'badge' | null {
   const s = String(slot || '').toLowerCase();
@@ -65,9 +68,34 @@ function pickCosmetics(rows: CosmeticRow[], userId: string, catId: string | null
   return out;
 }
 
-function isMissingTable(message: string): boolean {
-  const m = String(message || '').toLowerCase();
-  return (m.includes('duel_challenges') || m.includes('duel_votes')) && (m.includes('does not exist') || m.includes('relation'));
+function isSchemaMismatch(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || "").toLowerCase();
+
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("relation") ||
+    msg.includes("column") ||
+    msg.includes("function") ||
+    msg.includes("rpc") ||
+    msg.includes("schema") ||
+    msg.includes("not found") ||
+    msg.includes("undefined table") ||
+    msg.includes("could not find") ||
+    msg.includes("postgres")
+  );
+}
+
+function isFailSoftBackendError(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || '').toLowerCase();
+  return isSchemaMismatch(error) || msg.includes('invalid api key');
+}
+
+function buildDisabledPayload() {
+  return { ok: true, disabled: true, incoming: [], outgoing: [], open: [] };
+}
+
+function assertNoSupabaseError(error: SchemaishError): asserts error is null | undefined {
+  if (error) throw error;
 }
 
 export async function GET() {
@@ -93,13 +121,7 @@ export async function GET() {
         .limit(30),
     ]);
 
-    const err = incomingRes.error || outgoingRes.error || openRes.error;
-    if (err) {
-      if (isMissingTable(err.message)) {
-        return NextResponse.json({ ok: true, disabled: true, incoming: [], outgoing: [], open: [] });
-      }
-      return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
-    }
+    assertNoSupabaseError(incomingRes.error || outgoingRes.error || openRes.error);
 
     const rows = [...(incomingRes.data || []), ...(outgoingRes.data || []), ...(openRes.data || [])];
     const userIds = Array.from(new Set(rows.flatMap((r) => [String(r.challenger_user_id || ''), String(r.challenged_user_id || '')]).filter(Boolean)));
@@ -107,7 +129,7 @@ export async function GET() {
     const duelIds = Array.from(new Set(rows.map((r) => String(r.id || '')).filter(Boolean)));
     const openDuelIds = Array.from(new Set((openRes.data || []).map((r) => String(r.id || '')).filter(Boolean)));
 
-    const [{ data: profiles }, { data: cats }, { data: votes }, { data: equippedRaw }, recentVotes2mRes] = await Promise.all([
+    const [profilesRes, catsRes, votesRes, equippedRes, recentVotes2mRes] = await Promise.all([
       userIds.length ? sb.from('profiles').select('id, username, guild').in('id', userIds) : Promise.resolve({ data: [] as Array<{ id: string; username: string | null; guild: string | null }> }),
       catIds.length
         ? sb
@@ -145,12 +167,21 @@ export async function GET() {
             .gte('created_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
         : Promise.resolve({ count: 0 }),
     ]);
-    const equipped = (equippedRaw || []) as CosmeticRow[];
+    assertNoSupabaseError(profilesRes.error);
+    assertNoSupabaseError(catsRes.error);
+    assertNoSupabaseError(votesRes.error);
+    assertNoSupabaseError(equippedRes.error);
+    assertNoSupabaseError((recentVotes2mRes as { error?: SchemaishError })?.error);
+    const profiles = profilesRes.data || [];
+    const cats = catsRes.data || [];
+    const votes = votesRes.data || [];
+    const equipped = (equippedRes.data || []) as CosmeticRow[];
     const cosmeticIds = Array.from(new Set(equipped.map((r) => String(r.cosmetic_id || '')).filter(Boolean)));
-    const { data: cosmetics } = cosmeticIds.length
+    const cosmeticsRes = cosmeticIds.length
       ? await sb.from('cosmetics').select('id, slug, name, category, rarity').in('id', cosmeticIds)
-      : ({ data: [] } as { data: Array<{ id: string; slug: string | null; name: string | null; category: string | null; rarity: string | null }> });
-    const cosmeticMap = Object.fromEntries((cosmetics || []).map((c) => [String(c.id), c]));
+      : ({ data: [], error: null } as { data: Array<{ id: string; slug: string | null; name: string | null; category: string | null; rarity: string | null }>; error: SchemaishError });
+    assertNoSupabaseError(cosmeticsRes.error);
+    const cosmeticMap = Object.fromEntries((cosmeticsRes.data || []).map((c) => [String(c.id), c]));
     const equippedWithCosmetic: CosmeticRow[] = equipped.map((row) => ({
       ...row,
       cosmetic: row.cosmetic_id ? (cosmeticMap[String(row.cosmetic_id)] || null) : null,
@@ -228,6 +259,14 @@ export async function GET() {
       recent_votes_2m: Number((recentVotes2mRes as { count?: number | null })?.count || 0),
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    logInvalidSupabaseKey(e);
+    console.error('[api/duel/challenges] GET failed', e);
+    try {
+      console.error('[api/duel/challenges] GET failed JSON', JSON.stringify(e, null, 2));
+    } catch {}
+    if (isFailSoftBackendError(e)) {
+      return NextResponse.json(buildDisabledPayload(), { status: 200 });
+    }
+    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }

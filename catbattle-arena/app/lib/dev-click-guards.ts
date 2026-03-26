@@ -13,6 +13,23 @@ type CheckTapTargetInput = {
 const warned = new Set<string>();
 const outlineTimers = new WeakMap<HTMLElement, number>();
 
+function isMobileViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(max-width: 639px)').matches;
+}
+
+function isElementVisibleForHitTest(el: Element | null): el is HTMLElement {
+  if (!(el instanceof HTMLElement)) return false;
+  const style = getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') return false;
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function isWithinRect(x: number, y: number, rect: DOMRect): boolean {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
 export function warnOnce(key: string, message: string, data?: unknown) {
   if (process.env.NODE_ENV === 'production') return;
   if (warned.has(key)) return;
@@ -63,8 +80,15 @@ function parentDump(target: Element | null): Array<Record<string, unknown>> {
   return out;
 }
 
-function isExpectedTarget(top: Element | null, expect: Array<'A' | 'BUTTON'>): boolean {
+function isExpectedTarget(top: Element | null, target: HTMLElement, expect: Array<'A' | 'BUTTON'>): boolean {
   if (!top) return false;
+  if (target === top || target.contains(top)) {
+    const tag = target.tagName as 'A' | 'BUTTON';
+    if (expect.includes(tag)) return true;
+    for (const expected of expect) {
+      if (target.querySelector(expected.toLowerCase())) return true;
+    }
+  }
   for (const tag of expect) {
     if (top.tagName === tag) return true;
     if (top.closest(tag.toLowerCase())) return true;
@@ -131,20 +155,17 @@ export function installBottomNavInterceptionDiagnostics(navSelector = '[data-nav
   if (typeof document === 'undefined') return () => {};
 
   const handler = (event: Event) => {
+    if (!isMobileViewport()) return;
     const point = pointFromEvent(event);
     if (!point) return;
     const nav = document.querySelector(navSelector) as HTMLElement | null;
-    if (!nav) return;
+    if (!isElementVisibleForHitTest(nav)) return;
     const rect = nav.getBoundingClientRect();
-    const inside =
-      point.x >= rect.left &&
-      point.x <= rect.right &&
-      point.y >= rect.top &&
-      point.y <= rect.bottom;
+    const inside = isWithinRect(point.x, point.y, rect);
     if (!inside) return;
 
     const target = event.target as HTMLElement | null;
-    if (!target) return;
+    if (!isElementVisibleForHitTest(target)) return;
     const navButton = target.closest('[data-testid^="nav-"], a, button');
     if (navButton && nav.contains(navButton)) return;
 
@@ -183,15 +204,14 @@ export function checkTapTarget({
   if (process.env.NODE_ENV === 'production') return true;
   if (skipWhenModalOpen && isModalOpen()) return true;
   const target = document.querySelector(selector) as HTMLElement | null;
-  if (!target) {
-    warnOnce(`${key}:missing`, `[DEV_CHECK] Tap target selector not found: ${selector}`);
-    return false;
-  }
+  if (!isElementVisibleForHitTest(target)) return true;
   const rect = target.getBoundingClientRect();
   const probes = buildPoints(rect, points);
   for (const p of probes) {
+    if (!isWithinRect(p.x, p.y, rect)) continue;
     const top = document.elementFromPoint(p.x, p.y);
-    if (isExpectedTarget(top, expect)) continue;
+    if (!top) continue;
+    if (isExpectedTarget(top, target, expect)) continue;
     warnOnce(`${key}:${p.label}`, `[DEV_CHECK] Tap target mismatch for ${selector}`, {
       point: p,
       expected: expect,

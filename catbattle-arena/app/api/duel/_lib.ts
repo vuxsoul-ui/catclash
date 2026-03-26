@@ -1,10 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabaseClient } from '../_lib/server-supabase';
 
-export const duelSb = createClient(
-  (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim(),
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').trim(),
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+export const duelSb = createServerSupabaseClient();
 
 type CatStats = {
   id: string;

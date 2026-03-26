@@ -4810,39 +4810,48 @@ export default function Page() {
         body: JSON.stringify({ match_id: matchId, voted_for: catId }),
       });
       const data = await r.json().catch(() => null);
+      const asFiniteNumber = (...values: any[]): number | null => {
+        for (const value of values) {
+          if (value == null || value === "") continue;
+          const n = Number(value);
+          if (Number.isFinite(n)) return n;
+        }
+        return null;
+      };
       const applyServerVoteSnapshot = (payload: any) => {
-        if (!payload) return;
-        const votesA = Number(
-          payload?.votes_a ??
-          payload?.votesA ??
-          matchedMatch?.votes_a ??
-          0
+        if (!payload) {
+          clearVoteSyncing(matchId);
+          return;
+        }
+        const currentSnapshot = normalizeVoteSnapshot(
+          optimisticSnapshot ||
+          voteSnapshotByMatchId[matchId] ||
+          baselineSnapshot ||
+          matchedMatch ||
+          null
         );
-        const votesB = Number(
-          payload?.votes_b ??
-          payload?.votesB ??
-          matchedMatch?.votes_b ??
-          0
-        );
-        const totalVotes = Number(
-          payload?.total_votes ??
-          payload?.totalVotes ??
-          (votesA + votesB)
-        );
-        const percentA = Number.isFinite(Number(payload?.percent_a))
-          ? Number(payload.percent_a)
-          : Number.isFinite(Number(payload?.percentA))
-            ? Number(payload.percentA)
-            : totalVotes > 0
-              ? Math.round((votesA / totalVotes) * 100)
-              : 50;
-        const percentB = Number.isFinite(Number(payload?.percent_b))
-          ? Number(payload.percent_b)
-          : Number.isFinite(Number(payload?.percentB))
-            ? Number(payload.percentB)
-          : totalVotes > 0
-              ? Math.max(0, 100 - percentA)
-              : 50;
+        const votesA = asFiniteNumber(
+          payload?.votes_a,
+          payload?.votesA,
+          currentSnapshot?.votes_a
+        ) ?? 0;
+        const votesB = asFiniteNumber(
+          payload?.votes_b,
+          payload?.votesB,
+          currentSnapshot?.votes_b
+        ) ?? 0;
+        const totalVotes = asFiniteNumber(
+          payload?.total_votes,
+          payload?.totalVotes
+        ) ?? (votesA + votesB);
+        const percentA = asFiniteNumber(
+          payload?.percent_a,
+          payload?.percentA
+        ) ?? (totalVotes > 0 ? Math.round((votesA / totalVotes) * 100) : 50);
+        const percentB = asFiniteNumber(
+          payload?.percent_b,
+          payload?.percentB
+        ) ?? (totalVotes > 0 ? Math.max(0, 100 - percentA) : 50);
         const snapshot = normalizeVoteSnapshot({
           votes_a: votesA,
           votes_b: votesB,

@@ -5,13 +5,82 @@ import { evaluateAndMaybeQualifyFlame } from '../_lib/arenaFlame';
 import { withTimeout } from '../_lib/timeout';
 import { assignUsernameIfDefault } from '../_lib/username-autofill';
 import { applyFeatureTesterBoost, isFeatureTesterId } from '../_lib/tester';
+import { createServerSupabaseClient, logInvalidSupabaseKey } from '../_lib/server-supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim();
-const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').trim();
+type SchemaishError = { message?: string; code?: string; details?: string; hint?: string } | null | undefined;
+
+function isSchemaMismatch(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || "").toLowerCase();
+
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("relation") ||
+    msg.includes("column") ||
+    msg.includes("function") ||
+    msg.includes("rpc") ||
+    msg.includes("schema") ||
+    msg.includes("not found") ||
+    msg.includes("undefined table") ||
+    msg.includes("could not find") ||
+    msg.includes("postgres")
+  );
+}
+
+function isFailSoftBackendError(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || '').toLowerCase();
+  return isSchemaMismatch(error) || msg.includes('invalid api key');
+}
+
+function assertNoSupabaseError(error: SchemaishError): asserts error is null | undefined {
+  if (error) throw error;
+}
+
+function buildGuestSafePayload(guestId: string, testerMode: boolean) {
+  return {
+    success: true,
+    guest_id: guestId,
+    data: {
+      progress: { xp: 0, level: 1, current_streak: 0, sigils: 0, whisker_tokens: 0 },
+      streak: {
+        current_streak: 0,
+        last_claim_date: null,
+        flame_state: 'expired',
+        last_flame_date: null,
+        fading_expires_at: null,
+      },
+      profile: { id: guestId, guild: null, username: null },
+      prediction_streak: 0,
+      best_prediction_streak: 0,
+      bonus_rolls: 0,
+      cat_xp_pool: 0,
+      flame: {
+        dayCount: 0,
+        state: 'expired',
+        lastFlameDate: null,
+        qualifiesToday: false,
+        todayProgress: { votesToday: 0, predictionsToday: 0, catsToday: 0, qualifiesToday: false },
+        fadingExpiresAt: null,
+        secondsRemaining: null,
+        nextMilestone: { nextDay: 1, daysRemaining: 0 },
+      },
+      starter_cat_eligible: false,
+      submitted_cat_count: 0,
+      adopted_cat_count: 0,
+      adopted_cat_limit: 0,
+      adopted_cat_remaining: 0,
+      adopt_or_upload_required: true,
+      notification_preferences: { email: '', cat_photo_approved_enabled: false },
+      has_credentials: false,
+      tester_mode: testerMode,
+      equipped_cosmetics: {},
+      user: { id: guestId },
+    },
+  };
+}
 
 export async function GET() {
   try {
@@ -20,14 +89,13 @@ export async function GET() {
       return NextResponse.json({ error: 'No session' }, { status: 401 });
     }
     
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    });
+    const supabase = createServerSupabaseClient();
 
     const testerMode = isFeatureTesterId(guestId);
     
     // Bootstrap user first
-    await supabase.rpc('bootstrap_user', { p_user_id: guestId });
+    const bootstrapRes = await supabase.rpc('bootstrap_user', { p_user_id: guestId });
+    assertNoSupabaseError(bootstrapRes.error);
     if (testerMode) {
       await applyFeatureTesterBoost(supabase as any, guestId);
     }
@@ -36,13 +104,12 @@ export async function GET() {
     // Get user state
     const { data, error } = await supabase.rpc('get_user_state', { p_user_id: guestId });
     
-    if (error) {
-      return NextResponse.json({ error: 'Failed to get state: ' + error.message }, { status: 500 });
-    }
+    assertNoSupabaseError(error);
     
-    await supabase.rpc('ensure_user_prediction_stats', { p_user_id: guestId });
+    const predictionStatsRes = await supabase.rpc('ensure_user_prediction_stats', { p_user_id: guestId });
+    assertNoSupabaseError(predictionStatsRes.error);
 
-    const [{ data: progressRow }, { data: profileRow }, { data: predStats }, { data: userCats }, { data: notifPref }, { data: catXpPool }, { data: authCred }] = await Promise.all([
+    const [progressRes, profileRes, predStatsRes, userCatsRes, notifPrefRes, catXpPoolRes, authCredRes] = await Promise.all([
       supabase
       .from('user_progress')
       .select('sigils, whisker_tokens')
@@ -78,15 +145,32 @@ export async function GET() {
       .eq('user_id', guestId)
       .maybeSingle(),
     ]);
-    const { data: equippedRows } = await supabase
+    assertNoSupabaseError(progressRes.error);
+    assertNoSupabaseError(profileRes.error);
+    assertNoSupabaseError(predStatsRes.error);
+    assertNoSupabaseError(userCatsRes.error);
+    assertNoSupabaseError(notifPrefRes.error);
+    assertNoSupabaseError(catXpPoolRes.error);
+    assertNoSupabaseError(authCredRes.error);
+
+    const { data: equippedRows, error: equippedError } = await supabase
       .from('equipped_cosmetics')
       .select('slot, cosmetics(slug,name,category)')
       .eq('user_id', guestId);
+    assertNoSupabaseError(equippedError);
     const flame = await withTimeout(
       evaluateAndMaybeQualifyFlame(supabase, guestId, 'status', new Date()),
       2200,
       'me_flame'
     ).catch(() => null);
+
+    const progressRow = progressRes.data;
+    const profileRow = profileRes.data;
+    const predStats = predStatsRes.data;
+    const userCats = userCatsRes.data;
+    const notifPref = notifPrefRes.data;
+    const catXpPool = catXpPoolRes.data;
+    const authCred = authCredRes.data;
 
     const mergedData = data || {};
     mergedData.progress = mergedData.progress || {};
@@ -160,6 +244,15 @@ export async function GET() {
       data: mergedData
     }, { headers: { 'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate' } });
   } catch (e) {
-    return NextResponse.json({ error: 'Server error', details: String(e) }, { status: 500 });
+    logInvalidSupabaseKey(e);
+    console.error('[api/me] GET failed', e);
+    try {
+      console.error('[api/me] GET failed JSON', JSON.stringify(e, null, 2));
+    } catch {}
+    if (isFailSoftBackendError(e)) {
+      const guestId = await getGuestId().catch(() => '');
+      return NextResponse.json(buildGuestSafePayload(guestId, isFeatureTesterId(guestId)), { status: 200 });
+    }
+    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }

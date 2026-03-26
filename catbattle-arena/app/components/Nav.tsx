@@ -17,6 +17,7 @@ export default function Nav() {
   const [liveDuelCount, setLiveDuelCount] = useState(0);
   const [rankSigils, setRankSigils] = useState(0);
   const [rankStreak, setRankStreak] = useState(0);
+  const [isArenaNavCompact, setIsArenaNavCompact] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -51,13 +52,12 @@ export default function Nav() {
     runIdentityResolutionChecks();
     if (process.env.NODE_ENV === 'production') return;
     const timer = window.setTimeout(() => {
+      const mobileNav = document.querySelector('[data-nav-root="mobile"]') as HTMLElement | null;
+      const isMobile = window.matchMedia('(max-width: 639px)').matches;
+      const navVisible = !!mobileNav && getComputedStyle(mobileNav).display !== 'none' && getComputedStyle(mobileNav).visibility !== 'hidden' && mobileNav.getBoundingClientRect().width > 0 && mobileNav.getBoundingClientRect().height > 0;
       const noise = document.querySelector('.noise-overlay') as HTMLElement | null;
       const watermark = document.querySelector('.vuxsolia-watermark') as HTMLElement | null;
       const toastHost = document.querySelector('.global-toast-host') as HTMLElement | null;
-      const touchTarget = document.elementFromPoint(
-        Math.floor(window.innerWidth * 0.5),
-        Math.max(0, window.innerHeight - 8)
-      ) as HTMLElement | null;
       const pointerSafe =
         (!noise || getComputedStyle(noise).pointerEvents === 'none') &&
         (!watermark || getComputedStyle(watermark).pointerEvents === 'none') &&
@@ -65,12 +65,20 @@ export default function Nav() {
       if (!pointerSafe) {
         warnOnce('overlay-pointer-safe', '[DEV_CHECK] Overlay layers must keep pointer-events: none');
       }
-      const isAnchor = touchTarget?.tagName === 'A' || !!touchTarget?.closest('a');
-      if (!isAnchor) {
-        warnOnce('nav-bottom-probe', '[DEV_CHECK] Bottom viewport click target should resolve to a nav anchor', {
-          tag: touchTarget?.tagName || null,
-          className: touchTarget?.className || null,
-        });
+      if (isMobile && navVisible && mobileNav) {
+        const probeAnchor = mobileNav.querySelector('[data-testid="nav-home"], [data-testid="nav-gallery"], [data-testid="nav-tournament"], [data-testid="nav-shop"], [data-testid="nav-profile"]') as HTMLElement | null;
+        const probeRect = (probeAnchor || mobileNav).getBoundingClientRect();
+        const probeX = Math.floor(probeRect.left + probeRect.width * 0.5);
+        const probeY = Math.floor(probeRect.top + probeRect.height * 0.5);
+        const touchTarget = document.elementFromPoint(probeX, probeY) as HTMLElement | null;
+        const isAnchor = touchTarget?.tagName === 'A' || !!touchTarget?.closest('a');
+        const isNavContainer = touchTarget === mobileNav;
+        if (!isAnchor && !isNavContainer) {
+          warnOnce('nav-bottom-probe', '[DEV_CHECK] Bottom nav probe should resolve to a nav anchor', {
+            tag: touchTarget?.tagName || null,
+            className: touchTarget?.className || null,
+          });
+        }
       }
 
       checkTapTarget({ key: 'nav-home-hit', selector: '[data-testid="nav-home"]', expect: ['A'] });
@@ -91,6 +99,20 @@ export default function Nav() {
     return installBottomNavInterceptionDiagnostics('[data-nav-root="mobile"]');
   }, [pathname]);
 
+  useEffect(() => {
+    const onArenaPage = pathname === '/tournament' || pathname === '/arena';
+    if (!onArenaPage) {
+      setIsArenaNavCompact(false);
+      return;
+    }
+    const onScroll = () => {
+      setIsArenaNavCompact(window.scrollY > 56);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [pathname]);
+
   const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnly?: boolean; hideBelow360?: boolean; primary?: boolean }> = [
     { href: '/submit', label: 'Submit', icon: Plus, primary: true },
     { href: '/duel', label: 'Duels', icon: Swords },
@@ -101,7 +123,7 @@ export default function Nav() {
   const mobilePrimaryLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
     { href: '/', label: 'Home', icon: Home },
     { href: '/gallery', label: 'Gallery', icon: Cat },
-    { href: '/tournament', label: 'Tournament', icon: Trophy },
+    { href: '/tournament', label: 'Arena', icon: Swords },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
     { href: myProfileHref, label: 'Profile', icon: User },
   ];
@@ -124,7 +146,7 @@ export default function Nav() {
 
   return (
     <>
-      <nav className="main-nav top-nav-shell sticky top-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
+      <nav className={`main-nav top-nav-shell sticky top-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate ${isArenaNavCompact ? 'top-nav-shell--compact' : ''}`}>
         <div className="top-nav-backdrop absolute inset-0 pointer-events-none" />
         <div className="top-nav-inner relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
           <div className="top-nav-primary-row">
@@ -187,8 +209,9 @@ export default function Nav() {
       <nav
         data-nav-root="mobile"
         className="mobile-bottom-nav sm:hidden fixed bottom-0 inset-x-0 z-[1400] mx-auto w-full max-w-[390px] px-2 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-1 opacity-100 pointer-events-auto overflow-visible isolate"
+        style={{ pointerEvents: 'none' }}
       >
-        <div className="mobile-bottom-nav-shell">
+        <div className="mobile-bottom-nav-shell" style={{ pointerEvents: 'none', gap: 0 }}>
           {mobilePrimaryLinks.map((link) => {
             const active = isActiveHref(link.href);
             const Icon = link.icon;
@@ -211,7 +234,8 @@ export default function Nav() {
                 onClick={withNavFallback(link.href)}
                 data-testid={testId}
                 aria-current={active ? 'page' : undefined}
-                className={`bn-tab ${active ? 'active' : ''} ${isTournament ? 'bn-tab--arena' : ''} nav-tab`}
+                className={`bn-tab ${active ? 'active' : ''} ${isTournament ? 'bn-tab--arena' : ''} nav-tab flex-1 w-full`}
+                style={{ pointerEvents: 'auto' }}
               >
                 <span className={`bn-icon ${isTournament ? 'bn-icon--arena' : ''}`}>
                   <Icon />

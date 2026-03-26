@@ -1,8 +1,9 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeCatImageUrl } from "./images";
 import { ensureActiveArenasUtc, CANONICAL_ACTIVE_STATUS } from "./arena-active";
 import { computeVoteStats } from "./vote-stats";
 import { pickFairMatches } from "./pickFairMatches";
+import { createServerSupabaseClient } from "./server-supabase";
 
 export type ArenaType = "main" | "rookie";
 export type ArenaTab = "voting" | "results";
@@ -112,11 +113,7 @@ function arrangeWithCatSpacing(matches: ArenaPageMatch[], minGap = 4): ArenaPage
 }
 
 function supabaseAdmin(): SupabaseClient {
-  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\\n/g, "").replace(/\s/g, "").trim();
-  const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").replace(/\\n/g, "").trim();
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return createServerSupabaseClient();
 }
 
 function normalizedPairImageKey(value: string | null | undefined): string | null {
@@ -492,7 +489,7 @@ export async function loadArenaPage(params: {
     .eq("date", dayKey)
     .eq("tournament_type", arena)
     .in("status", statuses);
-  if (tErr) throw new Error(tErr.message);
+  if (tErr) throw tErr;
   const tRows = tournaments || [];
   if (tRows.length === 0) {
     return {
@@ -575,7 +572,7 @@ export async function loadArenaPage(params: {
     allMatches = (retry.data as Array<any> | null) || [];
     mErr = retry.error;
   }
-  if (mErr) throw new Error(mErr.message);
+  if (mErr) throw mErr;
 
   const filtered = (allMatches || []).filter((m) => {
     if (!m?.cat_a_id || !m?.cat_b_id) return false;

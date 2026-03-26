@@ -1,15 +1,43 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { resolveCatImageUrl } from '../_lib/images';
 import { FEATURES } from '../_lib/flags';
+import { createServerSupabaseClient, logInvalidSupabaseKey } from '../_lib/server-supabase';
 
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-  (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\\n/g, '').replace(/\s/g, '').trim(),
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/\\n/g, '').trim(),
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const supabase = createServerSupabaseClient();
+
+type SchemaishError = { message?: string; code?: string; details?: string; hint?: string } | null | undefined;
+
+function isSchemaMismatch(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || "").toLowerCase();
+
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("relation") ||
+    msg.includes("column") ||
+    msg.includes("function") ||
+    msg.includes("rpc") ||
+    msg.includes("schema") ||
+    msg.includes("not found") ||
+    msg.includes("undefined table") ||
+    msg.includes("could not find") ||
+    msg.includes("postgres")
+  );
+}
+
+function isFailSoftBackendError(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || '').toLowerCase();
+  return isSchemaMismatch(error) || msg.includes('invalid api key');
+}
+
+function buildSpotlightsFallback() {
+  return { ok: true, hall_of_fame: null, cat_of_week: null };
+}
+
+function assertNoSupabaseError(error: SchemaishError): asserts error is null | undefined {
+  if (error) throw error;
+}
 
 export async function GET() {
   try {
@@ -18,28 +46,25 @@ export async function GET() {
       .select('slot, cat_id, note, updated_at, tagline, theme, expires_at')
       .in('slot', ['hall_of_fame', 'cat_of_week']);
 
-    if (error) {
-      const msg = String(error.message || '').toLowerCase();
-      if (msg.includes('site_spotlights')) {
-        return NextResponse.json({ ok: true, hall_of_fame: null, cat_of_week: null });
-      }
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    }
+    assertNoSupabaseError(error);
 
     const catIds = Array.from(new Set((rows || []).map((r) => r.cat_id).filter(Boolean)));
     if (catIds.length === 0) {
       return NextResponse.json({ ok: true, hall_of_fame: null, cat_of_week: null });
     }
 
-    const { data: cats } = await supabase
+    const { data: cats, error: catsError } = await supabase
       .from('cats')
       .select('id, user_id, name, rarity, image_path, image_review_status')
       .in('id', catIds);
+    assertNoSupabaseError(catsError);
 
     const userIds = Array.from(new Set((cats || []).map((c) => c.user_id).filter(Boolean)));
-    const { data: profiles } = userIds.length
+    const profilesRes = userIds.length
       ? await supabase.from('profiles').select('id, username').in('id', userIds)
-      : { data: [] as Array<{ id: string; username: string | null }> };
+      : { data: [] as Array<{ id: string; username: string | null }>, error: null as SchemaishError };
+    assertNoSupabaseError(profilesRes.error);
+    const profiles = profilesRes.data;
 
     const profileMap: Record<string, string> = {};
     for (const p of profiles || []) profileMap[p.id] = String(p.username || '').trim();
@@ -79,6 +104,14 @@ export async function GET() {
       cat_of_week: pick('cat_of_week'),
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    logInvalidSupabaseKey(e);
+    console.error('[api/spotlights] GET failed', e);
+    try {
+      console.error('[api/spotlights] GET failed JSON', JSON.stringify(e, null, 2));
+    } catch {}
+    if (isFailSoftBackendError(e)) {
+      return NextResponse.json(buildSpotlightsFallback(), { status: 200 });
+    }
+    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
   }
 }

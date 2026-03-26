@@ -15,16 +15,55 @@ import { computeVoteStats } from "../../_lib/vote-stats";
 import { computePulseWindow } from "../../_lib/pulse";
 import { loadCurrentStreakMap, loadEquippedSkillsForCats, resolveMatchup } from "../../_lib/skill-resolution";
 import { deriveTournamentMatchState } from "../../../lib/tournament-state";
+import { createServerSupabaseClient, logInvalidSupabaseKey } from "../../_lib/server-supabase";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const VISIBLE_MATCH_STATUSES = ["active", "in_progress", "locked"] as const;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" } as const;
 const NPC_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+type SchemaishError = { message?: string; code?: string; details?: string; hint?: string } | null | undefined;
+
+function isSchemaMismatch(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || "").toLowerCase();
+
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("relation") ||
+    msg.includes("column") ||
+    msg.includes("function") ||
+    msg.includes("rpc") ||
+    msg.includes("schema") ||
+    msg.includes("not found") ||
+    msg.includes("undefined table") ||
+    msg.includes("could not find") ||
+    msg.includes("postgres")
+  );
+}
+
+function isFailSoftBackendError(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || '').toLowerCase();
+  return isSchemaMismatch(error) || msg.includes('invalid api key');
+}
+
+function buildTournamentActiveFallback(testerMode: boolean) {
+  return {
+    ok: true,
+    arenas: [],
+    mainPool: [],
+    rookiePool: [],
+    voted_matches: {},
+    prediction_meta: null,
+    tester_mode: testerMode,
+  };
+}
+
+function assertNoSupabaseError(error: SchemaishError): asserts error is null | undefined {
+  if (error) throw error;
+}
 
 function isSameOwnerPair(aOwnerId?: string | null, bOwnerId?: string | null): boolean {
   const a = String(aOwnerId || "").trim();
@@ -53,9 +92,7 @@ export async function GET(request: NextRequest) {
     const guestId = await getGuestId();
     const testerMode = isFeatureTesterId(guestId);
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const supabase = createServerSupabaseClient();
 
     const now = new Date();
     const pulse = await computePulseWindow(now);
@@ -77,7 +114,7 @@ export async function GET(request: NextRequest) {
         .eq('tournament_type', 'main')
         .in('status', statusList)
         .order('created_at', { ascending: false });
-      if (error) throw new Error(error.message);
+      assertNoSupabaseError(error);
       return (data || []).filter((t) => t.tournament_type !== 'grind');
     }
 
@@ -88,7 +125,7 @@ export async function GET(request: NextRequest) {
     }
 
     await Promise.all([
-      loadArenaPage({ arena: 'main', tab: 'voting', pageIndex: 0, dayKey: today, targetCount: 4 }),
+      loadArenaPage({ arena: 'main', tab: 'voting', pageIndex: 0, dayKey: today, targetCount: 24 }),
     ]);
 
     let todayTournaments = await loadTodayTournaments();
@@ -110,19 +147,20 @@ export async function GET(request: NextRequest) {
 
     const tournamentIds = todayTournaments.map((t) => t.id);
 
-    const { data: activeMatchProbe } = await supabase
+    const { data: activeMatchProbe, error: activeMatchProbeError } = await supabase
       .from('tournament_matches')
       .select('id')
       .in('tournament_id', tournamentIds)
       .in('status', [...VISIBLE_MATCH_STATUSES] as any)
       .limit(1);
+    assertNoSupabaseError(activeMatchProbeError);
 
     const activeVotingProbe = activeMatchProbe;
 
     if (((!activeMatchProbe || activeMatchProbe.length === 0) || (!activeVotingProbe || activeVotingProbe.length === 0)) && LAUNCH_CONFIG.seedMatchupAutoFill) {
       await runTournamentTick({ includeOldActive: false, resolveRounds: true });
       await Promise.all([
-        loadArenaPage({ arena: 'main', tab: 'voting', pageIndex: 0, dayKey: today, targetCount: 4 }),
+        loadArenaPage({ arena: 'main', tab: 'voting', pageIndex: 0, dayKey: today, targetCount: 24 }),
       ]);
       todayTournaments = await loadTodayTournaments();
       if (todayTournaments.length === 0) {
@@ -139,10 +177,11 @@ export async function GET(request: NextRequest) {
 
     const refreshedTournamentIds = todayTournaments.map((t) => t.id);
 
-    const { data: entries } = await supabase
+    const { data: entries, error: entriesError } = await supabase
       .from("tournament_entries")
       .select("tournament_id, cat_id")
       .in("tournament_id", refreshedTournamentIds);
+    assertNoSupabaseError(entriesError);
     const entryCatsByTournament: Record<string, Set<string>> = {};
     for (const e of entries || []) {
       if (!entryCatsByTournament[e.tournament_id]) entryCatsByTournament[e.tournament_id] = new Set<string>();
@@ -163,9 +202,7 @@ export async function GET(request: NextRequest) {
       })
     );
     const firstMatchErr = matchBatches.find((b) => !!b.error)?.error;
-    if (firstMatchErr) {
-      return NextResponse.json({ ok: false, error: firstMatchErr.message }, { status: 500, headers: NO_STORE_HEADERS });
-    }
+    assertNoSupabaseError(firstMatchErr);
 
     const fetchedMatches = matchBatches.flatMap((b) => b.data);
     const allMatches = fetchedMatches
@@ -194,14 +231,16 @@ export async function GET(request: NextRequest) {
     let cats: Array<Record<string, unknown>> = [];
     const primaryCats = await supabase
       .from("cats")
-      .select("id, user_id, name, image_path, image_url_thumb, image_url_card, image_url_original, image_review_status, status, rarity, cat_level, level, ability, ability_description, description, origin, wins, losses, attack, defense, speed, charisma, chaos")
+      .select("id, user_id, name, image_path, image_url_thumb, image_url_card, image_url_original, image_review_status, status, rarity, cat_level, level, ability, description, origin, wins, losses, attack, defense, speed, charisma, chaos")
       .in("id", Array.from(catIds));
+    assertNoSupabaseError(primaryCats.error);
     cats = (primaryCats.data as Array<Record<string, unknown>> | null) || [];
     if (!primaryCats.data) {
-      const { data: legacyCats } = await supabase
+      const { data: legacyCats, error: legacyCatsError } = await supabase
         .from("cats")
         .select("id, user_id, name, image_path, rarity, ability, attack, defense, speed, charisma, chaos")
         .in("id", Array.from(catIds));
+      assertNoSupabaseError(legacyCatsError);
       cats = (legacyCats as Array<Record<string, unknown>> | null) || [];
     }
 
@@ -215,9 +254,10 @@ export async function GET(request: NextRequest) {
       loadEquippedSkillsForCats(supabase, skillCatIds),
       loadCurrentStreakMap(supabase, skillCatIds),
     ]);
-    const { data: profileRows } = userIds.length > 0
+    const { data: profileRows, error: profileRowsError } = userIds.length > 0
       ? await supabase.from('profiles').select('id, username, guild').in('id', userIds)
-      : { data: [] as Array<{ id: string; username: string | null; guild: string | null }> };
+      : { data: [] as Array<{ id: string; username: string | null; guild: string | null }>, error: null as SchemaishError };
+    assertNoSupabaseError(profileRowsError);
     const profileMap: Record<string, { username: string | null; guild: string | null }> = {};
     for (const p of profileRows || []) {
       if (p.id) profileMap[p.id] = {
@@ -299,18 +339,20 @@ export async function GET(request: NextRequest) {
     if (ineligibleCatIds.size > 0) {
       const ids = Array.from(ineligibleCatIds).filter(Boolean);
       if (ids.length > 0) {
-        await supabase
+        const { error: catAUpdateError } = await supabase
           .from('tournament_matches')
           .update({ status: 'complete' })
           .in('tournament_id', refreshedTournamentIds)
           .in('status', ['active', 'in_progress', 'pending'] as any)
           .in('cat_a_id', ids);
-        await supabase
+        assertNoSupabaseError(catAUpdateError);
+        const { error: catBUpdateError } = await supabase
           .from('tournament_matches')
           .update({ status: 'complete' })
           .in('tournament_id', refreshedTournamentIds)
           .in('status', ['active', 'in_progress', 'pending'] as any)
           .in('cat_b_id', ids);
+        assertNoSupabaseError(catBUpdateError);
       }
     }
 
@@ -335,12 +377,14 @@ export async function GET(request: NextRequest) {
 
     let predictionMeta: { current_streak: number; best_streak: number; bonus_rolls: number; streak_bonus_pct: number } | null = null;
     if (guestId) {
-      await supabase.rpc('ensure_user_prediction_stats', { p_user_id: guestId });
-      const { data: stats } = await supabase
+      const ensurePredictionStatsRes = await supabase.rpc('ensure_user_prediction_stats', { p_user_id: guestId });
+      assertNoSupabaseError(ensurePredictionStatsRes.error);
+      const { data: stats, error: statsError } = await supabase
         .from('user_prediction_stats')
         .select('current_streak, best_streak, bonus_rolls')
         .eq('user_id', guestId)
         .maybeSingle();
+      assertNoSupabaseError(statsError);
       const current = stats?.current_streak || 0;
       predictionMeta = {
         current_streak: current,
@@ -351,21 +395,23 @@ export async function GET(request: NextRequest) {
     }
 
     if (guestId && activeMatchIds.length > 0 && !testerMode) {
-      const { data: votes } = await supabase
+      const { data: votes, error: votesError } = await supabase
         .from("votes")
         .select("battle_id, voted_for")
         .eq("voter_user_id", guestId)
         .in("battle_id", activeMatchIds);
+      assertNoSupabaseError(votesError);
 
       for (const v of votes || []) {
         votedMatches[v.battle_id] = v.voted_for;
       }
 
-      const { data: predictions } = await supabase
+      const { data: predictions, error: predictionsError } = await supabase
         .from('match_predictions')
         .select('match_id, predicted_cat_id, bet_sigils')
         .eq('voter_user_id', guestId)
         .in('match_id', activeMatchIds);
+      assertNoSupabaseError(predictionsError);
       for (const p of predictions || []) {
         userPredictions[p.match_id] = { predicted_cat_id: p.predicted_cat_id, bet_sigils: p.bet_sigils || 0 };
       }
@@ -487,7 +533,7 @@ export async function GET(request: NextRequest) {
           const tb = Date.parse(String((b as any)?.created_at || "")) || 0;
           return tb - ta;
         }) as Array<any>;
-      return pickFairMatches(active, Math.min(16, active.length), {
+      return pickFairMatches(active, Math.min(24, active.length), {
         maxPerOwner: 2,
         avoidSameOwnerMatch: true,
       });
@@ -569,7 +615,15 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: NO_STORE_HEADERS });
+    logInvalidSupabaseKey(e);
+    console.error('[api/tournament/active] GET failed', e);
+    try {
+      console.error('[api/tournament/active] GET failed JSON', JSON.stringify(e, null, 2));
+    } catch {}
+    if (isFailSoftBackendError(e)) {
+      const guestId = await getGuestId().catch(() => '');
+      return NextResponse.json(buildTournamentActiveFallback(isFeatureTesterId(guestId)), { status: 200, headers: NO_STORE_HEADERS });
+    }
+    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

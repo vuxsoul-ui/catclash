@@ -3,13 +3,32 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { Submission } from '@/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+let didLogServerConfig = false
 
 // Browser client for client-side operations
-export const supabaseBrowser = createBrowserClient(supabaseUrl, supabaseKey)
+export const supabaseBrowser = createBrowserClient(supabaseUrl, supabaseAnonKey)
+
+function getServiceRoleKey() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+
+  if (!didLogServerConfig) {
+    didLogServerConfig = true
+    console.error('[SUPABASE CONFIG]', {
+      url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      service: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    })
+  }
+
+  if (!serviceKey) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  }
+
+  return serviceKey
+}
 
 // Server client for server-side operations
-export const supabaseServer = createClient(supabaseUrl, supabaseKey, {
+export const supabaseServer = createClient(supabaseUrl, getServiceRoleKey(), {
   auth: {
     autoRefreshToken: false,
     persistSession: false,

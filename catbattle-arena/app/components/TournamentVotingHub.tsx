@@ -78,6 +78,11 @@ type BracketOverviewPayload = {
   matches: BracketOverviewMatch[];
 };
 
+type BracketQueuePayload = {
+  currentRound: number;
+  matches: ArenaMatch[];
+};
+
 type PulseStatus = {
   nextPulseAtUtc: string | null;
   voteLocksAtUtc: string | null;
@@ -812,6 +817,8 @@ function SpotlightMatchCard({
 export default function TournamentPage() {
   const [loading, setLoading] = useState(true);
   const [arenas, setArenas] = useState<Arena[]>([]);
+  const [queueMatches, setQueueMatches] = useState<ArenaMatch[]>([]);
+  const [bracketQueue, setBracketQueue] = useState<BracketQueuePayload | null>(null);
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
   const [votingMatch, setVotingMatch] = useState<string | null>(null);
   const [predictBusyMatch, setPredictBusyMatch] = useState<string | null>(null);
@@ -869,9 +876,57 @@ export default function TournamentPage() {
       const data = await res.json().catch(() => ({}));
       const meData = await me.json().catch(() => ({}));
       const homeData = await home.json().catch(() => ({}));
+      const activeArenas = nextArenasFromLoad(data);
+      const activeTournamentId = String(activeArenas?.[0]?.tournament_id || '').trim();
+      const bracketData = activeTournamentId
+        ? await fetch(`/api/tournament/${activeTournamentId}/bracket`, { cache: 'no-store' })
+            .then((r) => r.json().catch(() => ({})))
+            .catch(() => ({}))
+        : null;
+      const bracketMatches = Array.isArray(bracketData?.matches) ? (bracketData.matches as Array<any>) : [];
+      const mappedBracketMatches: ArenaMatch[] = bracketMatches
+        .map((match) => {
+          const catA = match?.cat_a;
+          const catB = match?.cat_b;
+          if (!catA?.id || !catB?.id) return null;
+          const snapshot = calcSnapshot(Number(match?.votes_a || 0), Number(match?.votes_b || 0));
+          return {
+            match_id: String(match.match_id || ''),
+            status: String(match.status || 'active'),
+            votes_a: Number(match.votes_a || 0),
+            votes_b: Number(match.votes_b || 0),
+            total_votes: snapshot.total_votes,
+            percent_a: snapshot.percent_a,
+            percent_b: snapshot.percent_b,
+            winner_id: match.winner_id ? String(match.winner_id) : null,
+            is_close_match: Math.abs(Number(match.votes_a || 0) - Number(match.votes_b || 0)) <= 2,
+            cat_a: {
+              id: String(catA.id),
+              name: String(catA.name || 'Unknown'),
+              image_url: String(catA.image_url || '') || null,
+              rarity: String(catA.rarity || 'Common'),
+            },
+            cat_b: {
+              id: String(catB.id),
+              name: String(catB.name || 'Unknown'),
+              image_url: String(catB.image_url || '') || null,
+              rarity: String(catB.rarity || 'Common'),
+            },
+          } as ArenaMatch;
+        })
+        .filter((match): match is ArenaMatch => !!match && !!match.match_id);
 
       const preservedVotes = options.preserveVotedMatches;
-      setArenas(nextArenasFromLoad(data));
+      setArenas(activeArenas);
+      setQueueMatches(mappedBracketMatches);
+      setBracketQueue(
+        mappedBracketMatches.length > 0
+          ? {
+              currentRound: Math.max(1, Number(bracketData?.tournament?.round || 1)),
+              matches: mappedBracketMatches,
+            }
+          : null
+      );
       if (!preservedVotes) {
         setVotedMatches(data.voted_matches || {});
       }
@@ -889,6 +944,18 @@ export default function TournamentPage() {
 
   function applyMatchSnapshot(matchId: string, snapshot: MatchVoteSnapshot) {
     setArenas((prev) => applySnapshotToArenas(prev, matchId, snapshot));
+    setQueueMatches((prev) => prev.map((match) => (
+      match.match_id === matchId
+        ? {
+            ...match,
+            votes_a: snapshot.votes_a,
+            votes_b: snapshot.votes_b,
+            total_votes: snapshot.total_votes,
+            percent_a: snapshot.percent_a,
+            percent_b: snapshot.percent_b,
+          }
+        : match
+    )));
   }
 
   async function refreshPulseStatus() {
@@ -907,7 +974,7 @@ export default function TournamentPage() {
 
   async function handleVote(matchId: string, catId: string) {
     if (votingMatch || votedMatches[matchId]) return;
-    const arenaMatch = findArenaMatch(arenas, matchId);
+    const arenaMatch = findArenaMatch(arenas, matchId) || queueMatches.find((m) => m.match_id === matchId) || null;
     const originalSnapshot = arenaMatch
       ? calcSnapshot(arenaMatch.votes_a, arenaMatch.votes_b)
       : null;
@@ -1056,6 +1123,29 @@ export default function TournamentPage() {
     };
   }, [primaryArena, votedMatches, pulseLocked]);
 
+  const spotlightQueueVoting = useMemo(() => {
+    const sourceMatches = (bracketQueue?.matches || queueMatches || []);
+    const sourceRound = Math.max(1, Number(bracketQueue?.currentRound || primaryArena?.current_round || 1));
+    return sourceMatches.filter((match) => {
+      const id = String(match?.match_id || '');
+      if (!id || isBye(match)) return false;
+      if (votedMatches[id]) return false;
+      const roundFromArena = (primaryArena?.rounds || []).find((round) =>
+        (round.matches || []).some((entry) => String(entry.match_id || '') === id)
+      )?.round;
+      const state = deriveTournamentMatchState({
+        matchId: id,
+        status: String(match?.status || ''),
+        round: Number(roundFromArena || sourceRound || 1),
+        currentRound: sourceRound,
+        voted: false,
+        pulseLocked,
+        spotlightMatchId: null,
+      });
+      return state.state === 'votable';
+    });
+  }, [bracketQueue?.currentRound, bracketQueue?.matches, primaryArena?.current_round, primaryArena?.rounds, pulseLocked, queueMatches, votedMatches]);
+
   const availableSegments = useMemo(() => {
     const segments: Segment[] = ['voting'];
     if (arenaView.upcoming.length > 0) segments.push('upcoming');
@@ -1063,7 +1153,11 @@ export default function TournamentPage() {
     return segments;
   }, [arenaView.upcoming.length, arenaView.results.length]);
 
-  const activeList = segment === 'voting' ? arenaView.voting : segment === 'upcoming' ? arenaView.upcoming : arenaView.results;
+  const activeList = segment === 'voting'
+    ? (spotlightQueueVoting.length > 0 ? spotlightQueueVoting : arenaView.voting)
+    : segment === 'upcoming'
+      ? arenaView.upcoming
+      : arenaView.results;
   const activeMatch = activeList[Math.min(activeIndex, Math.max(0, activeList.length - 1))] || null;
   const isEmptyVoting = segment === 'voting' && !activeMatch;
   const hasRemainingMatches = arenaView.summary.remainingCount > 0;
