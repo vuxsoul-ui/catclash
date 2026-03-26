@@ -9,6 +9,7 @@ import DuelCardFull from '../components/duel/DuelCardFull';
 import { LoadingState } from '../components/LoadingState';
 import type { DuelRowData } from '../components/duel/types';
 import { Badge, Button, Card, SectionHeader, Tabs, buttonStyles } from '../components/ui/primitives';
+import { pickLiveDuels } from '../lib/duel-live';
 
 type MyCat = { id: string; name: string; image_url: string | null; rarity: string; status?: string };
 type PlayerOption = { id: string; username: string; guild?: string | null };
@@ -67,7 +68,7 @@ export default function DuelPage() {
   const activeCats = useMemo(() => myCats.filter((c) => c.status !== 'rejected'), [myCats]);
 
   const liveRows = useMemo(
-    () => dedupeById(openDuels.filter((d) => String(d.status || '') === 'voting')),
+    () => dedupeById(pickLiveDuels<DuelRowData>(openDuels)),
     [openDuels]
   );
 

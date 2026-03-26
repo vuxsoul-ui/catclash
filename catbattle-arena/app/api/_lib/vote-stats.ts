@@ -2,6 +2,8 @@ export type VoteProbability = {
   total_votes: number;
   votes_a: number;
   votes_b: number;
+  share_a: number;
+  share_b: number;
   prob_a: number;
   prob_b: number;
   percent_a: number;
@@ -20,6 +22,8 @@ export function computeVoteProbabilities(votesA: number, votesB: number): VotePr
       total_votes: 0,
       votes_a: a,
       votes_b: b,
+      share_a: 0.5,
+      share_b: 0.5,
       prob_a: 0.5,
       prob_b: 0.5,
       percent_a: 50,
@@ -30,15 +34,20 @@ export function computeVoteProbabilities(votesA: number, votesB: number): VotePr
   }
 
   const rawProbA = a / total;
+  const rawProbB = b / total;
   const probA = Math.min(0.95, Math.max(0.05, rawProbA));
   const probB = 1 - probA;
-  const percentA = Number((probA * 100).toFixed(2));
-  const percentB = Number((probB * 100).toFixed(2));
+  // UI percentages should reflect the true current vote share, while prob_a /
+  // prob_b stay clamped for gameplay systems that rely on a floor/ceiling.
+  const percentA = Number((rawProbA * 100).toFixed(2));
+  const percentB = Number((rawProbB * 100).toFixed(2));
 
   return {
     total_votes: total,
     votes_a: a,
     votes_b: b,
+    share_a: rawProbA,
+    share_b: rawProbB,
     prob_a: probA,
     prob_b: probB,
     percent_a: percentA,

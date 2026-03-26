@@ -3,17 +3,20 @@
 import type { MouseEvent } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag } from 'lucide-react';
+import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag, Star, Flame } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
-import { countLiveVotableDuels } from '../lib/duel-live';
+import { countLiveDuels } from '../lib/duel-live';
 import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
 import { scanDuplicateTestIds } from '../lib/dev-testid-guard';
+import SigilIcon from './icons/SigilIcon';
 
 export default function Nav() {
   const pathname = usePathname();
   const [myProfileHref, setMyProfileHref] = useState('/login');
-  const [pendingDuelCount, setPendingDuelCount] = useState(0);
+  const [liveDuelCount, setLiveDuelCount] = useState(0);
+  const [rankSigils, setRankSigils] = useState(0);
+  const [rankStreak, setRankStreak] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -29,14 +32,17 @@ export default function Nav() {
         } else {
           setMyProfileHref('/login');
         }
+        setRankSigils(Number(me?.data?.progress?.sigils || 0));
+        setRankStreak(Number(me?.data?.prediction_streak || me?.data?.streak?.current_streak || 0));
         if (duel?.ok) {
-          setPendingDuelCount(countLiveVotableDuels(duel.open));
+          setLiveDuelCount(countLiveDuels(duel.open));
         } else {
-          setPendingDuelCount(0);
+          setLiveDuelCount(0);
         }
       })
       .catch(() => {
-        // ignore
+        if (!alive) return;
+        setLiveDuelCount(0);
       });
     return () => { alive = false; };
   }, [pathname]);
@@ -68,7 +74,7 @@ export default function Nav() {
       }
 
       checkTapTarget({ key: 'nav-home-hit', selector: '[data-testid="nav-home"]', expect: ['A'] });
-      checkTapTarget({ key: 'nav-duel-hit', selector: '[data-testid="nav-duel"]', expect: ['A'] });
+      checkTapTarget({ key: 'nav-gallery-hit', selector: '[data-testid="nav-gallery"]', expect: ['A'] });
       checkTapTarget({ key: 'nav-profile-hit', selector: '[data-testid="nav-profile"]', expect: ['A'] });
     }, 80);
     return () => window.clearTimeout(timer);
@@ -85,23 +91,17 @@ export default function Nav() {
     return installBottomNavInterceptionDiagnostics('[data-nav-root="mobile"]');
   }, [pathname]);
 
-  const desktopLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
-    { href: '/', label: 'Home', icon: Home },
-    { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/shop', label: 'Shop', icon: ShoppingBag },
-  ];
-
-  const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnlyMobile?: boolean; hideBelow340?: boolean }> = [
-    { href: '/submit', label: 'Submit', icon: Plus },
-    { href: '/gallery', label: 'Gallery', icon: Cat },
-    { href: '/social', label: 'Social', icon: Users },
-    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnlyMobile: true },
+  const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnly?: boolean; hideBelow360?: boolean; primary?: boolean }> = [
+    { href: '/submit', label: 'Submit', icon: Plus, primary: true },
+    { href: '/duel', label: 'Duels', icon: Swords },
+    { href: '/social', label: 'Social', icon: Users, hideBelow360: true },
+    { href: '/arena', label: 'Arena', icon: Trophy, iconOnly: true },
   ];
 
   const mobilePrimaryLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
     { href: '/', label: 'Home', icon: Home },
-    { href: '/duel', label: 'Duel', icon: Swords },
-    { href: '/arena', label: 'Arena', icon: Trophy },
+    { href: '/gallery', label: 'Gallery', icon: Cat },
+    { href: '/tournament', label: 'Tournament', icon: Trophy },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
     { href: myProfileHref, label: 'Profile', icon: User },
   ];
@@ -124,66 +124,60 @@ export default function Nav() {
 
   return (
     <>
-      <nav className="main-nav top-nav-shell pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
+      <nav className="main-nav top-nav-shell sticky top-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
         <div className="top-nav-backdrop absolute inset-0 pointer-events-none" />
         <div className="top-nav-inner relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
-            <div className="top-nav-row relative h-[var(--header-h)] grid grid-cols-[auto_1fr_auto] items-center gap-3">
-            <Link href="/" onClick={withNavFallback('/')} className="top-nav-brand inline-flex items-center gap-2">
-              <span className="top-nav-logo-box relative w-8 h-8 rounded-xl border border-white/20 bg-gradient-to-br from-slate-800 via-slate-900 to-black overflow-hidden shadow-[0_6px_18px_rgba(0,0,0,0.4)]">
-                <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(56,189,248,0.28),transparent_58%)]" />
-                <Cat className="top-nav-logo-cat absolute left-[2px] top-[7px] w-3.5 h-3.5 text-cyan-200/95" />
-                <Cat className="top-nav-logo-cat absolute right-[2px] top-[7px] w-3.5 h-3.5 text-amber-200/95 scale-x-[-1]" />
-                <Swords className="top-nav-logo-swords absolute left-1/2 -translate-x-1/2 bottom-[2px] w-3.5 h-3.5 text-white/90" />
-              </span>
-              <span className="top-nav-wordmark font-black text-[14px] sm:text-[15px] tracking-wide bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
-                CatClash
+          <div className="top-nav-primary-row">
+            <Link href="/" onClick={withNavFallback('/')} className="top-nav-brand inline-flex min-w-0 items-center gap-2">
+              <span className="top-nav-brand-copy min-w-0">
+                <span className="top-nav-wordmark">CatClash</span>
               </span>
             </Link>
 
-            <nav className="nav-tabs top-nav-links flex items-center justify-start min-w-0">
-              {desktopLinks.map((link) => {
+            <div className="top-nav-actions top-nav-pill-wrap">
+              {topActionLinks.map((link) => {
                 const active = isActiveHref(link.href);
-                const duelBadge = link.href === '/duel' && pendingDuelCount > 0;
                 const Icon = link.icon;
-                const mobileDuplicate = ['/', '/duel', '/shop'].includes(link.href);
+                const duelBadge = link.href === '/duel' && liveDuelCount > 0;
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
                     onClick={withNavFallback(link.href)}
-                    className={`nav-tab top-nav-tab relative h-9 px-3 rounded-full border text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${active ? 'active' : ''} ${mobileDuplicate ? 'top-nav-tab--mobile-duplicate' : 'top-nav-tab--mobile-keep'}`}
+                    className={`nav-tab top-nav-action ${active ? 'active' : ''} ${link.primary ? 'top-nav-action--primary' : ''} ${link.iconOnly ? 'top-nav-action--icon' : ''} ${link.hideBelow360 ? 'top-nav-action--hide-compact' : ''}`}
+                    aria-label={link.label}
                   >
                     <Icon className="h-[11px] w-[11px]" />
-                    {link.label}
+                    {!link.iconOnly && <span className="pill-label">{link.label}</span>}
                     {duelBadge && (
-                      <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-bold text-center border border-red-300/40">
-                        {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
+                      <span className="bn-badge">
+                        {liveDuelCount > 99 ? '99+' : liveDuelCount}
                       </span>
                     )}
                   </Link>
                 );
               })}
-            </nav>
-            <div className="top-nav-actions top-nav-pill-wrap flex items-center gap-1.5 sm:gap-2 ml-auto">
-              {topActionLinks.map((link) => {
-                const active = isActiveHref(link.href);
-                const Icon = link.icon;
-                const isStaticAction = link.href === '/submit' || link.href === '/gallery';
-                const actionClass = isStaticAction
-                  ? 'header-submit-btn top-nav-submit'
-                  : `nav-pill top-nav-pill inline-flex items-center ${active ? 'active' : ''} ${link.href === '/social' ? 'header-social-pill' : ''} ${link.href === '/leaderboard' ? 'header-lb-pill' : ''}`;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={withNavFallback(link.href)}
-                    className={actionClass}
-                  >
-                    <Icon className="h-[11px] w-[11px]" />
-                    <span className="pill-label">{link.label}</span>
-                  </Link>
-                );
-              })}
+            </div>
+          </div>
+
+          <div className="top-nav-status-row">
+            <div className="top-nav-rank-pill flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5">
+                <Star className="top-nav-rank-icon" aria-hidden="true" />
+                <span className="top-nav-rank-label">Rank 1</span>
+                <span className="top-nav-rank-track" aria-hidden="true">
+                  <span className="top-nav-rank-fill" />
+                </span>
+                <span className="top-nav-rank-value">14%</span>
+              </span>
+              <span className="top-nav-rank-chip top-nav-rank-chip--sigils inline-flex items-center gap-1">
+                <SigilIcon className="h-3.5 w-3.5" />
+                {rankSigils}
+              </span>
+              <span className="top-nav-rank-chip top-nav-rank-chip--streak inline-flex items-center gap-1">
+                <Flame className="h-3.5 w-3.5" />
+                {rankStreak}
+              </span>
             </div>
           </div>
         </div>
@@ -192,22 +186,21 @@ export default function Nav() {
 
       <nav
         data-nav-root="mobile"
-        className="sm:hidden fixed bottom-0 inset-x-1 mx-auto z-[1400] w-[calc(100%-0.5rem)] max-w-[500px] h-[calc(58px+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] rounded-t-[18px] border border-zinc-300/20 border-b-0 bg-zinc-950 shadow-[0_-16px_38px_rgba(0,0,0,0.62)] px-1 pt-0 opacity-100 pointer-events-auto overflow-visible backdrop-blur-xl isolate"
+        className="mobile-bottom-nav sm:hidden fixed bottom-0 inset-x-0 z-[1400] mx-auto w-full max-w-[390px] px-2 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-1 opacity-100 pointer-events-auto overflow-visible isolate"
       >
-        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,#141518_0%,#1b1d22_54%,#20232a_100%)]" />
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-zinc-200/40 to-transparent pointer-events-none" />
-        <div className="relative flex h-[58px] items-stretch gap-1">
+        <div className="mobile-bottom-nav-shell">
           {mobilePrimaryLinks.map((link) => {
             const active = isActiveHref(link.href);
             const Icon = link.icon;
-            const duelBadge = link.href === '/duel' && pendingDuelCount > 0;
-                const testId =
+            const duelBadge = link.href === '/duel' && liveDuelCount > 0;
+            const isTournament = link.href === '/tournament';
+            const testId =
               link.href === '/'
                 ? 'nav-home'
-                : link.href === '/duel'
-                  ? 'nav-duel'
-                : link.href === '/arena'
-                        ? 'nav-arena'
+                : link.href === '/gallery'
+                  ? 'nav-gallery'
+                : link.href === '/tournament'
+                    ? 'nav-tournament'
                   : link.href === '/shop'
                     ? 'nav-shop'
                     : 'nav-profile';
@@ -218,15 +211,15 @@ export default function Nav() {
                 onClick={withNavFallback(link.href)}
                 data-testid={testId}
                 aria-current={active ? 'page' : undefined}
-                className={`bn-tab ${active ? 'active' : ''} nav-tab relative z-10 h-full flex-1 text-[0.45rem] font-semibold rounded-xl px-[2px] inline-flex flex-col items-center justify-center gap-0.5 leading-none active:scale-[0.98] touch-manipulation`}
+                className={`bn-tab ${active ? 'active' : ''} ${isTournament ? 'bn-tab--arena' : ''} nav-tab`}
               >
-                <span className={`bn-icon ${link.href === '/arena' ? 'bn-icon--arena' : ''}`}>
+                <span className={`bn-icon ${isTournament ? 'bn-icon--arena' : ''}`}>
                   <Icon />
                 </span>
-                {link.label}
+                <span className="bn-label">{link.label}</span>
                 {duelBadge && (
-                  <span className="absolute top-1 right-2 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-bold text-center border border-red-300/40">
-                    {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
+                  <span className="bn-badge">
+                    {liveDuelCount > 99 ? '99+' : liveDuelCount}
                   </span>
                 )}
               </Link>

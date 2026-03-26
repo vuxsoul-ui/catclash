@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SigilIcon from "./components/icons/SigilIcon";
+import OnboardingModal from "./components/OnboardingModal";
 import ArenaFlameCard, { type ArenaFlame } from "./components/ArenaFlameCard";
 import DuelCardMini from "./components/duel/DuelCardMini";
 import type { DuelRowData } from "./components/duel/types";
@@ -25,12 +26,12 @@ import {
 import CatCardBack from "./components/CatCardBack";
 import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from "./_lib/cosmetics/effectsRegistry";
 import { computePowerRating } from "./_lib/combat";
-import { Button, Card, SectionHeader, buttonStyles } from "./components/ui/primitives";
+import { Button, Card, SectionHeader } from "./components/ui/primitives";
 import { pickFairMatches } from "./api/_lib/pickFairMatches";
 import { checkTapTarget, warnOnce } from "./lib/dev-click-guards";
 import { scanDuplicateTestIds } from "./lib/dev-testid-guard";
 import { canonicalThumbForCat } from "./lib/cat-images";
-import { countLiveVotableDuels } from "./lib/duel-live";
+import { countLiveDuels, pickLiveDuels } from "./lib/duel-live";
 import DebugControls from "./components/DebugControls";
 import DebugWidget from "./components/DebugWidget";
 import CosmicStatsBar from "./components/CosmicStatsBar";
@@ -77,6 +78,9 @@ export interface ArenaMatch {
   percent_a?: number;
   percent_b?: number;
   status: string;
+  voting_locked?: boolean;
+  vote_locks_at?: string | null;
+  resolves_at?: string | null;
   winner_id?: string | null;
   is_close_match?: boolean;
   user_prediction?: { predicted_cat_id: string; bet_sigils: number } | null;
@@ -89,6 +93,28 @@ type VoteSnapshot = {
   total_votes: number;
   percent_a: number;
   percent_b: number;
+};
+
+type QuestTabKey = 'starter' | 'daily' | 'weekly';
+
+type HomepageQuestItem = {
+  key: string;
+  title: string;
+  description: string;
+  reward: number;
+  done: boolean;
+  cta?: string | null;
+  progress?: number | null;
+  target?: number | null;
+};
+
+type DashboardQuest = {
+  id: string;
+  label: string;
+  progress: number;
+  target: number;
+  reward: number;
+  done: boolean;
 };
 
 interface MatchComment {
@@ -180,13 +206,23 @@ type ArenaRefreshResult = {
 // Config
 const ARENA_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string; accent: string; description: string }> = {
   main: {
-    label: "Main Arena",
+    label: "Today's Tournament",
     icon: <Swords className="w-4 h-4" />,
     color: "border-yellow-500/30 bg-yellow-500/5",
     accent: "text-yellow-400",
-    description: "The premier daily tournament. 8 cats enter, 1 champion emerges.",
+    description: "Vote on today's bracket. A new champion is crowned every 24 hours.",
   },
 };
+
+const HOMEPAGE_STARTER_QUESTS_KEY = 'homepage_starter_quests_v1';
+const HOMEPAGE_ONBOARDING_KEY = 'catclash_onboarding_complete_v1';
+const STARTER_SIGIL_REWARDS = {
+  vote_match: 10,
+  open_tournament: 5,
+  visit_gallery: 5,
+  open_duels: 5,
+  enter_whisker: 10,
+} as const;
 
 
 function getArenaConfig(type: string) {
@@ -250,13 +286,89 @@ function getVotePercent(
   const source = snapshot || match;
   const pA = Number(source.percent_a);
   const pB = Number(source.percent_b);
-  if (Number.isFinite(pA) && Number.isFinite(pB) && pA >= 0 && pB >= 0) {
+  const totalVotes = Number(source.votes_a || 0) + Number(source.votes_b || 0);
+  const hasUsablePercentPair =
+    Number.isFinite(pA) &&
+    Number.isFinite(pB) &&
+    pA >= 0 &&
+    pB >= 0 &&
+    (
+      totalVotes === 0
+        ? (pA + pB) >= 0
+        : (pA + pB) > 0
+    );
+  if (hasUsablePercentPair) {
     return [Math.max(0, Math.min(100, Math.round(pA))), Math.max(0, Math.min(100, Math.round(pB)))];
   }
-  const total = Number(source.votes_a || 0) + Number(source.votes_b || 0);
-  if (total === 0) return [50, 50];
-  const aPct = Math.round((Number(source.votes_a || 0) / total) * 100);
+  if (totalVotes === 0) return [50, 50];
+  const aPct = Math.round((Number(source.votes_a || 0) / totalVotes) * 100);
   return [aPct, Math.max(0, 100 - aPct)];
+}
+
+function normalizeVoteSnapshot(
+  source?: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'> | VoteSnapshot | null
+): VoteSnapshot | null {
+  if (!source) return null;
+  const votesA = Math.max(0, Number(source.votes_a || 0));
+  const votesB = Math.max(0, Number(source.votes_b || 0));
+  const [percentA, percentB] = getVotePercent({
+    votes_a: votesA,
+    votes_b: votesB,
+    percent_a: Number(source.percent_a),
+    percent_b: Number(source.percent_b),
+  });
+  return {
+    votes_a: votesA,
+    votes_b: votesB,
+    total_votes: votesA + votesB,
+    percent_a: percentA,
+    percent_b: percentB,
+  };
+}
+
+function buildOptimisticVoteSnapshot(
+  source: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'> | VoteSnapshot | null | undefined,
+  side: 'a' | 'b'
+): VoteSnapshot | null {
+  const normalized = normalizeVoteSnapshot(source);
+  if (!normalized) return null;
+  const votesA = normalized.votes_a + (side === 'a' ? 1 : 0);
+  const votesB = normalized.votes_b + (side === 'b' ? 1 : 0);
+  return normalizeVoteSnapshot({
+    votes_a: votesA,
+    votes_b: votesB,
+    percent_a: normalized.percent_a,
+    percent_b: normalized.percent_b,
+  });
+}
+
+function applyVoteSnapshotToArenaMatches(
+  arenas: Arena[],
+  arenaType: 'main' | 'rookie' | undefined,
+  matchId: string,
+  snapshot: VoteSnapshot
+): Arena[] {
+  if (!arenaType) return arenas;
+  return arenas.map((arena) => {
+    if (arena.type !== arenaType) return arena;
+    return {
+      ...arena,
+      rounds: (arena.rounds || []).map((round) => ({
+        ...round,
+        matches: (round.matches || []).map((match) => {
+          if (String(match.match_id || '') !== String(matchId || '')) return match;
+          return {
+            ...match,
+            votes_a: snapshot.votes_a,
+            votes_b: snapshot.votes_b,
+            total_votes: snapshot.total_votes,
+            percent_a: snapshot.percent_a,
+            percent_b: snapshot.percent_b,
+          };
+        }),
+      })),
+    };
+  });
 }
 
 function voteScopeFromArenas(arenas: Arena[]): string {
@@ -350,16 +462,18 @@ function commentBorderClassFromBorderSlug(slug: string | null | undefined): stri
 
 function LiveDuelsModule({
   duels,
-  pendingDuelCount,
+  liveDuelCount,
   liveDuelVotes2m,
   compact = false,
+  onOpenDuels,
 }: {
   duels: DuelRow[];
-  pendingDuelCount: number;
+  liveDuelCount: number;
   liveDuelVotes2m: number;
   compact?: boolean;
+  onOpenDuels?: () => void;
 }) {
-  const visibleDuels = duels.slice(0, compact ? 6 : 10);
+  const visibleDuels = liveDuelCount > 0 ? duels.slice(0, compact ? 6 : 10) : [];
   const withFallbackNav = (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.defaultPrevented) return;
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -384,14 +498,17 @@ function LiveDuelsModule({
         </h3>
         <Link
           href="/duel"
-          onClick={withFallbackNav('/duel')}
+          onClick={(e) => {
+            onOpenDuels?.();
+            withFallbackNav('/duel')(e);
+          }}
           data-testid="open-duel-arena-cta-live"
           className="focus-ring relative z-20 pointer-events-auto inline-flex items-center gap-1 rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-1 text-[10px] text-cyan-100 tap-target transition-all duration-150 hover:bg-cyan-500/22 active:translate-y-[1px]"
         >
-          Open Duel Arena <ArrowRight className="w-3 h-3" />
-          {visibleDuels.length > 0 && pendingDuelCount > 0 && (
+          Open Duels <ArrowRight className="w-3 h-3" />
+          {liveDuelCount > 0 && (
             <span className="absolute -top-2 -right-4 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center border border-red-300/40">
-              {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
+              {liveDuelCount > 99 ? '99+' : liveDuelCount}
             </span>
           )}
         </Link>
@@ -405,14 +522,338 @@ function LiveDuelsModule({
           ))}
         </div>
       ) : (
-        <p className="relative z-10 text-xs text-white/55">No live duels yet.</p>
+        <p className="relative z-10 text-xs text-white/55">No live duels right now. Be the first to start one.</p>
       )}
-      {liveDuelVotes2m > 0 && (
+      {visibleDuels.length > 0 && liveDuelVotes2m > 0 && (
         <p className="relative z-10 text-[10px] text-cyan-100/75 mt-1.5 inline-flex items-center gap-1">
           <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 animate-pulse" />
           +{liveDuelVotes2m} duel votes in last 2m
         </p>
       )}
+    </Card>
+  );
+}
+
+function MiniMatchPreview({
+  match,
+  voted,
+  voting,
+  voteSnapshot,
+  voteSyncing = false,
+  pulseCountdown,
+  onVote,
+  onOpenTournament,
+}: {
+  match: ArenaMatch | null;
+  voted: string | null;
+  voting: boolean;
+  voteSnapshot?: VoteSnapshot | null;
+  voteSyncing?: boolean;
+  pulseCountdown?: string | null;
+  onVote: (catId: string) => void;
+  onOpenTournament: () => void;
+}) {
+  if (!match) {
+    return (
+      <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(160deg,rgba(4,12,24,0.96),rgba(8,14,28,0.92))] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.34),0_0_22px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200/54">Starter Vote</p>
+            <h2 className="mt-1 text-xl font-black tracking-[-0.03em] text-white">Pick today&apos;s winner.</h2>
+            <p className="mt-1 text-sm text-white/58">No live matchup is loaded right now, but the bracket is ready for you.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenTournament}
+            className="rounded-xl bg-[linear-gradient(180deg,rgba(34,211,238,0.14),rgba(14,116,144,0.08))] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(103,232,249,0.16)] transition-all hover:bg-[linear-gradient(180deg,rgba(34,211,238,0.18),rgba(14,116,144,0.1))] active:scale-[0.96]"
+          >
+            Open Tournament
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const [pctA, pctB] = getVotePercent(match, voteSnapshot);
+  const catAName = getCatDisplayName(match.cat_a);
+  const catBName = getCatDisplayName(match.cat_b);
+  const votedSide = voted === match.cat_a.id ? 'a' : voted === match.cat_b.id ? 'b' : null;
+  const tierA = getTierKey(match.cat_a.rarity);
+  const tierB = getTierKey(match.cat_b.rarity);
+  const votingLocked = !!match.voting_locked;
+  const lockLabel = pulseCountdown ? `Votes reopen in ${pulseCountdown}.` : 'Voting is between pulses right now.';
+
+  return (
+    <div className="relative overflow-hidden rounded-[1.85rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.98),rgba(6,14,26,0.94),rgba(11,20,33,0.92))] p-4 shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_26px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(250,204,21,0.12),transparent_34%)]" />
+      <div className="relative">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/72 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.1)]">
+              <span>Starter Vote</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
+            </div>
+            <h2 className="mt-2 text-[1.35rem] font-black tracking-[-0.04em] text-white sm:text-[1.6rem]">Pick today&apos;s winner.</h2>
+            <p className="mt-1 text-sm text-white/58">
+              {votingLocked ? `${lockLabel} Open the bracket to follow the next round.` : 'Cast one clean vote here, then step into the full bracket.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenTournament}
+            className="rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] px-3 py-2 text-xs font-semibold text-white/82 shadow-[0_10px_18px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-all hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.11),rgba(255,255,255,0.05))] hover:text-white active:scale-[0.96]"
+          >
+            View Tournament
+          </button>
+        </div>
+
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 sm:gap-3.5">
+          <div className="min-w-0">
+            <div className={`rounded-[1.45rem] p-2.5 shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] ${votedSide === 'a' ? 'bg-white/[0.08]' : 'bg-white/[0.04]'}`}>
+              <div className="relative overflow-hidden rounded-[1.1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+                <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover object-center" />
+              </div>
+              <div className="mt-2.5 text-center">
+                <p className="truncate text-sm font-bold text-white sm:text-[15px]">{catAName}</p>
+                <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getRarityColor(match.cat_a.rarity)}`}>
+                  {match.cat_a.rarity}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <div className="rounded-full bg-white/[0.06] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+              VS
+            </div>
+            <div className="hidden rounded-full bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/55 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] sm:inline-flex">
+              {pctA}% · {pctB}%
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className={`rounded-[1.45rem] p-2.5 shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] ${votedSide === 'b' ? 'bg-white/[0.08]' : 'bg-white/[0.04]'}`}>
+              <div className="relative overflow-hidden rounded-[1.1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+                <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover object-center" />
+              </div>
+              <div className="mt-2.5 text-center">
+                <p className="truncate text-sm font-bold text-white sm:text-[15px]">{catBName}</p>
+                <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getRarityColor(match.cat_b.rarity)}`}>
+                  {match.cat_b.rarity}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            onClick={() => onVote(match.cat_a.id)}
+            disabled={voting || votingLocked}
+            className={`h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'a' ? 'bg-blue-500/20 text-blue-100 shadow-[0_12px_26px_rgba(59,130,246,0.2),0_0_18px_rgba(59,130,246,0.12),inset_0_0_0_1px_rgba(147,197,253,0.32)]' : 'bg-[linear-gradient(180deg,rgba(59,130,246,0.16),rgba(37,99,235,0.12))] text-white shadow-[0_10px_20px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[linear-gradient(180deg,rgba(59,130,246,0.2),rgba(37,99,235,0.15))] hover:shadow-[0_14px_24px_rgba(0,0,0,0.16),0_0_18px_rgba(59,130,246,0.1)]'}`}
+          >
+            {votingLocked ? 'Locked' : voting ? 'Voting...' : votedSide === 'a' ? 'Voted A' : 'Vote A'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onVote(match.cat_b.id)}
+            disabled={voting || votingLocked}
+            className={`h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'b' ? 'bg-rose-500/20 text-rose-100 shadow-[0_12px_26px_rgba(244,63,94,0.2),0_0_18px_rgba(244,63,94,0.12),inset_0_0_0_1px_rgba(253,164,175,0.32)]' : 'bg-[linear-gradient(180deg,rgba(244,63,94,0.16),rgba(225,29,72,0.12))] text-white shadow-[0_10px_20px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[linear-gradient(180deg,rgba(244,63,94,0.2),rgba(225,29,72,0.15))] hover:shadow-[0_14px_24px_rgba(0,0,0,0.16),0_0_18px_rgba(244,63,94,0.1)]'}`}
+          >
+            {votingLocked ? 'Locked' : voting ? 'Voting...' : votedSide === 'b' ? 'Voted B' : 'Vote B'}
+          </button>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between text-[10px] text-white/60">
+          <span>{votingLocked ? 'Pulse status' : voteSyncing ? 'Updating...' : 'Current split'}</span>
+          <span className="tabular-nums">{votingLocked ? (pulseCountdown || 'Locked') : `${pctA}% · ${pctB}%`}</span>
+        </div>
+        <div className="mt-1.5 relative h-1.5 overflow-hidden rounded-full bg-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
+          <div className="absolute left-0 top-0 h-full bg-blue-500 transition-[width] duration-300" style={{ width: `${pctA}%` }} />
+          <div className="absolute right-0 top-0 h-full bg-rose-500 transition-[width] duration-300" style={{ width: `${pctB}%` }} />
+        </div>
+
+        {votingLocked && !votedSide ? (
+          <div className="mt-3 rounded-2xl bg-amber-500/10 px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(252,211,77,0.14)]">
+            <p className="text-sm font-semibold text-amber-50">Voting is paused between pulses.</p>
+            <p className="mt-1 text-xs text-amber-100/72">{lockLabel}</p>
+            <button
+              type="button"
+              onClick={onOpenTournament}
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))] px-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(255,255,255,0.1)] transition-all hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.08))] active:scale-[0.96]"
+            >
+              Follow the Tournament
+            </button>
+          </div>
+        ) : null}
+
+        {votedSide ? (
+          <div className="mt-3 rounded-2xl bg-emerald-500/8 px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.14)]">
+            <p className="text-sm font-semibold text-emerald-50">Vote locked in.</p>
+            <p className="mt-1 text-xs text-emerald-100/72">Want the full bracket now?</p>
+            <button
+              type="button"
+              onClick={onOpenTournament}
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-400 via-sky-300 to-emerald-300 px-4 text-sm font-bold text-black shadow-[0_12px_28px_rgba(16,185,129,0.18),0_0_18px_rgba(34,211,238,0.12)] transition-all hover:shadow-[0_16px_32px_rgba(16,185,129,0.22),0_0_22px_rgba(34,211,238,0.14)] active:scale-[0.96]"
+            >
+              Continue to Tournament
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StarterQuestsModule({
+  tabs,
+  activeTab,
+  expanded,
+  onToggleExpanded,
+  onTabChange,
+  onQuestAction,
+}: {
+  tabs: Record<QuestTabKey, {
+    label: string;
+    kicker: string;
+    title: string;
+    description: string;
+    quests: HomepageQuestItem[];
+    empty: string;
+  }>;
+  activeTab: QuestTabKey;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  onTabChange: (tab: QuestTabKey) => void;
+  onQuestAction: (key: string) => void;
+}) {
+  const active = tabs[activeTab];
+  const quests = active.quests;
+  const completedCount = quests.filter((quest) => quest.done).length;
+  const rewardTotal = quests.reduce((sum, quest) => sum + Number(quest.reward || 0), 0);
+  const progressPct = quests.length ? Math.round((completedCount / quests.length) * 100) : 0;
+  const nextQuest = quests.find((quest) => !quest.done) || null;
+
+  return (
+    <Card className="relative overflow-hidden rounded-[1.6rem] border-white/[0.06] bg-[linear-gradient(150deg,rgba(16,24,36,0.9),rgba(8,12,22,0.88))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.24)] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.08),transparent_38%)]" />
+      <button
+        type="button"
+        onClick={onToggleExpanded}
+        className="relative z-[1] flex w-full items-start justify-between gap-3 text-left"
+        aria-expanded={expanded}
+      >
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200/56">{active.kicker}</p>
+          <h2 className="mt-1 text-lg font-bold text-white">{active.title}</h2>
+          <p className="mt-1 text-sm text-white/58">{active.description}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="shrink-0 rounded-full border border-white/[0.07] bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/72">
+            {completedCount}/{quests.length}
+          </div>
+          <span className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-white/[0.04] text-white/62 transition-transform ${expanded ? 'rotate-180' : ''}`}>⌄</span>
+        </div>
+      </button>
+
+      <div className="relative z-[1] mt-3 flex flex-wrap gap-2">
+        {(['starter', 'daily', 'weekly'] as QuestTabKey[]).map((tabKey) => {
+          const selected = tabKey === activeTab;
+          const tab = tabs[tabKey];
+          return (
+            <button
+              key={tabKey}
+              type="button"
+              onClick={() => onTabChange(tabKey)}
+              className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${selected ? 'border-cyan-300/20 bg-cyan-400/10 text-cyan-50' : 'border-white/[0.06] bg-white/[0.03] text-white/68 hover:bg-white/[0.05]'}`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="relative z-[1] mt-3 rounded-2xl bg-black/18 px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
+        <div className="flex items-center justify-between gap-3 text-[11px] text-white/70">
+          <span>{completedCount} complete</span>
+          <span className="inline-flex items-center gap-1">
+            {rewardTotal} <SigilIcon className="h-3.5 w-3.5" />
+          </span>
+        </div>
+        {nextQuest ? (
+          <div className="mt-2.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">{nextQuest.title}</p>
+              <p className="mt-0.5 text-[11px] text-white/56">{nextQuest.description}</p>
+            </div>
+            {nextQuest.cta ? (
+              <button
+                type="button"
+                onClick={() => onQuestAction(nextQuest.key)}
+                className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] px-3 text-[11px] font-semibold text-white/86 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-colors hover:bg-white/[0.09] active:scale-[0.97]"
+              >
+                {nextQuest.cta}
+              </button>
+            ) : (
+              <span className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-white/[0.05] px-3 text-[11px] font-semibold text-white/62 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]">
+                Auto-tracked
+              </span>
+            )}
+          </div>
+        ) : null}
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
+          <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-300 to-amber-300 transition-[width] duration-300" style={{ width: `${progressPct}%` }} />
+        </div>
+      </div>
+
+      {expanded ? (
+      <div className="relative z-[1] mt-3 space-y-2.5">
+        {quests.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.025] px-4 py-4 text-sm text-white/58">
+            {active.empty}
+          </div>
+        ) : quests.map((quest) => (
+          <div
+            key={quest.key}
+            className={`rounded-2xl px-3 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-colors ${quest.done ? 'bg-emerald-500/10' : 'bg-white/[0.025]'}`}
+          >
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] ${quest.done ? 'bg-emerald-500/16 text-emerald-100' : 'bg-white/[0.04] text-white/82'}`}>
+                {quest.done ? <Check className="h-4 w-4" /> : <Target className="h-4 w-4" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className={`text-sm font-semibold ${quest.done ? 'text-emerald-100' : 'text-white'}`}>{quest.title}</p>
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-100 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.16)]">
+                    +{quest.reward}
+                    <SigilIcon className="h-3 w-3" />
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-white/54">{quest.description}</p>
+                {typeof quest.target === 'number' ? (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-white/58">
+                    <span>Progress</span>
+                    <span className="tabular-nums">{Math.min(Number(quest.progress || 0), quest.target)}/{quest.target}</span>
+                  </div>
+                ) : null}
+                {!quest.done && quest.cta ? (
+                  <button
+                    type="button"
+                    onClick={() => onQuestAction(quest.key)}
+                    className="mt-2 inline-flex h-8 items-center justify-center rounded-full bg-white/[0.06] px-3 text-[11px] font-semibold text-white/84 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-colors hover:bg-white/[0.09] active:scale-[0.97]"
+                  >
+                    {quest.cta}
+                  </button>
+                ) : quest.done ? (
+                  <p className="mt-2 text-[11px] font-semibold text-emerald-200/82">Completed</p>
+                ) : typeof quest.target === 'number' ? (
+                  <p className="mt-2 text-[11px] font-semibold text-white/52">Auto-tracked</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      ) : null}
     </Card>
   );
 }
@@ -429,6 +870,12 @@ function LoadingNextFightsCard({ text = "Scrying the next fights..." }: { text?:
       </div>
     </div>
   );
+}
+
+function rankLiveDuels(rows: DuelRow[] | null | undefined): DuelRow[] {
+  return pickLiveDuels<DuelRow>(rows)
+    .sort((a, b) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
+    .slice(0, 5);
 }
 
 function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null | undefined }) {
@@ -451,7 +898,7 @@ const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
   isRefilling = false, resetFlipSignal = '',
-  debugMode = false, voteSnapshot = null,
+  debugMode = false, voteSnapshot = null, voteSyncing = false,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -471,6 +918,7 @@ const MatchCard = React.memo(function MatchCard({
   resetFlipSignal?: string;
   debugMode?: boolean;
   voteSnapshot?: VoteSnapshot | null;
+  voteSyncing?: boolean;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
@@ -518,7 +966,10 @@ const MatchCard = React.memo(function MatchCard({
   const [flipA, setFlipA] = useState(false);
   const [flipB, setFlipB] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
   const voteInFlightRef = useRef(false);
+  const cardClickTimerRef = useRef<number | null>(null);
+  const cardClickSideRef = useRef<"a" | "b" | null>(null);
   const flipTouchedRef = useRef(false);
   const allowFlip = flipTouchedRef.current;
   const forceFront = !allowFlip || isRefilling || exitingVisual || voteQueued || slotPhase !== "idle";
@@ -623,6 +1074,17 @@ const MatchCard = React.memo(function MatchCard({
     });
   }, [applyMotionTransform]);
 
+  const openCatDetails = useCallback((side: "a" | "b") => {
+    flipTouchedRef.current = true;
+    if (side === "a") {
+      setFlipB(false);
+      setFlipA((prev) => !prev);
+      return;
+    }
+    setFlipA(false);
+    setFlipB((prev) => !prev);
+  }, []);
+
   const commitVote = async (
     source: "tap" | "swipe_up" | "swipe_move" | "swipe_cancel" | "other",
     catId: string,
@@ -688,6 +1150,38 @@ const MatchCard = React.memo(function MatchCard({
       swipeCommittingRef.current = false;
     }
   };
+
+  const handleCatCardInteract = useCallback((side: "a" | "b", catId: string, catName: string) => {
+    const commitInstantVote = () => {
+      if (!canVote) {
+        openCatDetails(side);
+        return;
+      }
+      setPreviewToast(`Voted for ${catName}`);
+      void commitVote("other", catId);
+    };
+
+    if (cardClickTimerRef.current !== null && cardClickSideRef.current === side) {
+      window.clearTimeout(cardClickTimerRef.current);
+      cardClickTimerRef.current = null;
+      cardClickSideRef.current = null;
+      commitInstantVote();
+      return;
+    }
+
+    if (cardClickTimerRef.current !== null) {
+      window.clearTimeout(cardClickTimerRef.current);
+      cardClickTimerRef.current = null;
+      cardClickSideRef.current = null;
+    }
+
+    cardClickSideRef.current = side;
+    cardClickTimerRef.current = window.setTimeout(() => {
+      cardClickTimerRef.current = null;
+      cardClickSideRef.current = null;
+      openCatDetails(side);
+    }, 240);
+  }, [canVote, openCatDetails, commitVote]);
 
   function isSwipeBlockedTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
@@ -879,6 +1373,11 @@ const MatchCard = React.memo(function MatchCard({
     setAnimTick(0);
     setFlipA(false);
     setFlipB(false);
+    if (cardClickTimerRef.current !== null) {
+      window.clearTimeout(cardClickTimerRef.current);
+      cardClickTimerRef.current = null;
+    }
+    cardClickSideRef.current = null;
     flipTouchedRef.current = false;
     voteInFlightRef.current = false;
   }, [match.match_id, resetFlipSignal]);
@@ -908,6 +1407,10 @@ const MatchCard = React.memo(function MatchCard({
 
   useEffect(() => {
     return () => {
+      if (cardClickTimerRef.current !== null) {
+        window.clearTimeout(cardClickTimerRef.current);
+        cardClickTimerRef.current = null;
+      }
       if (rafRef.current !== null) {
         window.cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -935,6 +1438,15 @@ const MatchCard = React.memo(function MatchCard({
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const apply = () => setReduceMotion(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(max-width: 639px)');
+    const apply = () => setIsSmallScreen(media.matches);
     apply();
     media.addEventListener('change', apply);
     return () => media.removeEventListener('change', apply);
@@ -1113,37 +1625,41 @@ const MatchCard = React.memo(function MatchCard({
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] sm:gap-4">
         <div className="min-w-0">
           <div className="arena-flip-scene h-auto min-h-[332px] md:h-[300px] md:min-h-0">
-            <div className={`arena-flip-card ${flipA && !forceFront ? 'is-flipped' : ''}`}>
+            <div className={`arena-flip-card ${!isSmallScreen && flipA && !forceFront ? 'is-flipped-desktop' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/15 p-1.5 ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`rarity-badge rarity-badge--${tierA} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_a.rarity}
                   </span>
-                  <div className="flex items-center gap-1">
-                    <span className={`arena-tier-meta-chip arena-tier-meta-chip--${tierA} px-1.5 py-0.5 rounded-full border text-[8px]`}>LVL {Math.max(1, Number(match.cat_a.level || 1))}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        flipTouchedRef.current = true;
-                        setFlipA(true);
-                      }}
-                      aria-label={`Open ${catAName} details`}
-                      className={`arena-tier-info-btn arena-tier-info-btn--${tierA} h-4 min-w-4 px-1 rounded-full border text-[8px]`}
-                    >
-                      i
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      flipTouchedRef.current = true;
+                      setFlipB(false);
+                      setFlipA(true);
+                    }}
+                    aria-label={`Open ${catAName} details`}
+                    className={`arena-tier-info-btn arena-tier-info-btn--${tierA} h-5 min-w-5 px-1.5 rounded-full border text-[9px]`}
+                  >
+                    Flip
+                  </button>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    flipTouchedRef.current = true;
-                    setFlipA((v) => !v);
+                  onClick={() => handleCatCardInteract("a", match.cat_a.id, catAName)}
+                  onKeyDown={(e) => {
+                    if (e.key.toLowerCase() === 'v') {
+                      e.preventDefault();
+                      if (canVote) {
+                        setPreviewToast(`Voted for ${catAName}`);
+                        void commitVote("other", match.cat_a.id);
+                      }
+                    }
                   }}
-                  aria-label={`Flip ${catAName} card`}
+                  aria-label={`${catAName}. Click to view details, double click to vote`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
                   <div className={`arena-card-image arena-card-image--${tierA} w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15`}>
@@ -1153,60 +1669,85 @@ const MatchCard = React.memo(function MatchCard({
                 </button>
                 <div className="mt-1">
                   <p className="text-[13px] leading-tight font-semibold truncate">{catAName}</p>
-                  <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
-                    <p className={`arena-tier-role arena-tier-role--${tierA} min-w-0 truncate text-[9px]`}>Challenger</p>
-                    {guildA ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildA.cls}`}>{guildA.label}</span> : null}
-                  </div>
+                  <p className={`mt-0.5 arena-tier-role arena-tier-role--${tierA} min-w-0 truncate text-[9px]`}>Challenger</p>
                 </div>
               </div>
+              {!isSmallScreen ? (
                 <CatCardBack
                   cat={match.cat_a}
                   role="Challenger"
                   votes={Number(match.votes_a || 0)}
                   sharePct={displayPct.a}
+                  statEdge={{
+                    label: match.is_close_match ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'favored' : 'underdog'} ${edgePct > 0 ? `+${edgePct}%` : ''}`.trim(),
+                    tone: match.is_close_match ? 'neutral' : (strongerA ? 'a' : 'neutral'),
+                  }}
                   onClose={() => {
                     flipTouchedRef.current = true;
                     setFlipA(false);
                   }}
                 />
+              ) : null}
             </div>
           </div>
+          {isSmallScreen && flipA && !forceFront ? (
+            <CatCardBack
+              cat={match.cat_a}
+              role="Challenger"
+              votes={Number(match.votes_a || 0)}
+              sharePct={displayPct.a}
+              statEdge={{
+                label: match.is_close_match ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'favored' : 'underdog'} ${edgePct > 0 ? `+${edgePct}%` : ''}`.trim(),
+                tone: match.is_close_match ? 'neutral' : (strongerA ? 'a' : 'neutral'),
+              }}
+              stacked
+              className="mt-2"
+              onClose={() => {
+                flipTouchedRef.current = true;
+                setFlipA(false);
+              }}
+            />
+          ) : null}
         </div>
 
-        <div className="flex flex-row items-center justify-center gap-1 py-0.5 sm:pt-12 sm:flex-col">
+        <div className="flex flex-row items-center justify-center gap-1.5 py-1 sm:pt-12 sm:flex-col">
           <div className="arena-vs-separator text-[9px] text-white/65 font-bold tracking-[0.12em]">VS</div>
         </div>
 
         <div className="min-w-0">
           <div className="arena-flip-scene h-auto min-h-[332px] md:h-[300px] md:min-h-0">
-            <div className={`arena-flip-card ${flipB && !forceFront ? 'is-flipped' : ''}`}>
+            <div className={`arena-flip-card ${!isSmallScreen && flipB && !forceFront ? 'is-flipped-desktop' : ''}`}>
               <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/15 p-1.5 ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`rarity-badge rarity-badge--${tierB} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_b.rarity}
                   </span>
-                  <div className="flex items-center gap-1">
-                    <span className={`arena-tier-meta-chip arena-tier-meta-chip--${tierB} px-1.5 py-0.5 rounded-full border text-[8px]`}>LVL {Math.max(1, Number(match.cat_b.level || 1))}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        flipTouchedRef.current = true;
-                        setFlipB(true);
-                      }}
-                      aria-label={`Open ${catBName} details`}
-                      className={`arena-tier-info-btn arena-tier-info-btn--${tierB} h-4 min-w-4 px-1 rounded-full border text-[8px]`}
-                    >
-                      i
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      flipTouchedRef.current = true;
+                      setFlipA(false);
+                      setFlipB(true);
+                    }}
+                    aria-label={`Open ${catBName} details`}
+                    className={`arena-tier-info-btn arena-tier-info-btn--${tierB} h-5 min-w-5 px-1.5 rounded-full border text-[9px]`}
+                  >
+                    Flip
+                  </button>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    flipTouchedRef.current = true;
-                    setFlipB((v) => !v);
+                  onClick={() => handleCatCardInteract("b", match.cat_b.id, catBName)}
+                  onKeyDown={(e) => {
+                    if (e.key.toLowerCase() === 'v') {
+                      e.preventDefault();
+                      if (canVote) {
+                        setPreviewToast(`Voted for ${catBName}`);
+                        void commitVote("other", match.cat_b.id);
+                      }
+                    }
                   }}
-                  aria-label={`Flip ${catBName} card`}
+                  aria-label={`${catBName}. Click to view details, double click to vote`}
                   className="block w-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70"
                 >
                   <div className={`arena-card-image arena-card-image--${tierB} w-full aspect-[16/9] rounded-xl overflow-hidden border border-white/15`}>
@@ -1216,28 +1757,54 @@ const MatchCard = React.memo(function MatchCard({
                 </button>
                 <div className="mt-1">
                   <p className="text-[13px] leading-tight font-semibold truncate">{catBName}</p>
-                  <div className="mt-0.5 flex items-center justify-between gap-1 min-w-0 flex-nowrap">
-                    <p className={`arena-tier-role arena-tier-role--${tierB} min-w-0 truncate text-[9px]`}>Defender</p>
-                    {guildB ? <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[8px] ${guildB.cls}`}>{guildB.label}</span> : null}
-                  </div>
+                  <p className={`mt-0.5 arena-tier-role arena-tier-role--${tierB} min-w-0 truncate text-[9px]`}>Defender</p>
                 </div>
               </div>
+              {!isSmallScreen ? (
                 <CatCardBack
                   cat={match.cat_b}
                   role="Defender"
                   votes={Number(match.votes_b || 0)}
                   sharePct={displayPct.b}
+                  statEdge={{
+                    label: match.is_close_match ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'underdog' : 'favored'} ${edgePct > 0 ? `+${edgePct}%` : ''}`.trim(),
+                    tone: match.is_close_match ? 'neutral' : (strongerA ? 'neutral' : 'b'),
+                  }}
                   onClose={() => {
                     flipTouchedRef.current = true;
                     setFlipB(false);
                   }}
                 />
+              ) : null}
             </div>
           </div>
+          {isSmallScreen && flipB && !forceFront ? (
+            <CatCardBack
+              cat={match.cat_b}
+              role="Defender"
+              votes={Number(match.votes_b || 0)}
+              sharePct={displayPct.b}
+              statEdge={{
+                label: match.is_close_match ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'underdog' : 'favored'} ${edgePct > 0 ? `+${edgePct}%` : ''}`.trim(),
+                tone: match.is_close_match ? 'neutral' : (strongerA ? 'neutral' : 'b'),
+              }}
+              stacked
+              className="mt-2"
+              onClose={() => {
+                flipTouchedRef.current = true;
+                setFlipB(false);
+              }}
+            />
+          ) : null}
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[10px] text-white/52">
+        <span>Tap a fighter to flip the card.</span>
+        <span className="text-white/34">Double tap still votes fast.</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
         <button
           onClick={() => void commitVote("tap", match.cat_a.id)}
           aria-label={`Vote for ${catAName}`}
@@ -1260,18 +1827,14 @@ const MatchCard = React.memo(function MatchCard({
         </button>
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-[10px] text-white/70">
-        {match.is_close_match ? (
-          <span className="inline-flex px-2 py-0.5 rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">Close Match</span>
-        ) : (
-          <span className={`inline-flex px-2 py-0.5 rounded-full border ${strongerA ? 'border-blue-300/35 bg-blue-500/12 text-blue-100' : 'border-rose-300/35 bg-rose-500/12 text-rose-100'}`}>
-            Edge: {strongerA ? 'A' : 'B'} +{edgePct}%
-          </span>
-        )}
+      <div className="mt-3 flex items-center justify-between text-[10px] text-white/70">
+        <span className="inline-flex px-2 py-0.5 rounded-full border border-white/12 bg-white/[0.04] text-white/78">
+          {voteSyncing ? 'Updating...' : match.is_close_match ? 'Tight matchup' : 'Current split'}
+        </span>
         <span className="arena-vote-pct tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
       </div>
 
-      <div className="arena-vote-split mt-1 relative h-1.5 rounded-full overflow-hidden bg-white/8 border border-white/10">
+      <div className="arena-vote-split mt-1.5 relative h-1.5 rounded-full overflow-hidden bg-white/8 border border-white/10">
         <div
           className={`arena-vote-split-a absolute left-0 top-0 h-full bg-blue-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'a' ? 'shadow-[0_0_12px_rgba(59,130,246,0.55)]' : ''}`}
           style={{ width: `${Math.max(0, Math.min(100, displayPct.a))}%` }}
@@ -1283,34 +1846,40 @@ const MatchCard = React.memo(function MatchCard({
         <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        {!isComplete && !predictedCatId ? (
+      <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">Prediction</p>
+          {(predictedCatId || predictConfirmed) && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
+              Predicted +<SigilIcon className="w-3 h-3" />{match.user_prediction?.bet_sigils || bet}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          {!isComplete && !predictedCatId ? (
+            <button
+              onClick={() => setPredictOpen(true)}
+              aria-label="Open prediction panel"
+              className="h-9 px-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 text-cyan-100 text-xs font-semibold inline-flex items-center justify-center"
+            >
+              Open prediction
+            </button>
+          ) : (
+            <div className="h-9 inline-flex items-center text-[10px] text-white/42">
+              Predictions settle on the next pulse.
+            </div>
+          )}
           <button
-            onClick={() => setPredictOpen(true)}
-            aria-label="Open prediction panel"
-            className="h-9 px-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 text-cyan-100 text-xs font-semibold inline-flex items-center justify-center"
+            onClick={() => setDetailsOpen((v) => !v)}
+            className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-xs font-semibold inline-flex items-center gap-1"
+            aria-label={detailsOpen ? 'Hide match intel' : 'Open match intel'}
+            aria-expanded={detailsOpen}
+            aria-controls={`match-analyze-panel-${match.match_id}`}
           >
-            🔮 Predict
+            {detailsOpen ? 'Hide intel' : 'Match intel'}
+            <span className={`transition-transform duration-150 ${detailsOpen ? 'rotate-180' : ''}`}>⌄</span>
           </button>
-        ) : (
-          <div className="h-9 inline-flex items-center">
-            {(predictedCatId || predictConfirmed) && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
-                Predicted +<SigilIcon className="w-3 h-3" />{match.user_prediction?.bet_sigils || bet}
-              </span>
-            )}
-          </div>
-        )}
-        <button
-          onClick={() => setDetailsOpen((v) => !v)}
-          className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-xs font-semibold inline-flex items-center gap-1"
-          aria-label={detailsOpen ? 'Hide analyze section' : 'Open analyze section'}
-          aria-expanded={detailsOpen}
-          aria-controls={`match-analyze-panel-${match.match_id}`}
-        >
-          {detailsOpen ? 'Hide' : 'Analyze'}
-          <span className={`transition-transform duration-150 ${detailsOpen ? 'rotate-180' : ''}`}>⌄</span>
-        </button>
+        </div>
       </div>
       {(hasVoted || voteSubmitted || voteConfirm || voteQueued || votePending || parentConfirmed) && (
         <div className="mt-1.5 flex items-center gap-2 text-[10px]">
@@ -1618,6 +2187,8 @@ const MatchCard = React.memo(function MatchCard({
     prev.match === next.match &&
     prev.voted === next.voted &&
     prev.isVoting === next.isVoting &&
+    prev.voteSnapshot === next.voteSnapshot &&
+    prev.voteSyncing === next.voteSyncing &&
     prev.predictBusy === next.predictBusy &&
     prev.calloutBusy === next.calloutBusy &&
     prev.socialEnabled === next.socialEnabled &&
@@ -1641,10 +2212,11 @@ const MatchCard = React.memo(function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, voteSnapshotByMatchId, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false,
+  arena, votedMatches, voteSnapshotByMatchId, voteSyncingByMatchId, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false, homepageSpotlight = false,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   voteSnapshotByMatchId: Record<string, VoteSnapshot>;
+  voteSyncingByMatchId: Record<string, boolean>;
   votingMatch: string | null;
   predictBusyMatch: string | null;
   calloutBusyMatch: string | null;
@@ -1659,6 +2231,7 @@ function ArenaSection({
   debugInfo?: ArenaInventoryDebug | null;
   queueInfo?: ArenaQueuePageInfo | null;
   debugMode?: boolean;
+  homepageSpotlight?: boolean;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
@@ -2543,7 +3116,7 @@ function ArenaSection({
     if (process.env.NODE_ENV === 'production') return;
     if (!(feedStatus === 'refilling' || feedStatus === 'transitioning')) return;
     const id = window.setTimeout(() => {
-      const navTarget = document.querySelector('[data-testid="nav-duel"]') as HTMLElement | null;
+      const navTarget = document.querySelector('[data-testid="nav-gallery"]') as HTMLElement | null;
       const rect = navTarget?.getBoundingClientRect();
       const x = rect ? Math.floor(rect.left + rect.width * 0.5) : Math.floor(window.innerWidth * 0.5);
       const y = rect ? Math.floor(rect.top + rect.height * 0.5) : Math.max(0, window.innerHeight - 8);
@@ -2794,22 +3367,34 @@ function ArenaSection({
   }, [arena.type, feedStatus, queuedVotes, slotUiByMatchId, stackIds, votedMatches]);
 
   return (
-    <div className="rounded-3xl bg-white/[0.03] shadow-[0_10px_25px_rgba(0,0,0,0.25)] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className={config.accent}>{config.icon}</span>
-          <h3 className="text-base font-semibold">{config.label}</h3>
+    <div className={`${homepageSpotlight ? 'rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)] sm:p-5' : 'rounded-3xl bg-white/[0.03] shadow-[0_10px_25px_rgba(0,0,0,0.25)] p-4'}`}>
+      {!homepageSpotlight ? (
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className={config.accent}>{config.icon}</span>
+            <h3 className="text-base font-semibold">{config.label}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {globalPageInfo && (
+              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 text-white/85">
+                Global Page {globalPageInfo.pageIndex + 1}/{Math.max(1, globalPageInfo.totalPages)}
+              </span>
+            )}
+            <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 text-white/80">Round {arena.current_round}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {globalPageInfo && (
-            <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 text-white/85">
-              Global Page {globalPageInfo.pageIndex + 1}/{Math.max(1, globalPageInfo.totalPages)}
-            </span>
-          )}
-          <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 text-white/80">Round {arena.current_round}</span>
+      ) : (
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">Spotlight Match</p>
+            <p className="mt-1 text-sm text-white/64">One live matchup at a time, then the next fight rolls in.</p>
+          </div>
+          <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/72">
+            Round {arena.current_round}
+          </span>
         </div>
-      </div>
-      {globalPageInfo && (
+      )}
+      {globalPageInfo && !homepageSpotlight && (
         <div className="mb-2 flex items-center justify-between text-[10px] text-white/60">
           <span>{Math.max(0, Number(globalPageInfo.activeVoters10m || 0))} Vuxsolians voting here</span>
           <span className="inline-flex items-center gap-1">
@@ -2819,6 +3404,7 @@ function ArenaSection({
         </div>
       )}
 
+      {!homepageSpotlight ? (
       <div className="grid grid-cols-2 gap-2 mb-3">
         {(["voting", "results"] as const).map((s) => (
           <button
@@ -2844,7 +3430,8 @@ function ArenaSection({
           </button>
         ))}
       </div>
-      {segment === 'voting' && voteStreak >= 2 && (
+      ) : null}
+      {!homepageSpotlight && segment === 'voting' && voteStreak >= 2 && (
         <div className="mb-2 flex items-center justify-end gap-2">
           <span className={`streak-badge relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${voteStreak >= 3 ? 'badge-glow border-orange-200/55 bg-orange-500/18 text-orange-50' : 'border-orange-300/35 bg-orange-500/12 text-orange-100'}`}>
             {voteStreak >= 5 && !reduceMotion ? <span className="ring-pulse" /> : null}
@@ -2857,7 +3444,7 @@ function ArenaSection({
           )}
         </div>
       )}
-      {testerMode && debugMode && queueDebug && (
+      {testerMode && debugMode && queueDebug && !homepageSpotlight && (
         <div className="mb-2 rounded-lg border border-white/15 bg-black/35 p-2 text-[10px] text-white/70">
           <div>
             debug arena={queueDebug.arenaType} phase={queueDebug.status} snapshotV={queueDebug.snapshotVersion} reqSeq={queueDebug.requestSeq} orderLen={queueDebug.poolLen} pendingSnapshot={String(queueDebug.pendingSnapshot)}
@@ -2869,15 +3456,15 @@ function ArenaSection({
         </div>
       )}
 
-      {segment === 'voting' && stackVelocity && (
+      {!homepageSpotlight && segment === 'voting' && stackVelocity && (
         <p className="text-[10px] text-white/50 mb-2">{stackVelocity}</p>
       )}
-      {testerMode && debugMode && segment === 'voting' && debugInfo?.whyNotFilled?.length ? (
+      {testerMode && debugMode && segment === 'voting' && debugInfo?.whyNotFilled?.length && !homepageSpotlight ? (
         <p className="text-[10px] text-white/45 mb-2">
           debug: {debugInfo.whyNotFilled.join(', ')} · eligible {Number(debugInfo.eligibleCatsCount || 0)} · open {Number(debugInfo.openMatchesCount || 0)}
         </p>
       ) : null}
-      {segment === 'voting' && hasRenderableVotingMatch && feedError && !showAllVotedModule && hasMoreFightsForUser && isRefilling && (
+      {segment === 'voting' && hasRenderableVotingMatch && feedError && !showAllVotedModule && hasMoreFightsForUser && isRefilling && !homepageSpotlight && (
         <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-300/35 bg-amber-500/10 p-2 text-xs text-amber-100">
           <span>{feedError}</span>
           {showManualRefresh && (
@@ -2893,12 +3480,12 @@ function ArenaSection({
           )}
         </div>
       )}
-      {segment === 'voting' && voteStreak >= 5 && (
+      {!homepageSpotlight && segment === 'voting' && voteStreak >= 5 && (
         <p className="text-[10px] text-amber-200/90 mb-2">
           {voteStreak >= 10 ? '⚡ Chaos Agent unlocked' : `🔥 You're on a roll (${voteStreak} votes)`}
         </p>
       )}
-      {segment === 'voting' && showHotStreakBanner && voteStreak >= 10 && (
+      {!homepageSpotlight && segment === 'voting' && showHotStreakBanner && voteStreak >= 10 && (
         <div key={`hot-${hotStreakTick}`} className={`mb-2 inline-flex items-center rounded-full border border-fuchsia-300/45 bg-fuchsia-500/18 px-3 py-1 text-xs font-semibold text-fuchsia-100 ${reduceMotion ? '' : 'hot-streak'}`}>
           🔥 HOT STREAK x{voteStreak}
         </div>
@@ -2941,7 +3528,7 @@ function ArenaSection({
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className={`${homepageSpotlight ? 'space-y-0' : 'space-y-3'}`}>
           {segment === 'voting' ? (
             <>
               <div className={topVotingSlot?.match ? "min-h-[420px]" : "min-h-[140px]"}>
@@ -2952,6 +3539,7 @@ function ArenaSection({
                     voted={votedMatches[topVotingSlot.match.match_id] || null}
                     debugMode={debugMode}
                     isVoting={votingMatch === topVotingSlot.match.match_id}
+                    voteSyncing={!!voteSyncingByMatchId[topVotingSlot.match.match_id]}
                     predictBusy={predictBusyMatch === topVotingSlot.match.match_id}
                     calloutBusy={calloutBusyMatch === topVotingSlot.match.match_id}
                     socialEnabled={socialEnabled}
@@ -2982,7 +3570,7 @@ function ArenaSection({
                   />
                 )}
               </div>
-              {topVotingSlot?.match && hasRenderableVotingMatch && isRefilling && hasMoreFightsForUser && !showAllVotedModule && (
+              {topVotingSlot?.match && hasRenderableVotingMatch && isRefilling && hasMoreFightsForUser && !showAllVotedModule && !homepageSpotlight && (
                 <LoadingNextFightsCard
                   text={
                     refillRetryAttempt > 0
@@ -3000,6 +3588,7 @@ function ArenaSection({
                 voted={match.user_voted_cat_id || votedMatches[match.match_id] || null}
                 debugMode={debugMode}
                 isVoting={votingMatch === match.match_id}
+                voteSyncing={!!voteSyncingByMatchId[match.match_id]}
                 predictBusy={predictBusyMatch === match.match_id}
                 calloutBusy={calloutBusyMatch === match.match_id}
                 socialEnabled={socialEnabled}
@@ -3016,7 +3605,7 @@ function ArenaSection({
               />
             ))
           )}
-          {segment === 'voting' && visiblePageOrder.length > MAX_VISIBLE && (
+          {!homepageSpotlight && segment === 'voting' && visiblePageOrder.length > MAX_VISIBLE && (
             <div className="pt-1 flex items-center justify-center">
               <button
                 onClick={() => {
@@ -3055,7 +3644,7 @@ function ArenaSection({
               </div>
             </div>
           )}
-          <div className="text-xs text-white/35 px-1">{config.description}</div>
+          {!homepageSpotlight ? <div className="text-xs text-white/35 px-1">{config.description}</div> : null}
         </div>
       )}
     </div>
@@ -3174,6 +3763,7 @@ export default function Page() {
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [arenas, setArenas] = useState<Arena[]>([]);
   const [voteSnapshotByMatchId, setVoteSnapshotByMatchId] = useState<Record<string, VoteSnapshot>>({});
+  const [voteSyncingByMatchId, setVoteSyncingByMatchId] = useState<Record<string, boolean>>({});
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
   const [votingMatch, setVotingMatch] = useState<string | null>(null);
   const [predictBusyMatch, setPredictBusyMatch] = useState<string | null>(null);
@@ -3202,6 +3792,7 @@ export default function Page() {
     hall_of_fame: null | { note?: string | null; tagline?: string | null; theme?: string | null; expires_in_hours?: number | null; cat: { id: string; name: string; rarity: string; owner_username?: string | null; image_url?: string | null } | null };
     cat_of_week: null | { note?: string | null; tagline?: string | null; theme?: string | null; expires_in_hours?: number | null; cat: { id: string; name: string; rarity: string; owner_username?: string | null; image_url?: string | null } | null };
   }>({ hall_of_fame: null, cat_of_week: null });
+  const voteSyncTimerRef = useRef<Record<string, number>>({});
   const [gettingStarted, setGettingStarted] = useState<{
     title: string;
     rank_label: string;
@@ -3212,16 +3803,20 @@ export default function Page() {
     completion: { complete: boolean; badge_unlocked: boolean; bonus_xp: number };
     runtime_rewards?: { xp_awarded_now?: number; cat_xp_banked_now?: number };
   } | null>(null);
-  const [missionBoardOpen, setMissionBoardOpen] = useState(false);
-  const [openMissionKey, setOpenMissionKey] = useState<string | null>(null);
   const [arenaTypeTab] = useState<'main' | 'rookie'>('main');
-  const [pendingDuelCount, setPendingDuelCount] = useState(0);
+  const [liveDuelCount, setLiveDuelCount] = useState(0);
   const [liveDuels, setLiveDuels] = useState<DuelRow[]>([]);
   const [liveDuelVotes2m, setLiveDuelVotes2m] = useState(0);
   const missionToastKeyRef = useRef<string>('');
   const missionNudgeKeyRef = useRef<string>('');
   const [missionNudge, setMissionNudge] = useState<null | { key: string; title: string; cta: string; href: string }>(null);
   const [crateCountdown, setCrateCountdown] = useState('00:00:00');
+  const [showHighlightsSection, setShowHighlightsSection] = useState(false);
+  const [showDailyCoreSection, setShowDailyCoreSection] = useState(false);
+  const [starterQuestFlags, setStarterQuestFlags] = useState<Record<string, boolean>>({});
+  const [questTab, setQuestTab] = useState<QuestTabKey>('starter');
+  const [questsExpanded, setQuestsExpanded] = useState(false);
+  const [homeQuestBuckets, setHomeQuestBuckets] = useState<{ daily: DashboardQuest[]; weekly: DashboardQuest[] }>({ daily: [], weekly: [] });
   const [hudPulseKey, setHudPulseKey] = useState('');
   const [displayStats, setDisplayStats] = useState({ streak: 0, xp: 0, sigils: 0, pred: 0 });
   const displayStatsRef = useRef(displayStats);
@@ -3233,6 +3828,8 @@ export default function Page() {
     sigils: number;
     nextHint: string;
   }>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   const statsStrip = useMemo(() => (
     <div className="stats-strip-shell hidden sm:block">
@@ -3278,7 +3875,6 @@ export default function Page() {
 
   useHeaderExtension(statsStrip);
   const [showBookmarkMissionBanner, setShowBookmarkMissionBanner] = useState(false);
-  const [bookmarkMissionBusy, setBookmarkMissionBusy] = useState(false);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
   const bookmarkMissionToastRef = useRef<string>('');
   const [voteStreak, setVoteStreak] = useState(0);
@@ -3325,7 +3921,7 @@ export default function Page() {
   const arenaVersionRef = useRef<Record<'main' | 'rookie', string>>({ main: '', rookie: '' });
   const duelVersionRef = useRef<string>('');
   const statusBurstUntilRef = useRef<number>(0);
-  const duelSectionRef = useRef<HTMLDivElement | null>(null);
+  const duelSectionRef = useRef<HTMLAnchorElement | null>(null);
   const [duelSectionInView, setDuelSectionInView] = useState(false);
   const lowEgressMode = process.env.NEXT_PUBLIC_LOW_EGRESS === '1';
   const guestRewardsHintShownRef = useRef(false);
@@ -3478,6 +4074,18 @@ export default function Page() {
   const hasMatchesForActiveTab = displayedArenas.some((arena) =>
     (arena.rounds || []).some((round) => (round.matches || []).length > 0)
   );
+  const homepageMiniMatch = useMemo(() => {
+    let lockedFallback: ArenaMatch | null = null;
+    for (const arena of displayedArenas) {
+      const currentRound = (arena.rounds || []).find((round) => round.round === arena.current_round);
+      const candidates = (currentRound?.matches || arena.rounds.flatMap((round) => round.matches || []))
+        .filter((match) => !!match?.match_id && !isByeMatch(match) && isArenaVotingStatus(match.status));
+      const unlocked = candidates.find((match) => !match.voting_locked);
+      if (unlocked) return unlocked;
+      if (!lockedFallback && candidates[0]) lockedFallback = candidates[0];
+    }
+    return lockedFallback;
+  }, [displayedArenas]);
 
   useEffect(() => { loadAll(); }, []);
   useEffect(() => {
@@ -3657,9 +4265,33 @@ export default function Page() {
   }, [clutchSharePrompt]);
   useEffect(() => {
     if (!dailyRewardSplash) return;
-    const timer = window.setTimeout(() => setDailyRewardSplash(null), 2400);
+    const timer = window.setTimeout(() => setDailyRewardSplash(null), 4200);
     return () => window.clearTimeout(timer);
   }, [dailyRewardSplash]);
+  useEffect(() => {
+    if (loading) return;
+    if (onboardingChecked) return;
+    if (dailyRewardSplash) return;
+    try {
+      const seen = window.localStorage.getItem(HOMEPAGE_ONBOARDING_KEY);
+      if (seen === 'true') {
+        setOnboardingChecked(true);
+        return;
+      }
+    } catch {
+      setOnboardingChecked(true);
+      return;
+    }
+
+    const isNewUser =
+      Number(progress?.level || 1) === 1 &&
+      Number(progress?.xp || 0) === 0 &&
+      Number(progress?.currentStreak || 0) === 0 &&
+      Number(progress?.predictionStreak || 0) === 0;
+
+    setShowOnboarding(isNewUser);
+    setOnboardingChecked(true);
+  }, [dailyRewardSplash, loading, onboardingChecked, progress?.currentStreak, progress?.level, progress?.predictionStreak, progress?.xp]);
   useEffect(() => {
     const targetMs = new Date(nextRefreshAtUtc).getTime();
     const tick = () => {
@@ -3753,13 +4385,14 @@ export default function Page() {
     if (lowEgressMode && !duelSectionInView) return;
     const tick = async () => {
       const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
-      if (!duel?.ok) return;
-      const open = Array.isArray(duel.open) ? duel.open : [];
-      const top = open
-        .filter((d: DuelRow) => !!d?.challenger_cat?.id && !!d?.challenged_cat?.id)
-        .sort((a: DuelRow, b: DuelRow) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
-        .slice(0, 5);
-      setLiveDuels(top);
+      if (!duel?.ok) {
+        setLiveDuelCount(0);
+        setLiveDuels([]);
+        setLiveDuelVotes2m(0);
+        return;
+      }
+      setLiveDuelCount(countLiveDuels(duel.open));
+      setLiveDuels(rankLiveDuels(Array.isArray(duel.open) ? duel.open : []));
       setLiveDuelVotes2m(Number(duel?.recent_votes_2m || 0));
     };
     tick();
@@ -3996,6 +4629,10 @@ export default function Page() {
       setRecruitPushEnabled(!!homeData?.launch?.recruit_push_enabled);
       setHotMatchBiasEnabled(!!homeData?.launch?.hot_match_bias_enabled);
       setClutchSharePromptEnabled(!!homeData?.launch?.clutch_share_prompt_enabled);
+      setHomeQuestBuckets({
+        daily: Array.isArray(homeData?.quests?.daily) ? homeData.quests.daily : [],
+        weekly: Array.isArray(homeData?.quests?.weekly) ? homeData.quests.weekly : [],
+      });
     }
     const rv = await fetch('/api/social/rivalries', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
     setSocialLoopEnabled(!!(rv?.ok && rv?.enabled));
@@ -4003,16 +4640,11 @@ export default function Page() {
     setCrossMode(cm?.ok ? cm : null);
     const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
     if (duel?.ok) {
-      setPendingDuelCount(countLiveVotableDuels(duel.open));
-      const open = Array.isArray(duel.open) ? duel.open : [];
-      const top = open
-        .filter((d: DuelRow) => !!d?.challenger_cat?.id && !!d?.challenged_cat?.id)
-        .sort((a: DuelRow, b: DuelRow) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
-        .slice(0, 5);
-      setLiveDuels(top);
+      setLiveDuelCount(countLiveDuels(duel.open));
+      setLiveDuels(rankLiveDuels(Array.isArray(duel.open) ? duel.open : []));
       setLiveDuelVotes2m(Number(duel?.recent_votes_2m || 0));
     } else {
-      setPendingDuelCount(0);
+      setLiveDuelCount(0);
       setLiveDuels([]);
       setLiveDuelVotes2m(0);
     }
@@ -4088,18 +4720,72 @@ export default function Page() {
     }
   }, [router]);
 
+  const clearVoteSyncing = useCallback((matchId: string) => {
+    const existingTimer = voteSyncTimerRef.current[matchId];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+      delete voteSyncTimerRef.current[matchId];
+    }
+    setVoteSyncingByMatchId((prev) => {
+      if (!prev[matchId]) return prev;
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
+  }, []);
+
+  const markVoteSyncing = useCallback((matchId: string) => {
+    const existingTimer = voteSyncTimerRef.current[matchId];
+    if (existingTimer) window.clearTimeout(existingTimer);
+    setVoteSyncingByMatchId((prev) => ({ ...prev, [matchId]: true }));
+    voteSyncTimerRef.current[matchId] = window.setTimeout(() => {
+      clearVoteSyncing(matchId);
+    }, 1800);
+  }, [clearVoteSyncing]);
+
+  const handleMiniPreviewVote = useCallback(async (catId: string) => {
+    const match = homepageMiniMatch;
+    if (!match) {
+      router.push('/tournament');
+      return;
+    }
+    if (match.voting_locked) {
+      showToast(`Preview voting is paused. ${pulseCountdown ? `Next pulse in ${pulseCountdown}.` : 'Open the bracket to follow the next round.'}`);
+      return;
+    }
+    const existingVote = votedMatches[match.match_id];
+    if (existingVote) {
+      showToast('Your preview vote is already in. Continue when you’re ready.');
+      return;
+    }
+    const ok = await handleVote(match.match_id, catId);
+    if (ok) {
+      showToast('Vote recorded. Continue into the full bracket when you want.');
+      return;
+    }
+  }, [handleVote, homepageMiniMatch, pulseCountdown, router, showToast, votedMatches]);
+
   async function handleVote(matchId: string, catId: string): Promise<boolean> {
     if (votingMatch) return false;
     if (Date.now() < Number(voteCooldownUntilRef.current || 0)) {
       showToast("Too fast — take a breath 😼");
       return false;
     }
-      const matchedMatch = arenas
-        .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
-        .find((m) => m.match_id === matchId);
-  const matchedArenaType = arenas.find((a) =>
-    (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
-  )?.type as 'main' | 'rookie' | undefined;
+    const matchedMatch = arenas
+      .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
+      .find((m) => m.match_id === matchId);
+    const matchedArenaType = arenas.find((a) =>
+      (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
+    )?.type as 'main' | 'rookie' | undefined;
+    const baselineSnapshot = normalizeVoteSnapshot(voteSnapshotByMatchId[matchId] || matchedMatch || null);
+    const voteSide: 'a' | 'b' | null =
+      matchedMatch?.cat_a?.id === catId ? 'a' :
+      matchedMatch?.cat_b?.id === catId ? 'b' :
+      null;
+    const optimisticSnapshot =
+      voteSide && matchedMatch
+        ? buildOptimisticVoteSnapshot(voteSnapshotByMatchId[matchId] || matchedMatch, voteSide)
+        : null;
     setVotingMatch(matchId);
     setError(null);
     setVotedMatches((prev) => {
@@ -4113,6 +4799,11 @@ export default function Page() {
       }
       return next;
     });
+    if (optimisticSnapshot) {
+      setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: optimisticSnapshot }));
+      setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, optimisticSnapshot));
+      markVoteSyncing(matchId);
+    }
     try {
       const r = await fetch("/api/vote", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -4120,35 +4811,67 @@ export default function Page() {
       });
       const data = await r.json().catch(() => null);
       const applyServerVoteSnapshot = (payload: any) => {
-        if (!payload || !matchedArenaType) return;
-        const snapshot: VoteSnapshot = {
-          votes_a: Number(payload.votes_a || matchedMatch?.votes_a || 0),
-          votes_b: Number(payload.votes_b || matchedMatch?.votes_b || 0),
-          total_votes: Number(payload.total_votes || 0),
-          percent_a: Number(payload.percent_a || 0),
-          percent_b: Number(payload.percent_b || 0),
+        if (!payload) return;
+        const votesA = Number(
+          payload?.votes_a ??
+          payload?.votesA ??
+          matchedMatch?.votes_a ??
+          0
+        );
+        const votesB = Number(
+          payload?.votes_b ??
+          payload?.votesB ??
+          matchedMatch?.votes_b ??
+          0
+        );
+        const totalVotes = Number(
+          payload?.total_votes ??
+          payload?.totalVotes ??
+          (votesA + votesB)
+        );
+        const percentA = Number.isFinite(Number(payload?.percent_a))
+          ? Number(payload.percent_a)
+          : Number.isFinite(Number(payload?.percentA))
+            ? Number(payload.percentA)
+            : totalVotes > 0
+              ? Math.round((votesA / totalVotes) * 100)
+              : 50;
+        const percentB = Number.isFinite(Number(payload?.percent_b))
+          ? Number(payload.percent_b)
+          : Number.isFinite(Number(payload?.percentB))
+            ? Number(payload.percentB)
+          : totalVotes > 0
+              ? Math.max(0, 100 - percentA)
+              : 50;
+        const snapshot = normalizeVoteSnapshot({
+          votes_a: votesA,
+          votes_b: votesB,
+          percent_a: percentA,
+          percent_b: percentB,
+        }) || {
+          votes_a: votesA,
+          votes_b: votesB,
+          total_votes: totalVotes,
+          percent_a: percentA,
+          percent_b: percentB,
         };
         setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: snapshot }));
-        setArenas((prev) => prev.map((arena) => {
-          if (arena.type !== matchedArenaType) return arena;
-          return {
-            ...arena,
-            rounds: (arena.rounds || []).map((round) => ({
-              ...round,
-              matches: (round.matches || []).map((m) => {
-                if (String(m.match_id || '') !== String(matchId || '')) return m;
-                  return {
-                    ...m,
-                    votes_a: snapshot.votes_a,
-                    votes_b: snapshot.votes_b,
-                    total_votes: snapshot.total_votes || m.total_votes || 0,
-                    percent_a: snapshot.percent_a,
-                    percent_b: snapshot.percent_b,
-                  };
-                }),
-              })),
-          };
-        }));
+        setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, snapshot));
+        clearVoteSyncing(matchId);
+      };
+      const restoreVoteSnapshot = () => {
+        if (baselineSnapshot) {
+          setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: baselineSnapshot }));
+          setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, baselineSnapshot));
+        } else {
+          setVoteSnapshotByMatchId((prev) => {
+            if (!prev[matchId]) return prev;
+            const next = { ...prev };
+            delete next[matchId];
+            return next;
+          });
+        }
+        clearVoteSyncing(matchId);
       };
       if (r.status === 429) {
         voteCooldownUntilRef.current = Date.now() + 1200;
@@ -4164,6 +4887,7 @@ export default function Page() {
           writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
+        restoreVoteSnapshot();
         showToast("Too fast — take a breath 😼");
         return false;
       }
@@ -4196,6 +4920,7 @@ export default function Page() {
           writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
+        restoreVoteSnapshot();
         showToast("Vote failed — try again");
         return false;
       } else {
@@ -4264,6 +4989,24 @@ export default function Page() {
                 : [];
               if (!updates.length) return;
               const updateMap = new Map(updates.map((u: any) => [String(u.matchId || ''), u]));
+              setVoteSnapshotByMatchId((prev) => {
+                let changed = false;
+                const next = { ...prev };
+                updates.forEach((update) => {
+                  const updateMatchId = String(update.matchId || '');
+                  if (!updateMatchId) return;
+                  const snapshot = normalizeVoteSnapshot({
+                    votes_a: Number(update.votesA || 0),
+                    votes_b: Number(update.votesB || 0),
+                    percent_a: Number(update.percentA || 0),
+                    percent_b: Number(update.percentB || 0),
+                  });
+                  if (!snapshot) return;
+                  next[updateMatchId] = snapshot;
+                  changed = true;
+                });
+                return changed ? next : prev;
+              });
               setArenas((prev) => prev.map((arena) => {
                 if (arena.type !== matchedArenaType) return arena;
                 return {
@@ -4289,6 +5032,7 @@ export default function Page() {
                 ...prev,
                 [matchedArenaType]: { ...prev[matchedArenaType], livePulseAt: Date.now() },
               }));
+              clearVoteSyncing(matchId);
             })
             .catch(() => null);
         }
@@ -4303,6 +5047,18 @@ export default function Page() {
         writeVotedMatchesToStorage(next, voteStateScope);
         return next;
       });
+      if (baselineSnapshot) {
+        setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: baselineSnapshot }));
+        setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, baselineSnapshot));
+      } else {
+        setVoteSnapshotByMatchId((prev) => {
+          if (!prev[matchId]) return prev;
+          const next = { ...prev };
+          delete next[matchId];
+          return next;
+        });
+      }
+      clearVoteSyncing(matchId);
       showToast("Vote failed — try again");
       return false;
     } finally {
@@ -4316,6 +5072,10 @@ export default function Page() {
         window.clearTimeout(voteCooldownTimerRef.current);
         voteCooldownTimerRef.current = null;
       }
+      for (const timer of Object.values(voteSyncTimerRef.current)) {
+        window.clearTimeout(timer);
+      }
+      voteSyncTimerRef.current = {};
     };
   }, []);
 
@@ -4329,8 +5089,8 @@ export default function Page() {
       const busy = !!(votingMatch || predictBusyMatch);
       const now = Date.now();
       const burst = now < Number(statusBurstUntilRef.current || 0);
-      const baseDelay = isHidden ? 60_000 : (burst ? 6_000 : 12_000);
-      const delay = busy ? Math.max(baseDelay, 12_000) : baseDelay;
+      const baseDelay = isHidden ? 60_000 : (burst ? 2_500 : 4_500);
+      const delay = busy ? Math.max(baseDelay, 5_000) : baseDelay;
 
       try {
         const status = await fetch('/api/home/status', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
@@ -4384,14 +5144,14 @@ export default function Page() {
             if (duelVersion && duelVersion !== duelVersionRef.current) {
               const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
               if (duel?.ok) {
-                const open = Array.isArray(duel.open) ? duel.open : [];
-                const top = open
-                  .filter((d: DuelRow) => !!d?.challenger_cat?.id && !!d?.challenged_cat?.id)
-                  .sort((a: DuelRow, b: DuelRow) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
-                  .slice(0, 5);
-                setLiveDuels(top);
+                setLiveDuelCount(countLiveDuels(duel.open));
+                setLiveDuels(rankLiveDuels(Array.isArray(duel.open) ? duel.open : []));
                 setLiveDuelVotes2m(Number(duel?.recent_votes_2m || 0));
                 duelVersionRef.current = duelVersion;
+              } else {
+                setLiveDuelCount(0);
+                setLiveDuels([]);
+                setLiveDuelVotes2m(0);
               }
             }
           }
@@ -4568,20 +5328,6 @@ export default function Page() {
     }
   }
 
-  useEffect(() => {
-    if (!gettingStarted) return;
-    const key = gettingStarted.current_mission_key || gettingStarted.missions.find((m) => m.status === 'active')?.key || gettingStarted.missions[0]?.key || null;
-    setOpenMissionKey(key);
-  }, [gettingStarted?.current_mission_key]);
-
-  useEffect(() => {
-    if (!openMissionKey) return;
-    const node = document.getElementById(`mission-${openMissionKey}`);
-    if (node && missionBoardOpen) {
-      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [openMissionKey, missionBoardOpen]);
-
   async function handlePredict(matchId: string, catId: string, bet: number): Promise<boolean> {
     if (predictBusyMatch) return false;
     setPredictBusyMatch(matchId);
@@ -4671,11 +5417,11 @@ export default function Page() {
       showToast(data?.status === 'completed' ? 'Duel completed' : 'Duel vote recorded');
       const duel = await fetch('/api/duel/challenges', { cache: 'no-store' }).then((r) => r.json().catch(() => null)).catch(() => null);
       if (duel?.ok && Array.isArray(duel.open)) {
-        const top = duel.open
-          .filter((d: DuelRow) => !!d?.challenger_cat?.id && !!d?.challenged_cat?.id)
-          .sort((a: DuelRow, b: DuelRow) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
-          .slice(0, 5);
-        setLiveDuels(top);
+        setLiveDuelCount(countLiveDuels(duel.open));
+        setLiveDuels(rankLiveDuels(duel.open));
+      } else {
+        setLiveDuelCount(0);
+        setLiveDuels([]);
       }
     } catch {
       showToast('Duel vote failed');
@@ -4698,87 +5444,225 @@ export default function Page() {
     router.push(target);
   }
 
-  function handleMissionPrimaryAction() {
-    if (!gettingStarted) return;
-    const active = gettingStarted.missions.find((m) => m.status === 'active');
-    if (!active) return;
-    runMissionCta(active);
-  }
-
-  const activeMissionCtaLabel = useMemo(() => {
-    if (!gettingStarted) return 'Start Voting';
-    const active = gettingStarted.missions.find((m) => m.status === 'active');
-    if (active?.cta?.trim()) return active.cta.trim();
-    const fallback = gettingStarted.missions.find((m) => m.status !== 'complete');
-    return fallback?.cta?.trim() || 'Start Voting';
+  const activeOnboardingMission = useMemo(() => {
+    if (!gettingStarted) return null;
+    return gettingStarted.missions.find((mission) => mission.status === 'active') || null;
   }, [gettingStarted]);
 
-  const isClaimedPlayer = hasCredentials && hasProfileUsername;
-  const heroHeadline = isClaimedPlayer ? 'Welcome back to CatClash.' : 'Forge Your Cat. Battle in the Arena.';
-  const heroSubheadline = isClaimedPlayer
-    ? 'Pick up your next move: forge a new fighter, check the gallery, or jump into a live duel.'
-    : 'Create your fighter in minutes, vote in live duels, and build your name before the arena opens wide.';
-  const heroPrimaryLabel = isClaimedPlayer ? 'Forge Another Cat' : 'Forge Your Cat';
-  const heroKicker = isClaimedPlayer ? 'Your next move starts here' : 'New challengers start here';
-  const shouldShowSpotlights = isClaimedPlayer && Boolean(spotlights.hall_of_fame?.cat || spotlights.cat_of_week?.cat);
-  const shouldShowMissionBoard = isClaimedPlayer && Boolean(gettingStarted && !gettingStarted.completion.complete);
-
-  async function handleBookmarkMissionComplete() {
-    if (bookmarkMissionBusy) return;
-    setBookmarkMissionBusy(true);
-    try {
-      const res = await fetch('/api/rewards/home-bookmark', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) {
-        showToast(data?.error || 'Mission claim failed');
-        return;
-      }
-      if (!data?.already_claimed && Number(data?.sigils_awarded || 0) > 0) {
-        setProgress((p) => p ? { ...p, sigils: Number(data.sigils_after ?? (p.sigils + Number(data.sigils_awarded || 0))) } : p);
-        showToast(`Mission complete: +${Number(data.sigils_awarded || 0)} sigils`);
-      } else {
-        showToast('Mission already completed');
-      }
-      await refreshGettingStarted();
-    } catch {
-      showToast('Mission claim failed');
-    } finally {
-      setBookmarkMissionBusy(false);
+  async function handleOnboardingModuleCta() {
+    if (!activeOnboardingMission) {
+      router.push('/tournament');
+      return;
     }
-  }
-
-  async function handleAddToHomeScreen() {
-    try {
-      if (deferredInstallPrompt) {
-        deferredInstallPrompt.prompt();
-        await deferredInstallPrompt.userChoice.catch(() => null);
-        setDeferredInstallPrompt(null);
-      } else {
+    if (activeOnboardingMission.key === 'bookmark_home') {
+      try {
+        if (deferredInstallPrompt) {
+          deferredInstallPrompt.prompt();
+          await deferredInstallPrompt.userChoice.catch(() => null);
+          setDeferredInstallPrompt(null);
+        } else {
+          showToast('Use browser menu → Add to Home Screen');
+        }
+      } catch {
         showToast('Use browser menu → Add to Home Screen');
       }
-    } catch {
-      showToast('Use browser menu → Add to Home Screen');
+      return;
     }
+    runMissionCta(activeOnboardingMission);
+  }
+
+  const isClaimedPlayer = hasCredentials && hasProfileUsername;
+  const shouldShowSpotlights = isClaimedPlayer && Boolean(spotlights.hall_of_fame?.cat || spotlights.cat_of_week?.cat);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(HOMEPAGE_STARTER_QUESTS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setStarterQuestFlags(parsed as Record<string, boolean>);
+      }
+    } catch {
+      setStarterQuestFlags({});
+    }
+  }, []);
+
+  const markStarterQuest = useCallback((key: string) => {
+    setStarterQuestFlags((prev) => {
+      if (prev[key]) return prev;
+      const next = { ...prev, [key]: true };
+      try {
+        window.localStorage.setItem(HOMEPAGE_STARTER_QUESTS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const completedMissionKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const mission of gettingStarted?.missions || []) {
+      if (mission.status === 'complete') set.add(mission.key);
+    }
+    return set;
+  }, [gettingStarted]);
+
+  const starterHomepageQuests = useMemo(() => {
+    const votedOnce = Object.keys(votedMatches || {}).length > 0;
+    return [
+      {
+        key: 'vote_match',
+        title: 'Vote in 1 tournament match',
+        description: 'Pick a winner in the mini match or the full bracket.',
+        reward: STARTER_SIGIL_REWARDS.vote_match,
+        done: votedOnce,
+        cta: null,
+        progress: votedOnce ? 1 : 0,
+        target: 1,
+      },
+      {
+        key: 'open_tournament',
+        title: 'Open the Tournament page',
+        description: 'See the full bracket and keep your momentum going.',
+        reward: STARTER_SIGIL_REWARDS.open_tournament,
+        done: !!starterQuestFlags.open_tournament,
+        cta: 'Open Tournament',
+        progress: starterQuestFlags.open_tournament ? 1 : 0,
+        target: 1,
+      },
+      {
+        key: 'visit_gallery',
+        title: 'Visit Gallery',
+        description: 'Browse cats, loadouts, and your collection route.',
+        reward: STARTER_SIGIL_REWARDS.visit_gallery,
+        done: !!starterQuestFlags.visit_gallery || completedMissionKeys.has('xp_bank'),
+        cta: 'Open Gallery',
+        progress: starterQuestFlags.visit_gallery || completedMissionKeys.has('xp_bank') ? 1 : 0,
+        target: 1,
+      },
+      {
+        key: 'open_duels',
+        title: 'Open Duels',
+        description: 'Check the social battle side of CatClash.',
+        reward: STARTER_SIGIL_REWARDS.open_duels,
+        done: !!starterQuestFlags.open_duels,
+        cta: 'Open Duels',
+        progress: starterQuestFlags.open_duels ? 1 : 0,
+        target: 1,
+      },
+      {
+        key: 'enter_whisker',
+        title: 'Enter Whisker Arena',
+        description: 'Jump into the ranked solo ladder when you want the deeper climb.',
+        reward: STARTER_SIGIL_REWARDS.enter_whisker,
+        done: !!starterQuestFlags.enter_whisker || completedMissionKeys.has('play_whisker'),
+        cta: 'Enter Arena',
+        progress: starterQuestFlags.enter_whisker || completedMissionKeys.has('play_whisker') ? 1 : 0,
+        target: 1,
+      },
+    ];
+  }, [completedMissionKeys, starterQuestFlags, votedMatches]);
+
+  const homepageQuestTabs = useMemo<Record<QuestTabKey, {
+    label: string;
+    kicker: string;
+    title: string;
+    description: string;
+    quests: HomepageQuestItem[];
+    empty: string;
+  }>>(() => ({
+    starter: {
+      label: 'Starter',
+      kicker: 'Starter Quests',
+      title: 'Earn sigils while you learn.',
+      description: 'Learn the loop with a few quick wins, then branch into the rest of CatClash.',
+      quests: starterHomepageQuests,
+      empty: 'Starter quests will appear here once the onboarding loop is ready.',
+    },
+    daily: {
+      label: 'Daily',
+      kicker: 'Daily Quests',
+      title: 'Today’s repeatable route.',
+      description: 'These refresh with the daily pulse and keep your voting streak moving.',
+      quests: homeQuestBuckets.daily.map((quest) => ({
+        key: quest.id,
+        title: quest.label,
+        description: 'Tracked automatically as you vote, predict, and play.',
+        reward: Number(quest.reward || 0),
+        done: !!quest.done,
+        cta: null,
+        progress: Number(quest.progress || 0),
+        target: Number(quest.target || 0),
+      })),
+      empty: 'Daily quests will unlock here as soon as your dashboard data loads.',
+    },
+    weekly: {
+      label: 'Weekly',
+      kicker: 'Weekly Quests',
+      title: 'Longer arcs for bigger payouts.',
+      description: 'These track your bigger weekly grind without adding more homepage clutter.',
+      quests: homeQuestBuckets.weekly.map((quest) => ({
+        key: quest.id,
+        title: quest.label,
+        description: 'Tracked automatically as you build momentum across the week.',
+        reward: Number(quest.reward || 0),
+        done: !!quest.done,
+        cta: null,
+        progress: Number(quest.progress || 0),
+        target: Number(quest.target || 0),
+      })),
+      empty: 'Weekly quests will show up here once your current cycle data is available.',
+    },
+  }), [homeQuestBuckets.daily, homeQuestBuckets.weekly, starterHomepageQuests]);
+
+  function handleStarterQuestAction(key: string) {
+    if (key === 'open_tournament') {
+      markStarterQuest('open_tournament');
+      router.push('/tournament');
+      return;
+    }
+    if (key === 'visit_gallery') {
+      markStarterQuest('visit_gallery');
+      router.push('/gallery');
+      return;
+    }
+    if (key === 'open_duels') {
+      markStarterQuest('open_duels');
+      router.push('/duel');
+      return;
+    }
+    if (key === 'enter_whisker') {
+      markStarterQuest('enter_whisker');
+      router.push('/arena');
+      return;
+    }
+    document.getElementById('home-arenas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   if (loading) {
     return <LoadingState fullPage icon="⚔️" message="Gathering fighters..." />;
   }
 
+  function handleOnboardingComplete() {
+    try {
+      window.localStorage.setItem(HOMEPAGE_ONBOARDING_KEY, 'true');
+    } catch {
+      // ignore storage failures
+    }
+    setShowOnboarding(false);
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
+      {showOnboarding ? <OnboardingModal onComplete={handleOnboardingComplete} /> : null}
       {showBookmarkMissionBanner && (
         <div className="fixed top-36 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-300/35 backdrop-blur text-cyan-100 text-xs font-semibold popup-linger pointer-events-none">
           <span className="pointer-events-auto">Mission: Add CatClash to your Home Screen. Reward: 50 Sigils.</span>
         </div>
       )}
       {dailyRewardSplash && (
-        <div className="pointer-events-none fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-yellow-300/35 bg-gradient-to-b from-yellow-500/20 to-orange-500/10 p-5 text-center shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
-            <p className="text-xs uppercase tracking-wider text-yellow-100/80 mb-2">Daily Chest</p>
+        <div className="pointer-events-none fixed inset-0 z-[1600] flex min-h-[100dvh] items-center justify-center bg-black/85 px-4 py-4 backdrop-blur-sm">
+          <div className="pointer-events-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-yellow-300/35 bg-gradient-to-b from-yellow-500/20 to-orange-500/10 p-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-center shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+            <p className="mb-2 text-xs uppercase tracking-wider text-yellow-100/80">Daily Chest</p>
             <div className="crate-hero mb-3">
               <div className="crate-visual opening">
                 <div className="crate-lid" />
@@ -4787,16 +5671,33 @@ export default function Page() {
               </div>
             </div>
             <p className="text-lg font-bold text-yellow-100">Day {dailyRewardSplash.day} Streak!</p>
-            <p className="text-sm text-white/90 mt-1">
-              You earned <span className="inline-flex items-center gap-1 font-bold"><SigilIcon className="w-4 h-4" />{dailyRewardSplash.sigils}</span>.
-            </p>
-            <p className="text-xs text-white/75 mt-1">{dailyRewardSplash.nextHint}</p>
-            <button
-              onClick={() => setDailyRewardSplash(null)}
-              className="mt-4 h-10 px-4 rounded-xl bg-yellow-300 text-black text-sm font-bold"
-            >
-              Continue
-            </button>
+            <div className="mt-3 rounded-2xl border border-yellow-200/20 bg-black/20 p-4">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-yellow-100/60">Reward claimed</p>
+              <p className="mt-2 inline-flex items-center gap-1 text-2xl font-black text-yellow-100">
+                <SigilIcon className="h-5 w-5" />
+                +{dailyRewardSplash.sigils}
+              </p>
+              <p className="mt-2 text-sm text-white/90">Your sigil balance has been updated.</p>
+              <p className="mt-1 text-xs text-white/75">{dailyRewardSplash.nextHint}</p>
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={() => setDailyRewardSplash(null)}
+                className="h-10 flex-1 rounded-xl bg-yellow-300 text-black text-sm font-bold"
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDailyRewardSplash(null);
+                  router.push('/crate');
+                }}
+                className="h-10 flex-1 rounded-xl border border-white/15 bg-white/8 text-sm font-semibold text-white"
+              >
+                View Crates
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -4853,81 +5754,61 @@ export default function Page() {
         </div>
       )}
 
-      {/* Hero */}
       {testerMode ? (
         <Suspense fallback={null}>
           <DebugWidget arenaType={arenaTypeTab} onHydrate={handleDebugWidgetHydrate} />
         </Suspense>
       ) : null}
-      <section className="pt-5 sm:pt-7 lg:pt-8 pb-3 sm:pb-4">
-        <div className="max-w-5xl mx-auto px-3.5 sm:px-4">
-          <div className="relative overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-[radial-gradient(120%_120%_at_0%_0%,rgba(34,211,238,0.18),rgba(6,12,24,0.96)_45%,rgba(0,0,0,1)_100%)] px-5 py-6 sm:px-7 sm:py-7 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),transparent_35%,transparent_65%,rgba(250,204,21,0.08))]" />
-            <div className="pointer-events-none absolute -right-16 top-0 h-44 w-44 rounded-full bg-cyan-400/12 blur-3xl" />
-            <div className="pointer-events-none absolute -left-10 bottom-0 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl" />
-            <div className="relative">
-              <div className="flex items-start justify-between gap-3">
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/25 bg-yellow-500/8 px-2.5 py-1 text-[10px]">
-                  <Sparkles className="w-3 h-3 text-yellow-400" />
-                  <span className="text-yellow-200/95">{heroKicker}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="vuxsolia-canon-line text-[10px] text-cyan-200/65">Vuxsolia</span>
-                  {testerMode ? (
-                    <Suspense fallback={null}>
-                      <DebugControls
-                        onDebugChange={setDebugMode}
-                        onRefresh={handleDebugRefreshMatches}
-                        onReset={handleDebugResetMatches}
-                      />
-                    </Suspense>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-4 max-w-2xl">
-                <h1 className="home-page-title text-[2rem] sm:text-[2.75rem] leading-[0.96] font-black tracking-[-0.04em] text-white">
-                  {heroHeadline}
-                </h1>
-                <p className="home-page-subtitle mt-3 max-w-xl text-base leading-relaxed text-white/80">
-                  {heroSubheadline}
-                </p>
-              </div>
-
-              <div className="mt-5 flex max-w-xl flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/submit"
-                  className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 via-emerald-400 to-emerald-300 font-black sm:w-auto sm:min-w-[220px]' })}
-                >
-                  {heroPrimaryLabel}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <div className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-white/60 sm:justify-start">
-                  Create a fighter first. Everything else gets better once you own a cat.
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/55">
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
-                  <Target className="h-3.5 w-3.5 text-cyan-300" />
-                  Submit your own cat
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
-                  <Swords className="h-3.5 w-3.5 text-emerald-300" />
-                  Vote in live duels
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
-                  <Crown className="h-3.5 w-3.5 text-yellow-300" />
-                  Climb the leaderboard
-                </span>
-              </div>
-            </div>
+      <section className="px-4 pb-3 pt-16 sm:px-5 sm:pb-4 sm:pt-20">
+        <div className="mx-auto max-w-4xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-400/18 bg-fuchsia-500/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100/78">
+            <Sparkles className="h-3.5 w-3.5 text-fuchsia-300" />
+            Daily cat battles
           </div>
+          <h1 className="mt-4 text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
+            Welcome to{' '}
+            <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
+              CatClash
+            </span>
+          </h1>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/62 sm:text-base sm:leading-7">
+            Vote in daily tournaments, challenge rivals, and level up your cats one battle at a time.
+          </p>
+        </div>
+      </section>
+      <section className="px-3.5 pb-5 pt-4 sm:px-4 sm:pb-6 sm:pt-5">
+        <div className="mx-auto max-w-5xl">
+          <StarterQuestsModule
+            tabs={homepageQuestTabs}
+            activeTab={questTab}
+            expanded={questsExpanded}
+            onToggleExpanded={() => setQuestsExpanded((prev) => !prev)}
+            onTabChange={setQuestTab}
+            onQuestAction={handleStarterQuestAction}
+          />
+        </div>
+      </section>
+
+      <section id="home-arenas" className="px-3.5 pb-5 sm:px-4 sm:pb-6">
+        <div className="mx-auto max-w-5xl">
+          <MiniMatchPreview
+            match={homepageMiniMatch}
+            voted={homepageMiniMatch ? (votedMatches[homepageMiniMatch.match_id] || null) : null}
+            voting={homepageMiniMatch ? votingMatch === homepageMiniMatch.match_id : false}
+            voteSnapshot={homepageMiniMatch ? (voteSnapshotByMatchId[homepageMiniMatch.match_id] || null) : null}
+            voteSyncing={homepageMiniMatch ? !!voteSyncingByMatchId[homepageMiniMatch.match_id] : false}
+            pulseCountdown={pulseCountdown}
+            onVote={(catId) => void handleMiniPreviewVote(catId)}
+            onOpenTournament={() => {
+              markStarterQuest('open_tournament');
+              router.push('/tournament');
+            }}
+          />
         </div>
       </section>
 
       {challengeIntro && (
-        <section className="mb-6 px-4 sm:mb-8">
+        <section className="mb-8 px-4 sm:mb-10">
           <div className="max-w-2xl mx-auto rounded-2xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-4">
             <p className="text-sm font-bold text-fuchsia-100">48h Challenge</p>
             <p className="mt-1 text-sm leading-relaxed text-fuchsia-100/80">
@@ -4942,402 +5823,146 @@ export default function Page() {
       )}
 
       {error && (
-        <section className="mb-6 px-4 sm:mb-8">
+        <section className="mb-8 px-4 sm:mb-10">
           <div className="max-w-md mx-auto p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm text-center">{error}</div>
         </section>
       )}
 
-      <section className="mb-6 px-3.5 sm:mb-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
-            <Link href="/gallery" className="interactive-card focus-ring group rounded-2xl border border-white/12 bg-white/[0.04] p-4 transition-colors hover:border-cyan-300/35 hover:bg-cyan-400/[0.08]">
-              <div className="flex items-center gap-2 text-cyan-100">
-                <Sparkles className="h-4 w-4 text-cyan-300" />
-                <span className="text-base font-bold text-white">Browse the Gallery</span>
-              </div>
-              <p className="mt-2 text-sm leading-relaxed text-white/60">See who is already in the arena and study the cats setting the tone.</p>
-            </Link>
-            <Link href="/duel" className="interactive-card focus-ring group rounded-2xl border border-white/12 bg-white/[0.04] p-4 transition-colors hover:border-emerald-300/35 hover:bg-emerald-400/[0.08]">
-              <div className="flex items-center gap-2 text-emerald-100">
-                <Swords className="h-4 w-4 text-emerald-300" />
-                <span className="text-base font-bold text-white">Vote in a Live Duel</span>
-              </div>
-              <p className="mt-2 text-sm leading-relaxed text-white/60">Back a fighter, watch the vote move, and learn how the crowd reacts.</p>
-            </Link>
-            <Link href="/crate" className="interactive-card focus-ring group rounded-2xl border border-white/12 bg-white/[0.04] p-4 transition-colors hover:border-yellow-300/35 hover:bg-yellow-400/[0.08]">
-              <div className="flex items-center gap-2 text-yellow-100">
-                <Crown className="h-4 w-4 text-yellow-300" />
-                <span className="text-base font-bold text-white">Claim Your Daily Reward</span>
-              </div>
-              <p className="mt-2 text-sm leading-relaxed text-white/60">Open today’s crate for a quick reward beat and a reason to come back tomorrow.</p>
-            </Link>
-          </div>
-
-          {isClaimedPlayer ? (
-            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:hidden">
-              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-                <Flame className="w-3 h-3 text-orange-300" /> {displayStats.streak}
-              </span>
-              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-                <Zap className="w-3 h-3 text-yellow-300" /> {displayStats.xp}
-              </span>
-              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-                <SigilIcon className="w-3 h-3" /> {displayStats.sigils}
-              </span>
-              <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/7 px-2.5 py-1 text-[10px] text-white/85">
-                <Crosshair className="w-3 h-3 text-cyan-300" /> {displayStats.pred}
-              </span>
-            </div>
-          ) : (
-            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-relaxed text-white/60">
-              New here? Start by forging your cat. Gallery, duels, and daily rewards are ready whenever you want a quick look around.
-            </div>
-          )}
+      <section className="pb-10 px-3 sm:px-4">
+        <div className="mx-auto max-w-5xl">
+          <LiveDuelsModule
+            duels={liveDuels}
+            liveDuelCount={liveDuelCount}
+            liveDuelVotes2m={liveDuelVotes2m}
+            onOpenDuels={() => markStarterQuest('open_duels')}
+          />
         </div>
       </section>
 
-      {/* Spotlights */}
-      {shouldShowSpotlights && (
-        <section className="mb-6 px-4 sm:mb-8">
-          <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-            {spotlights.hall_of_fame?.cat && (
-              <Link href={`/cat/${spotlights.hall_of_fame.cat.id}`} className="block rounded-2xl border border-yellow-300/25 bg-yellow-500/10 p-4">
-                <p className="text-xs text-yellow-200/90 mb-2">Hall of Fame</p>
-                <img src={canonicalThumbForCat({ id: spotlights.hall_of_fame.cat.id, image_url: spotlights.hall_of_fame.cat.image_url || null })} alt={spotlights.hall_of_fame.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
-                <p className="font-bold text-sm">{spotlights.hall_of_fame.cat.name}</p>
-                <p className="text-xs text-white/70">by {spotlights.hall_of_fame.cat.owner_username || 'Unknown'} · {spotlights.hall_of_fame.cat.rarity}</p>
-                {(spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || spotlights.hall_of_fame.expires_in_hours != null) && (
-                  <p className="mt-1 text-xs text-white/50">
-                    {spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || `Expires in ${spotlights.hall_of_fame.expires_in_hours}h`}
-                  </p>
-                )}
-              </Link>
-            )}
-            {spotlights.cat_of_week?.cat && (
-              <Link href={`/cat/${spotlights.cat_of_week.cat.id}`} className="block rounded-2xl border border-rose-300/25 bg-rose-500/10 p-4">
-                <p className="text-xs text-rose-200/90 mb-2">Cat of the Week</p>
-                <img src={canonicalThumbForCat({ id: spotlights.cat_of_week.cat.id, image_url: spotlights.cat_of_week.cat.image_url || null })} alt={spotlights.cat_of_week.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
-                <p className="font-bold text-sm">{spotlights.cat_of_week.cat.name}</p>
-                <p className="text-xs text-white/70">by {spotlights.cat_of_week.cat.owner_username || 'Unknown'} · {spotlights.cat_of_week.cat.rarity}</p>
-                {(spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || spotlights.cat_of_week.expires_in_hours != null) && (
-                  <p className="mt-1 text-xs text-white/50">
-                    {spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || `Expires in ${spotlights.cat_of_week.expires_in_hours}h`}
-                  </p>
-                )}
-              </Link>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Enter the Arena Missions */}
-      {shouldShowMissionBoard && gettingStarted && (
-        <section className="mb-6 px-4 sm:mb-8">
-          <div className="max-w-md mx-auto">
-            <div id="mission-board" className="arena-entry-card rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4 shadow-[0_10px_30px_rgba(16,185,129,0.12)]">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div>
-                  <h3 className="text-[13px] font-bold text-emerald-200">{gettingStarted.title || 'Enter the Arena'}</h3>
-                  <p className="text-xs text-emerald-100/80">{gettingStarted.rank_label || 'Arena Rank 1'} · {gettingStarted.progress.pct}% complete</p>
-                </div>
-                <span className="rounded-full border border-emerald-200/30 bg-emerald-300/20 px-2 py-1 text-xs text-emerald-100">
-                  {gettingStarted.progress.completed}/{gettingStarted.progress.total}
-                </span>
+      {/* Highlights */}
+      {shouldShowSpotlights && isClaimedPlayer && (
+        <section className="mb-8 px-4 sm:mb-10">
+          <div className="mx-auto max-w-5xl rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+            <button
+              type="button"
+              onClick={() => setShowHighlightsSection((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+              aria-expanded={showHighlightsSection}
+            >
+              <div>
+                <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Highlights</h2>
+                <p className="mt-1 text-sm text-white/55">Hall of Fame picks and this week&apos;s featured cats.</p>
               </div>
-              <div className="arena-entry-progress h-2 rounded-full bg-black/30 overflow-hidden mb-1.5">
-                <div className="arena-entry-progress-fill h-full bg-gradient-to-r from-emerald-300 to-cyan-300 transition-all duration-500" style={{ width: `${gettingStarted.progress.pct}%` }} />
+              <span className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-transform ${showHighlightsSection ? 'rotate-180' : ''}`}>⌄</span>
+            </button>
+            {showHighlightsSection ? (
+              <div className="mx-auto mt-4 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
+                {spotlights.hall_of_fame?.cat && (
+                  <Link href={`/cat/${spotlights.hall_of_fame.cat.id}`} className="block rounded-2xl border border-yellow-300/25 bg-yellow-500/10 p-4">
+                    <p className="text-xs text-yellow-200/90 mb-2">Hall of Fame</p>
+                    <img src={canonicalThumbForCat({ id: spotlights.hall_of_fame.cat.id, image_url: spotlights.hall_of_fame.cat.image_url || null })} alt={spotlights.hall_of_fame.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
+                    <p className="font-bold text-sm">{spotlights.hall_of_fame.cat.name}</p>
+                    <p className="text-xs text-white/70">by {spotlights.hall_of_fame.cat.owner_username || 'Unknown'} · {spotlights.hall_of_fame.cat.rarity}</p>
+                    {(spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || spotlights.hall_of_fame.expires_in_hours != null) && (
+                      <p className="mt-1 text-xs text-white/50">
+                        {spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || `Expires in ${spotlights.hall_of_fame.expires_in_hours}h`}
+                      </p>
+                    )}
+                  </Link>
+                )}
+                {spotlights.cat_of_week?.cat && (
+                  <Link href={`/cat/${spotlights.cat_of_week.cat.id}`} className="block rounded-2xl border border-rose-300/25 bg-rose-500/10 p-4">
+                    <p className="text-xs text-rose-200/90 mb-2">Cat of the Week</p>
+                    <img src={canonicalThumbForCat({ id: spotlights.cat_of_week.cat.id, image_url: spotlights.cat_of_week.cat.image_url || null })} alt={spotlights.cat_of_week.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
+                    <p className="font-bold text-sm">{spotlights.cat_of_week.cat.name}</p>
+                    <p className="text-xs text-white/70">by {spotlights.cat_of_week.cat.owner_username || 'Unknown'} · {spotlights.cat_of_week.cat.rarity}</p>
+                    {(spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || spotlights.cat_of_week.expires_in_hours != null) && (
+                      <p className="mt-1 text-xs text-white/50">
+                        {spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || `Expires in ${spotlights.cat_of_week.expires_in_hours}h`}
+                      </p>
+                    )}
+                  </Link>
+                )}
               </div>
-              <button
-                onClick={handleMissionPrimaryAction}
-                className="arena-start-voting-btn h-10 w-full px-3 rounded-xl bg-emerald-300 text-black text-sm font-bold active:scale-[0.99] transition-transform"
-              >
-                {activeMissionCtaLabel}
-              </button>
-              <button
-                onClick={() => setMissionBoardOpen((v) => !v)}
-                className="mt-1.5 text-xs text-emerald-100/80 underline underline-offset-2"
-              >
-                {missionBoardOpen ? 'Hide Missions' : 'Show Missions'}
-              </button>
-              {missionBoardOpen && (
-                <div className="space-y-2 mb-2">
-                  {gettingStarted.missions.map((mission) => {
-                    const isOpen = openMissionKey === mission.key;
-                    const isComplete = mission.status === 'complete';
-                    const isLocked = mission.status === 'locked';
-                    return (
-                      <div key={mission.key} id={`mission-${mission.key}`} className={`rounded-xl border p-2.5 transition-all ${isComplete ? 'border-emerald-300/35 bg-emerald-400/10' : isLocked ? 'border-white/10 bg-white/5' : 'border-cyan-300/35 bg-cyan-500/10 shadow-[0_8px_20px_rgba(34,211,238,0.12)]'}`}>
-                        <button
-                          onClick={() => setOpenMissionKey(mission.key)}
-                          className="w-full text-left flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-[12px] font-semibold truncate">{mission.title}</p>
-                            <p className="text-[10px] text-white/65 truncate">{mission.description}</p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${isComplete ? 'border-emerald-200/35 text-emerald-100 bg-emerald-300/20' : isLocked ? 'border-white/15 text-white/60 bg-white/5' : 'border-cyan-200/35 text-cyan-100 bg-cyan-300/20'}`}>
-                              {isComplete ? 'Complete' : isLocked ? 'Locked' : 'Active'}
-                            </span>
-                            <p className="text-[10px] text-yellow-200 mt-1">+{mission.reward_xp} XP</p>
-                          </div>
-                        </button>
-                        {isComplete && (
-                          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-300/25 bg-emerald-400/15 px-2 py-1 text-xs text-emerald-100">
-                            <Check className="w-3.5 h-3.5" />
-                            Mission complete
-                          </div>
-                        )}
-                        {isOpen && (
-                          mission.key === 'bookmark_home' ? (
-                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <button
-                                onClick={handleAddToHomeScreen}
-                                disabled={isLocked || isComplete}
-                                className="h-11 rounded-xl bg-cyan-300/20 border border-cyan-200/35 text-cyan-100 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99] transition-transform"
-                              >
-                                Add to Home Screen
-                              </button>
-                              <button
-                                onClick={handleBookmarkMissionComplete}
-                                disabled={isLocked || isComplete || bookmarkMissionBusy}
-                                className="h-11 rounded-xl bg-emerald-300 text-black text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99] transition-transform"
-                              >
-                                {bookmarkMissionBusy ? 'Claiming...' : 'Mission Complete (+50 Sigils)'}
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => runMissionCta(mission)}
-                              disabled={isLocked || isComplete}
-                              className="mt-2 h-12 w-full rounded-xl bg-emerald-300 text-black text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99] transition-transform"
-                            >
-                              {isComplete ? 'Completed' : mission.cta}
-                            </button>
-                          )
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 p-2.5">
-                    <div className="w-full text-left flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[12px] font-semibold truncate">Optional Quest — Vuxsolia Initiation Trials</p>
-                        <p className="text-[10px] text-white/65 truncate">Vote 20 times · Place 3 predictions · Submit or adopt 1 cat.</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-cyan-200/35 text-cyan-100 bg-cyan-300/20">
-                          Optional
-                        </span>
-                        <p className="text-[10px] text-yellow-200 mt-1">Flex title</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => router.push('/social')}
-                      className="mt-2 h-11 w-full rounded-xl bg-cyan-300 text-black text-xs font-bold active:scale-[0.99] transition-transform"
-                    >
-                      Open Social Hub
-                    </button>
-                  </div>
-                  <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 p-2.5">
-                    <div className="w-full text-left flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[12px] font-semibold truncate">Optional Quest — Invite Friends</p>
-                        <p className="text-[10px] text-white/65 truncate">Share your invite link and recruit friends into CatClash.</p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-cyan-200/35 text-cyan-100 bg-cyan-300/20">
-                          Optional
-                        </span>
-                        <p className="text-[10px] text-yellow-200 mt-1">Social bonus</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => router.push('/social')}
-                      className="mt-2 h-11 w-full rounded-xl bg-cyan-300 text-black text-xs font-bold active:scale-[0.99] transition-transform"
-                    >
-                      Go to Social
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            ) : null}
           </div>
         </section>
       )}
 
       {isClaimedPlayer ? (
-        <section className="mb-6 px-4 sm:mb-8">
-          <div className="max-w-md mx-auto">
-            <div className="mb-1.5 flex items-center justify-between">
-              <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
-            </div>
-          </div>
-          <div className="mx-auto grid max-w-md grid-cols-2 gap-4">
-            <ArenaFlameCard
-              flame={flame}
-              loading={loading && !flame}
-              error={meError}
-              onRetry={loadAll}
-              onNavigateAction={handleFlameAction}
-              compact
-              className="h-full"
-            />
-            <div className="daily-crate-card glass flex h-full min-h-[210px] flex-col rounded-2xl p-4">
-              <div className="flex items-center justify-center gap-2 mb-1.5">
-                <h3 className="font-bold text-sm">Crate</h3>
+        <section className="mb-10 px-4 sm:mb-12">
+          <div className="mx-auto max-w-5xl rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+            <button
+              type="button"
+              onClick={() => setShowDailyCoreSection((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+              aria-expanded={showDailyCoreSection}
+            >
+              <div>
+                <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
+                <p className="mt-1 text-sm text-white/55">Streaks, flame progress, and your daily crate sit here when you need them.</p>
               </div>
+              <span className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-transform ${showDailyCoreSection ? 'rotate-180' : ''}`}>⌄</span>
+            </button>
+            {showDailyCoreSection ? (
+              <div className="mx-auto mt-4 grid max-w-5xl grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <ArenaFlameCard
+                  flame={flame}
+                  loading={loading && !flame}
+                  error={meError}
+                  onRetry={loadAll}
+                  onNavigateAction={handleFlameAction}
+                  compact
+                  className="h-full"
+                />
+                <div className="daily-crate-card glass flex h-full min-h-[210px] flex-col rounded-2xl p-5">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <h3 className="font-bold text-sm">Crate</h3>
+                    <span className="rounded-full border border-yellow-300/30 bg-yellow-500/12 px-2 py-1 text-[10px] font-semibold text-yellow-100">
+                      Daily reward
+                    </span>
+                  </div>
 
-              <div className="flex-1 flex flex-col items-center justify-center text-center">
-                <div className="crate-hero mb-1.5">
-                  <div className="crate-visual">
-                    <div className="crate-lid" />
-                    <div className="crate-box" />
-                    <div className="crate-glow" />
+                  <div className="flex-1 flex flex-col items-center justify-center text-center">
+                    <div className="crate-hero mb-1.5">
+                      <div className="crate-visual">
+                        <div className="crate-lid" />
+                        <div className="crate-box" />
+                        <div className="crate-glow" />
+                      </div>
+                    </div>
+                    <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => router.push('/crate')}
+                        className="crate-open-btn h-9 w-full px-3 rounded-lg bg-gradient-to-r from-yellow-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-orange-500/30 text-yellow-200 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1 shadow-[0_10px_24px_rgba(234,179,8,0.12)]"
+                      >
+                        Open Daily Crate
+                      </button>
+                      <p className="text-[10px] text-white/50">Open your daily reward, check pity progress, and see what your next premium roll can hit.</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 pt-2 border-t border-white/10 text-center space-y-1">
+                    <p className="text-[10px] text-white/55">Daily resets in {crateCountdown}</p>
+                    <div className="flex items-center justify-center gap-1 text-[9px]">
+                      <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
+                    </div>
+                    <p className="text-[10px] text-white/60 min-h-[14px]">
+                      Every open builds pity toward Epic+
+                    </p>
                   </div>
                 </div>
-                <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => router.push('/crate')}
-                    className="crate-open-btn h-9 w-full px-3 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                  >
-                    View Crates
-                  </button>
-                </div>
               </div>
-
-              <div className="mt-2 pt-2 border-t border-white/10 text-center space-y-1">
-                <p className="text-[10px] text-white/55">Daily resets in {crateCountdown}</p>
-                <div className="flex items-center justify-center gap-1 text-[9px]">
-                  <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
-                </div>
-                <p className="text-[10px] text-white/60 min-h-[14px]">
-                  Every open builds pity toward Epic+
-                </p>
-              </div>
-            </div>
+            ) : null}
           </div>
         </section>
       ) : null}
-
-      {/* Arenas */}
-      <section id="home-arenas" className="px-3 sm:px-4 pb-8">
-        <div className="mx-auto w-full max-w-none sm:max-w-5xl">
-          <div className="mb-2 sm:mb-3 flex justify-end">
-            <Link
-              href="/duel"
-              onClick={(e) => {
-                if (e.defaultPrevented) return;
-                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                const before = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-                window.setTimeout(() => {
-                  const after = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-                  if (after === before) window.location.assign('/duel');
-                }, 220);
-              }}
-              data-testid="open-duel-arena-cta-arenas"
-              className="relative z-20 pointer-events-auto inline-flex items-center gap-1 text-xs text-cyan-200 tap-target"
-            >
-              Open Duel Arena <ArrowRight className="w-3 h-3" />
-              {liveDuels.length > 0 && pendingDuelCount > 0 ? (
-                <span className="px-1 py-0.5 rounded-full bg-red-500/20 border border-red-300/35 text-[9px] text-red-100 font-semibold">
-                  {pendingDuelCount > 99 ? '99+' : pendingDuelCount}
-                </span>
-              ) : null}
-            </Link>
-          </div>
-
-          {isClaimedPlayer ? (
-            <>
-              <div className="mb-4">
-                <div className="grid grid-cols-1 gap-2">
-                  <Button size="md" variant="primary" className="bg-white text-black border-white">
-                    Arena
-                  </Button>
-                </div>
-              </div>
-
-              {!hasMatchesForActiveTab ? (
-                <div className="text-center py-12 glass rounded-2xl">
-                  {(hasSeenArenaByType[arenaTypeTab] || Object.keys(votedMatches).length > 0) ? (
-                    <>
-                      <p className="text-white/70 mb-2">You've voted on all matches for today. Come back later!</p>
-                      <p className="text-white/45 text-sm">Next Pulse in {pulseCountdown || '--:--:--'}.</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-white/50 mb-4">No active arena today.</p>
-                      <Link href="/submit" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black text-sm font-bold hover:scale-105 transition-transform">
-                        Submit a Cat
-                      </Link>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {displayedArenas.map((arena) => (
-                    <ArenaSection key={`${arena.tournament_id}:${debugDeckNonce}`} arena={arena} votedMatches={votedMatches} voteSnapshotByMatchId={voteSnapshotByMatchId}
-                      votingMatch={votingMatch}
-                      predictBusyMatch={predictBusyMatch}
-                      calloutBusyMatch={calloutBusyMatch}
-                      socialEnabled={socialLoopEnabled}
-                      availableSigils={progress?.sigils || 0}
-                      voteStreak={voteStreak}
-                      hotMatchBiasEnabled={hotMatchBiasEnabled}
-                      testerMode={testerMode}
-                      globalPageInfo={null}
-                      debugInfo={null}
-                      queueInfo={arenaQueueInfo[arena.type as 'main' | 'rookie'] || null}
-                      pulseCountdown={pulseCountdown}
-                      onSwitchArena={undefined}
-                      onRequestMore={() => debugMode ? handleDebugArenaStackRefill((arena.type as 'main' | 'rookie')) : handleArenaStackRefill((arena.type as 'main' | 'rookie'))}
-                      onVote={handleVote}
-                      onPredict={handlePredict}
-                      onCreateCallout={handleCreateCallout}
-                      debugMode={debugMode}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div className="max-w-xl">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-200/65">Arena Teaser</p>
-                  <h2 className="mt-1 text-2xl font-bold text-white">See the crowd before you jump in.</h2>
-                  <p className="mt-2 text-base leading-relaxed text-white/80">
-                    Browse live duel energy now, then forge your own cat when you're ready to take the spotlight.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 sm:min-w-[220px]">
-                  <Link href="/submit" className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full' })}>
-                    Forge Your Cat
-                  </Link>
-                  <Link href="/leaderboard" className={buttonStyles({ variant: 'secondary', size: 'md', className: 'w-full' })}>
-                    See who's winning
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4" ref={duelSectionRef}>
-            <LiveDuelsModule
-              compact
-              duels={liveDuels}
-              pendingDuelCount={pendingDuelCount}
-              liveDuelVotes2m={liveDuelVotes2m}
-            />
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="py-8 px-4 border-t border-white/5">

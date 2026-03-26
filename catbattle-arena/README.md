@@ -25,6 +25,19 @@ npm install
 npm run dev
 ```
 
+## Reliable Local E2E
+
+Use the safe local runner to clear stale locks, clear `.next`, and run Playwright with a clean local server:
+
+```bash
+E2E_PORT=3001 npm run test:e2e:local -- --project=chromium
+```
+
+Notes:
+
+- Override target URL directly with `BASE_URL` when needed (for example: `BASE_URL=http://127.0.0.1:4010 npm run test:e2e:local`).
+- `npm run test:e2e:clean` runs only the cleanup step (port/process + lock cleanup + `.next` removal).
+
 ## Environment Variables
 
 Create a `.env.local` file with:

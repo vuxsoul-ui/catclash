@@ -1,5 +1,5 @@
-import WhiskerArenaPage from '../arena/page';
+import TournamentVotingHub from '../components/TournamentVotingHub';
 
 export default function TournamentPage() {
-  return <WhiskerArenaPage />;
+  return <TournamentVotingHub />;
 }

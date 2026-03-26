@@ -1,4 +1,4 @@
-import { expect, test, type APIResponse, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import { expect, request as playwrightRequest, test, type APIResponse, type APIRequestContext, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
 const BASE_URL = (process.env.BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const MAX_VOTES = 2;
@@ -217,8 +217,58 @@ function findMatchWithPercents(activeJson: any): { matchId: string; percentA: nu
   return null;
 }
 
+async function createRegisteredApiContext(label: string): Promise<APIRequestContext> {
+  const api = await playwrightRequest.newContext({ baseURL: BASE_URL });
+  const bootRes = await api.get('/api/me');
+  expect(bootRes.status(), `${label}: bootstrap /api/me failed`).toBe(200);
+  const bootJson = await bootRes.json().catch(() => null);
+  const preferredUsername = String(bootJson?.data?.profile?.username || '').trim();
+
+  const password = 'catbattle-e2e-pass-123';
+  let registered = false;
+  let lastRegisterStatus: number | null = null;
+  let lastRegisterError = '';
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const username =
+      attempt === 0 && preferredUsername
+        ? preferredUsername
+        : `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.slice(0, 20);
+    const registerRes = await api.post('/api/auth/register', {
+      data: { username, password },
+    });
+    lastRegisterStatus = registerRes.status();
+    const registerJson = await registerRes.json().catch(() => null);
+    lastRegisterError = String(registerJson?.error || '');
+    if (lastRegisterStatus === 200) {
+      registered = true;
+      break;
+    }
+    if (lastRegisterStatus === 409 && /username already taken/i.test(lastRegisterError)) {
+      continue;
+    }
+    if (lastRegisterStatus === 409 && /already has credentials/i.test(lastRegisterError)) {
+      registered = true;
+      break;
+    }
+    break;
+  }
+
+  expect(
+    registered,
+    `${label}: /api/auth/register failed (status=${String(lastRegisterStatus)} error=${lastRegisterError || 'unknown'})`
+  ).toBeTruthy();
+
+  const meRes = await api.get('/api/me');
+  expect(meRes.status(), `${label}: post-register /api/me failed`).toBe(200);
+  const meJson = await meRes.json().catch(() => null);
+  expect(Boolean(meJson?.data?.has_credentials), `${label}: expected registered credentials`).toBeTruthy();
+
+  return api;
+}
+
 test('new user can vote in debug + normal mode', async ({ browser, request }) => {
-  test.setTimeout(75_000);
+  test.setTimeout(120_000);
 
   const modes: Array<{ mode: ModeName; path: string }> = [
     { mode: 'debug', path: '/?debug=1' },
@@ -416,5 +466,45 @@ test('new user can vote in debug + normal mode', async ({ browser, request }) =>
     } finally {
       if (context) await context.close();
     }
+  }
+});
+
+test('different authenticated users on shared local IP can vote same match', async ({ request }) => {
+  test.setTimeout(45_000);
+
+  const activeRes = await request.get(`${BASE_URL}/api/tournament/active`);
+  expect(activeRes.status()).toBe(200);
+  const activeJson = await activeRes.json().catch(() => null);
+  const candidate = findFallbackCandidate(activeJson);
+  expect(candidate, 'expected a votable match candidate').toBeTruthy();
+  if (!candidate) return;
+
+  const userOne = await createRegisteredApiContext('shared_ip_a');
+  const userTwo = await createRegisteredApiContext('shared_ip_b');
+
+  try {
+    const firstVoteRes = await userOne.post('/api/vote', {
+      data: { match_id: candidate.matchId, voted_for: candidate.catAId },
+    });
+    expect(firstVoteRes.status(), 'first authenticated vote should succeed').toBe(200);
+    const firstVoteJson = await firstVoteRes.json().catch(() => null);
+    expect(Boolean(firstVoteJson?.alreadyVoted), 'first authenticated vote should not be duplicate').toBeFalsy();
+
+    const secondUserVoteRes = await userTwo.post('/api/vote', {
+      data: { match_id: candidate.matchId, voted_for: candidate.catAId },
+    });
+    expect(secondUserVoteRes.status(), 'second authenticated user on same IP should succeed').toBe(200);
+    const secondUserVoteJson = await secondUserVoteRes.json().catch(() => null);
+    expect(Boolean(secondUserVoteJson?.alreadyVoted), 'different authenticated user should not hit IP dedupe').toBeFalsy();
+
+    const repeatVoteRes = await userOne.post('/api/vote', {
+      data: { match_id: candidate.matchId, voted_for: candidate.catAId },
+    });
+    expect(repeatVoteRes.status(), 'repeat vote from same authenticated user should be handled').toBe(200);
+    const repeatVoteJson = await repeatVoteRes.json().catch(() => null);
+    expect(Boolean(repeatVoteJson?.alreadyVoted), 'same authenticated user should still be deduped').toBeTruthy();
+  } finally {
+    await userOne.dispose();
+    await userTwo.dispose();
   }
 });

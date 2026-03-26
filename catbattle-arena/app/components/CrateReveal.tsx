@@ -34,7 +34,7 @@ export default function CrateReveal({
   if (!active) return null;
   return (
     <div
-      className={`fixed inset-0 z-[120] bg-[rgba(5,4,12,0.92)] backdrop-blur-[18px] ${shakeScreen ? 'screen-shake' : ''}`}
+      className={`fixed inset-0 z-[1500] bg-[rgba(5,4,12,0.92)] backdrop-blur-[18px] ${shakeScreen ? 'screen-shake' : ''}`}
       onClick={onSkip}
       style={{
         ['--fx-shake-x' as string]: `${fx.screenShakePx}px`,
@@ -67,7 +67,7 @@ export default function CrateReveal({
           Tap anywhere to speed up
         </div>
       )}
-      <div className="absolute inset-0 px-4" onClick={(e) => e.stopPropagation()}>
+      <div className="absolute inset-0 px-4 py-4 sm:py-6" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
