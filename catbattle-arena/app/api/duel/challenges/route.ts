@@ -130,7 +130,9 @@ export async function GET() {
     const openDuelIds = Array.from(new Set((openRes.data || []).map((r) => String(r.id || '')).filter(Boolean)));
 
     const [profilesRes, catsRes, votesRes, equippedRes, recentVotes2mRes] = await Promise.all([
-      userIds.length ? sb.from('profiles').select('id, username, guild').in('id', userIds) : Promise.resolve({ data: [] as Array<{ id: string; username: string | null; guild: string | null }> }),
+      userIds.length
+        ? sb.from('profiles').select('id, username, guild').in('id', userIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; username: string | null; guild: string | null }>, error: null as SchemaishError }),
       catIds.length
         ? sb
             .from('cats')
@@ -151,27 +153,30 @@ export async function GET() {
               charisma: number | null;
               chaos: number | null;
             }>,
+            error: null as SchemaishError,
           }),
-      duelIds.length ? sb.from('duel_votes').select('duel_id, voter_user_id, voted_cat_id').in('duel_id', duelIds) : Promise.resolve({ data: [] as Array<{ duel_id: string; voter_user_id: string; voted_cat_id: string }> }),
+      duelIds.length
+        ? sb.from('duel_votes').select('duel_id, voter_user_id, voted_cat_id').in('duel_id', duelIds)
+        : Promise.resolve({ data: [] as Array<{ duel_id: string; voter_user_id: string; voted_cat_id: string }>, error: null as SchemaishError }),
       userIds.length
         ? sb
             .from('equipped_cosmetics')
             .select('user_id, slot, cat_id, cosmetic_id')
             .in('user_id', userIds)
-        : Promise.resolve({ data: [] as CosmeticRow[] }),
+        : Promise.resolve({ data: [] as CosmeticRow[], error: null as SchemaishError }),
       openDuelIds.length
         ? sb
             .from('duel_votes')
             .select('id', { count: 'exact', head: true })
             .in('duel_id', openDuelIds)
             .gte('created_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
-        : Promise.resolve({ count: 0 }),
+        : Promise.resolve({ data: null, count: 0, error: null as SchemaishError }),
     ]);
     assertNoSupabaseError(profilesRes.error);
     assertNoSupabaseError(catsRes.error);
     assertNoSupabaseError(votesRes.error);
     assertNoSupabaseError(equippedRes.error);
-    assertNoSupabaseError((recentVotes2mRes as { error?: SchemaishError })?.error);
+    assertNoSupabaseError(recentVotes2mRes.error);
     const profiles = profilesRes.data || [];
     const cats = catsRes.data || [];
     const votes = votesRes.data || [];
