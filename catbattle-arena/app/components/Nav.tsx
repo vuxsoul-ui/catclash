@@ -117,7 +117,7 @@ export default function Nav() {
     { href: '/submit', label: 'Submit', icon: Plus, primary: true },
     { href: '/duel', label: 'Duels', icon: Swords },
     { href: '/social', label: 'Social', icon: Users, hideBelow360: true },
-    { href: '/arena', label: 'Arena', icon: Trophy, iconOnly: true },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnly: true },
   ];
 
   const mobilePrimaryLinks: Array<{ href: string; label: string; icon: typeof Home }> = [

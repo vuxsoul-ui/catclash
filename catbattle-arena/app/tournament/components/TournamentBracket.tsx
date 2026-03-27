@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, TouchEvent } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, ChevronLeft, Clock3, Loader2, Sparkles, Target, Trophy } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, Clock3, Sparkles, Target, Trophy, X } from 'lucide-react';
 import { deriveTournamentMatchState, summarizeTournamentPlayable } from '../../lib/tournament-state';
+import { LoadingState } from '../../components/LoadingState';
 
 type BracketCat = {
   id: string;
@@ -52,8 +53,8 @@ function calcSnapshot(votesA: number, votesB: number) {
 
 function roundLabel(round: number, totalRounds: number) {
   if (round === totalRounds) return 'Final';
-  if (round === totalRounds - 1) return 'Semi Finals';
-  if (round === totalRounds - 2) return 'Quarter Finals';
+  if (round === totalRounds - 1) return 'Semifinal';
+  if (round === totalRounds - 2) return 'Quarterfinal';
   return `Round ${round}`;
 }
 
@@ -69,7 +70,7 @@ function BracketShell({
   subtitle?: string;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="tournament-bracket-page space-y-4">
       <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -99,10 +100,15 @@ export default function TournamentBracket() {
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
   const [pulseLocked, setPulseLocked] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [votingMatchId, setVotingMatchId] = useState<string | null>(null);
+  const [voteNotice, setVoteNotice] = useState<'a' | 'b' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expandedRounds, setExpandedRounds] = useState<Record<number, boolean>>({});
   const roundRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const nodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const initialFocusDone = useRef(false);
+  const swipeStartY = useRef<number | null>(null);
+  const [sheetOffset, setSheetOffset] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,17 +264,129 @@ export default function TournamentBracket() {
     }
   }, [matches, selectedMatchId, currentSpotlightMatchId]);
 
+  useEffect(() => {
+    if (!rounds.length) return;
+    setExpandedRounds((prev) => {
+      const next: Record<number, boolean> = {};
+      for (const roundData of rounds) {
+        next[roundData.round] = prev[roundData.round] ?? (roundData.round === currentRound);
+      }
+      return next;
+    });
+  }, [rounds, currentRound]);
+
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [sheetOpen]);
+
+  useEffect(() => {
+    if (!sheetOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSheetOpen(false);
+        setSheetOffset(0);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sheetOpen]);
+
+  function updateMatchSnapshot(matchId: string, votesA: number, votesB: number) {
+    setMatches((prev) =>
+      prev.map((match) =>
+        match.match_id === matchId
+          ? {
+              ...match,
+              votes_a: votesA,
+              votes_b: votesB,
+              total_votes: Math.max(0, votesA + votesB),
+            }
+          : match
+      )
+    );
+  }
+
   function selectMatch(matchId: string, scrollIntoView = false) {
     setSelectedMatchId(matchId);
-    if (scrollIntoView) {
-      window.requestAnimationFrame(() => {
-        nodeRefs.current[matchId]?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'center',
-        });
-      });
+    setSheetOpen(true);
+    setSheetOffset(0);
+    if (scrollIntoView) return;
+  }
+
+  function closeSheet() {
+    setSheetOpen(false);
+    setSheetOffset(0);
+    setVoteNotice(null);
+  }
+
+  async function handleVote(matchId: string, catId: string) {
+    if (votingMatchId || votedMatches[matchId]) return;
+    const currentMatch = matches.find((match) => match.match_id === matchId);
+    if (!currentMatch) return;
+
+    const originalVotesA = Number(currentMatch.votes_a || 0);
+    const originalVotesB = Number(currentMatch.votes_b || 0);
+    const nextVotesA = originalVotesA + (catId === currentMatch.cat_a.id ? 1 : 0);
+    const nextVotesB = originalVotesB + (catId === currentMatch.cat_b.id ? 1 : 0);
+
+    setVotingMatchId(matchId);
+    setVoteNotice(catId === currentMatch.cat_a.id ? 'a' : 'b');
+    updateMatchSnapshot(matchId, nextVotesA, nextVotesB);
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(12);
     }
+
+    try {
+      const response = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: matchId, voted_for: catId }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        updateMatchSnapshot(matchId, originalVotesA, originalVotesB);
+        if (
+          String(data?.error || '').toLowerCase().includes('already') ||
+          String(data?.error || '').toLowerCase().includes('duplicate')
+        ) {
+          setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
+        }
+        setVoteNotice(null);
+        return;
+      }
+
+      setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
+      window.setTimeout(() => setVoteNotice(null), 1400);
+    } catch {
+      updateMatchSnapshot(matchId, originalVotesA, originalVotesB);
+      setVoteNotice(null);
+    } finally {
+      setVotingMatchId(null);
+    }
+  }
+
+  function handleSheetTouchStart(event: TouchEvent<HTMLElement>) {
+    swipeStartY.current = event.touches[0]?.clientY ?? null;
+  }
+
+  function handleSheetTouchMove(event: TouchEvent<HTMLElement>) {
+    if (swipeStartY.current == null) return;
+    const nextOffset = Math.max(0, (event.touches[0]?.clientY ?? swipeStartY.current) - swipeStartY.current);
+    setSheetOffset(nextOffset);
+  }
+
+  function handleSheetTouchEnd() {
+    if (sheetOffset > 96) {
+      closeSheet();
+    } else {
+      setSheetOffset(0);
+    }
+    swipeStartY.current = null;
   }
 
   function jumpToCurrentRound() {
@@ -281,19 +399,27 @@ export default function TournamentBracket() {
 
   function focusActiveMatch() {
     if (!currentSpotlightMatchId) return;
-    selectMatch(currentSpotlightMatchId, true);
+    selectMatch(currentSpotlightMatchId, false);
+    const activeMatch = matches.find((match) => match.match_id === currentSpotlightMatchId);
+    if (activeMatch) {
+      setExpandedRounds((prev) => ({ ...prev, [activeMatch.round]: true }));
+    }
   }
 
   if (loading) {
     return (
       <BracketShell subtitle="Loading the current tournament path and bracket summary.">
-        <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-6 text-center shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
-          <div className="flex min-h-[28vh] flex-col items-center justify-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-white/45" />
-            <p className="text-sm font-semibold text-white/80">Loading bracket...</p>
-            <p className="text-sm text-white/55">Checking for the active tournament and its current bracket state.</p>
-          </div>
-        </section>
+        <LoadingState
+          message="Loading bracket..."
+          icon="🗺️"
+          className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-6 shadow-[0_16px_36px_rgba(0,0,0,0.22)]"
+          phrases={[
+            'Tracing the bracket path...',
+            'Finding the live round...',
+            'Marking the spotlight match...',
+            'Locking in the arena...'
+          ]}
+        />
       </BracketShell>
     );
   }
@@ -325,11 +451,9 @@ export default function TournamentBracket() {
       <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Bracket</p>
-            <h1 className="mt-1 text-xl font-semibold text-white">Tournament Map</h1>
-            <p className="mt-1 text-sm text-white/55">
-              Follow the path round by round, inspect any node, and jump back to the spotlight when you want to vote.
-            </p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Overview</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Current Round Focus</h2>
+            <p className="mt-1 text-sm text-white/55">Track progress and jump to the active lane quickly.</p>
           </div>
         </div>
 
@@ -419,206 +543,211 @@ export default function TournamentBracket() {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+      <div className="grid gap-4">
         <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
           <div className="mb-3">
-            <p className="text-sm font-semibold text-white">Bracket Map</p>
+            <p className="text-sm font-semibold text-white">Bracket Progression</p>
             <p className="mt-1 text-xs text-white/55">
-              Tap any node to inspect it. Scroll sideways on mobile to follow the full tournament path.
+              Scan round by round, expand what you need, and tap any matchup to inspect the full details.
             </p>
           </div>
 
-          <div className="tournament-bracket-scroller overflow-x-auto overflow-y-hidden pb-2">
-            <div className="tournament-bracket-grid inline-flex min-w-max flex-nowrap items-start gap-4">
-              {rounds.map((roundData, columnIndex) => {
-                const isCurrent = roundData.round === currentRound;
-                const isLast = columnIndex === rounds.length - 1;
-                return (
-                  <div
-                    key={`round-${roundData.round}`}
-                    ref={(node) => {
-                      roundRefs.current[roundData.round] = node;
-                    }}
-                    className={`tournament-bracket-column tournament-bracket-lane w-[212px] shrink-0 md:w-[224px] ${isCurrent ? 'is-current' : ''}`}
+          <div className="space-y-3">
+            {rounds.map((roundData) => {
+              const isCurrent = roundData.round === currentRound;
+              const isExpanded = expandedRounds[roundData.round] ?? isCurrent;
+              return (
+                <div
+                  key={`round-${roundData.round}`}
+                  ref={(node) => {
+                    roundRefs.current[roundData.round] = node;
+                  }}
+                  className={`rounded-2xl border ${isCurrent ? 'border-cyan-300/16 bg-cyan-500/[0.04]' : 'border-white/[0.05] bg-black/20'}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRounds((prev) => ({ ...prev, [roundData.round]: !isExpanded }))}
+                    className="tournament-bracket-round-toggle flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                    aria-expanded={isExpanded}
                   >
-                    <div
-                      className={`tournament-bracket-roundhead rounded-2xl border px-3 py-2 ${
-                        isCurrent ? 'border-cyan-300/18 bg-cyan-500/[0.08]' : 'border-white/[0.05] bg-black/20'
-                      }`}
-                    >
+                    <div className="min-w-0">
                       <p className="text-[10px] uppercase tracking-[0.16em] text-white/38">{roundLabel(roundData.round, totalRounds)}</p>
                       <p className="mt-1 text-sm font-semibold text-white">
-                        {isCurrent ? 'Current round' : roundData.round < currentRound ? 'Completed path' : 'Waiting lane'}
+                        {isCurrent ? 'Current round' : roundData.round < currentRound ? 'Completed round' : 'Upcoming round'}
                       </p>
-                      <p className="mt-1 text-[10px] text-white/42">{roundData.matches.length} matchups</p>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
+                        {roundData.matches.length} matchups
+                      </span>
+                      <ChevronDown className={`h-4 w-4 text-white/58 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
 
-                    <div className="mt-3 space-y-5">
-                      {roundData.groups.map((group, groupIndex) => (
-                        <div
-                          key={`group-${roundData.round}-${groupIndex}`}
-                          className={`tournament-bracket-group relative space-y-2.5 ${!isLast ? 'tournament-bracket-group--linked' : ''}`}
-                        >
-                          {group.map((match) => {
-                            const snapshot = calcSnapshot(match.votes_a, match.votes_b);
-                            const tierA = rarityTier(match.cat_a.rarity);
-                            const tierB = rarityTier(match.cat_b.rarity);
-                            const votedForThisMatch = !!votedMatches[match.match_id];
-                            const state = deriveTournamentMatchState({
-                              matchId: match.match_id,
-                              status: match.status,
-                              round: match.round,
-                              currentRound,
-                              voted: votedForThisMatch,
-                              pulseLocked,
-                              spotlightMatchId: currentSpotlightMatchId,
-                            });
-                            const selected = match.match_id === selectedMatchId;
-
-                            return (
-                              <button
-                                type="button"
-                                key={match.match_id}
-                                ref={(node) => {
-                                  nodeRefs.current[match.match_id] = node;
-                                }}
-                                onClick={() => selectMatch(match.match_id, false)}
-                                data-tier-a={tierA}
-                                data-tier-b={tierB}
-                                data-state={state.state}
-                                data-selected={selected ? 'true' : 'false'}
-                                aria-pressed={selected}
-                                className={`tournament-bracket-card tournament-bracket-node relative w-full rounded-[1.2rem] border p-2.5 text-left shadow-[0_10px_22px_rgba(0,0,0,0.18)] ${
-                                  state.state === 'votable'
-                                    ? 'is-active border-cyan-300/18 bg-cyan-500/[0.06]'
-                                    : state.state === 'voted'
-                                      ? 'border-emerald-300/18 bg-emerald-500/[0.05]'
-                                      : state.state === 'resolved'
-                                        ? 'border-emerald-300/14 bg-emerald-500/[0.04]'
-                                        : 'border-white/[0.06] bg-white/[0.02]'
-                                } ${selected ? 'ring-1 ring-white/18' : ''}`}
-                              >
-                                {!isLast ? <span className="tournament-bracket-node-link" aria-hidden="true" /> : null}
-                                <div className="flex items-center justify-between gap-2">
-                                  <span
-                                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                      state.state === 'votable'
-                                        ? 'border-cyan-300/18 bg-cyan-500/12 text-cyan-100'
-                                        : state.state === 'voted'
-                                          ? 'border-emerald-300/18 bg-emerald-500/10 text-emerald-100'
-                                          : state.state === 'resolved'
+                  {isExpanded ? (
+                    <div className="space-y-2 border-t border-white/[0.05] px-3 pb-3 pt-2">
+                      {roundData.matches.map((match) => {
+                        const snapshot = calcSnapshot(match.votes_a, match.votes_b);
+                        const tierA = rarityTier(match.cat_a.rarity);
+                        const tierB = rarityTier(match.cat_b.rarity);
+                        const votedForThisMatch = !!votedMatches[match.match_id];
+                        const state = deriveTournamentMatchState({
+                          matchId: match.match_id,
+                          status: match.status,
+                          round: match.round,
+                          currentRound,
+                          voted: votedForThisMatch,
+                          pulseLocked,
+                          spotlightMatchId: currentSpotlightMatchId,
+                        });
+                        const selected = match.match_id === selectedMatchId;
+                        const winnerA = match.winner_id === match.cat_a.id;
+                        const winnerB = match.winner_id === match.cat_b.id;
+                        return (
+                          <button
+                            type="button"
+                            key={match.match_id}
+                            onClick={() => selectMatch(match.match_id, false)}
+                            data-tier-a={tierA}
+                            data-tier-b={tierB}
+                            data-state={state.state}
+                            data-selected={selected ? 'true' : 'false'}
+                            aria-pressed={selected}
+                            className={`tournament-bracket-card tournament-bracket-node tournament-bracket-node--compact w-full rounded-[1.1rem] border px-3 py-3 text-left ${
+                              state.state === 'votable'
+                                ? 'is-active border-cyan-300/18 bg-cyan-500/[0.06]'
+                                : state.state === 'voted'
+                                  ? 'border-emerald-300/18 bg-emerald-500/[0.05]'
+                                  : state.state === 'resolved'
+                                    ? 'border-emerald-300/14 bg-emerald-500/[0.04]'
+                                    : 'border-white/[0.06] bg-white/[0.02]'
+                            } ${selected ? 'ring-1 ring-white/18' : ''}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                    state.state === 'votable'
+                                      ? 'border-cyan-300/18 bg-cyan-500/12 text-cyan-100'
+                                      : state.state === 'voted'
+                                        ? 'border-emerald-300/18 bg-emerald-500/10 text-emerald-100'
+                                        : state.state === 'resolved'
                                           ? 'border-emerald-300/16 bg-emerald-500/10 text-emerald-100/85'
                                           : 'border-white/[0.08] bg-black/20 text-white/55'
-                                    }`}
-                                  >
-                                    {state.label}
+                                  }`}
+                                >
+                                  {state.label}
+                                </span>
+                                {state.isSpotlight ? (
+                                  <span className="rounded-full border border-amber-300/16 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
+                                    Spotlight
                                   </span>
-                                  <div className="flex items-center gap-1">
-                                    {votedForThisMatch ? (
-                                      <span className="rounded-full border border-emerald-300/18 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
-                                        Voted
-                                      </span>
-                                    ) : null}
-                                    {state.isSpotlight ? (
-                                      <span className="rounded-full border border-amber-300/16 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
-                                        Spotlight
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </div>
+                                ) : null}
+                              </div>
+                              <span className="text-[10px] text-white/42">{snapshot.total} votes</span>
+                            </div>
 
-                                <div className="mt-2 space-y-1.5">
-                                  {[match.cat_a, match.cat_b].map((cat, index) => {
-                                    const isWinner = match.winner_id === cat.id;
-                                    return (
-                                      <div
-                                        key={cat.id}
-                                        className={`tournament-bracket-fighter flex items-center gap-2 rounded-xl border border-white/[0.04] bg-black/20 px-2 py-1.5 ${
-                                          match.winner_id && !isWinner ? 'opacity-60' : ''
-                                        }`}
-                                      >
-                                        <div className="h-7 w-7 overflow-hidden rounded-lg border border-white/[0.06] bg-black/30">
-                                          <img
-                                            src={cat.image_url || '/cat-placeholder.svg'}
-                                            alt={cat.name}
-                                            className="h-full w-full object-cover"
-                                            loading="lazy"
-                                            decoding="async"
-                                            onError={(e) => {
-                                              (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
-                                            }}
-                                          />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <p className="truncate text-[11px] font-semibold text-white">{cat.name}</p>
-                                          <p className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-white/36">{index === 0 ? 'A side' : 'B side'}</p>
-                                        </div>
-                                        {isWinner ? (
-                                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-amber-300/16 bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-100">
-                                            <Trophy className="h-2.5 w-2.5" />
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                              <div className={`min-w-0 ${match.winner_id && !winnerA ? 'opacity-55' : ''}`}>
+                                <p className={`truncate text-sm font-semibold ${winnerA ? 'text-white' : 'text-white/84'}`}>{match.cat_a.name}</p>
+                              </div>
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">VS</div>
+                              <div className={`min-w-0 text-right ${match.winner_id && !winnerB ? 'opacity-55' : ''}`}>
+                                <p className={`truncate text-sm font-semibold ${winnerB ? 'text-white' : 'text-white/84'}`}>{match.cat_b.name}</p>
+                              </div>
+                            </div>
 
-                                <div className="mt-2">
-                                  <div className="mb-1 flex items-center justify-between text-[9px] text-white/46">
-                                    <span>{snapshot.percentA}%</span>
-                                    <span>{snapshot.percentB}%</span>
-                                  </div>
-                                  <div className="tournament-bracket-bar h-1.5 overflow-hidden rounded-full border border-white/[0.06] bg-white/[0.06]">
-                                    <div className="flex h-full w-full">
-                                      <div className="tournament-bracket-segment tournament-bracket-segment--a" style={{ width: `${snapshot.percentA}%` }} />
-                                      <div className="tournament-bracket-segment tournament-bracket-segment--b" style={{ width: `${snapshot.percentB}%` }} />
-                                    </div>
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ))}
+                            <div className="mt-2 flex items-center justify-between text-[10px] text-white/46">
+                              <span>{snapshot.percentA}%</span>
+                              <span>{snapshot.percentB}%</span>
+                            </div>
+                            <div className="mt-1 h-1.5 overflow-hidden rounded-full border border-white/[0.06] bg-white/[0.06]">
+                              <div className="flex h-full w-full">
+                                <div className="tournament-bracket-segment tournament-bracket-segment--a" style={{ width: `${snapshot.percentA}%` }} />
+                                <div className="tournament-bracket-segment tournament-bracket-segment--b" style={{ width: `${snapshot.percentB}%` }} />
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
+      </div>
 
-        {selectedMatch ? (
+      {selectedMatch && sheetOpen ? (
+        <div className="tournament-bracket-sheet-backdrop" onClick={closeSheet} aria-hidden="true">
           <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Match details for ${selectedMatch.cat_a.name} versus ${selectedMatch.cat_b.name}`}
             data-tier-a={rarityTier(selectedMatch.cat_a.rarity)}
             data-tier-b={rarityTier(selectedMatch.cat_b.rarity)}
-            className="tournament-bracket-card tournament-bracket-detail is-active rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)] xl:sticky xl:top-5 xl:self-start"
+            className="tournament-bracket-card tournament-bracket-detail tournament-bracket-sheet is-active"
+            style={{ transform: `translateY(${sheetOffset}px)` }}
+            onClick={(event) => event.stopPropagation()}
+            onTouchStart={handleSheetTouchStart}
+            onTouchMove={handleSheetTouchMove}
+            onTouchEnd={handleSheetTouchEnd}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Selected Match</p>
-                <h2 className="mt-1 text-lg font-semibold text-white">
-                  {selectedMatch.cat_a.name} vs {selectedMatch.cat_b.name}
-                </h2>
-              </div>
-              <span className="rounded-full border border-white/[0.08] bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/72">
-                {roundLabel(selectedMatch.round, totalRounds)}
-              </span>
-            </div>
+            {(() => {
+              const snapshot = calcSnapshot(selectedMatch.votes_a, selectedMatch.votes_b);
+              const state = deriveTournamentMatchState({
+                matchId: selectedMatch.match_id,
+                status: selectedMatch.status,
+                round: selectedMatch.round,
+                currentRound,
+                voted: !!votedMatches[selectedMatch.match_id],
+                pulseLocked,
+                spotlightMatchId: currentSpotlightMatchId,
+              });
+              const votedCatId = votedMatches[selectedMatch.match_id] || null;
+              const canVote = state.state === 'votable' && !votedCatId && votingMatchId !== selectedMatch.match_id;
+              return (
+                <>
+                  <div className="tournament-bracket-sheet-handle-wrap">
+                    <div className="tournament-bracket-sheet-handle" />
+                  </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(() => {
-                const state = deriveTournamentMatchState({
-                  matchId: selectedMatch.match_id,
-                  status: selectedMatch.status,
-                  round: selectedMatch.round,
-                  currentRound,
-                  voted: !!votedMatches[selectedMatch.match_id],
-                  pulseLocked,
-                  spotlightMatchId: currentSpotlightMatchId,
-                });
-                return (
-                  <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Selected Match</p>
+                      <h2 className="mt-1 text-lg font-semibold text-white">
+                        {selectedMatch.cat_a.name} vs {selectedMatch.cat_b.name}
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeSheet}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-black/20 text-white/74 transition hover:bg-white/[0.06]"
+                      aria-label="Close selected match"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 rounded-2xl border border-white/[0.06] bg-black/20 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/42">Vote Split</p>
+                      <span className="text-[11px] text-white/52">{snapshot.total} total votes</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-white/52">
+                      <span>{snapshot.percentA}%</span>
+                      <span>{snapshot.percentB}%</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/[0.06] bg-white/[0.05]">
+                      <div className="flex h-full w-full">
+                        <div className="tournament-bracket-segment tournament-bracket-segment--a transition-[width] duration-300" style={{ width: `${snapshot.percentA}%` }} />
+                        <div className="tournament-bracket-segment tournament-bracket-segment--b transition-[width] duration-300" style={{ width: `${snapshot.percentB}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <span
                       className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
                         state.state === 'votable'
@@ -626,110 +755,120 @@ export default function TournamentBracket() {
                           : state.state === 'voted'
                             ? 'border-emerald-300/18 bg-emerald-500/10 text-emerald-100'
                             : state.state === 'resolved'
-                            ? 'border-emerald-300/16 bg-emerald-500/10 text-emerald-100/85'
-                            : 'border-white/[0.08] bg-black/20 text-white/62'
+                              ? 'border-emerald-300/16 bg-emerald-500/10 text-emerald-100/85'
+                              : 'border-white/[0.08] bg-black/20 text-white/62'
                       }`}
                     >
                       {state.label}
                     </span>
-                    {votedMatches[selectedMatch.match_id] ? (
+                    <span className="rounded-full border border-white/[0.08] bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/72">
+                      {roundLabel(selectedMatch.round, totalRounds)}
+                    </span>
+                    {votedCatId ? (
                       <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/18 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-100">
                         <CheckCircle2 className="h-3.5 w-3.5" />
-                        You voted
+                        Vote locked
                       </span>
                     ) : null}
-                    {state.isSpotlight ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/18 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Current spotlight
-                      </span>
-                    ) : null}
-                  </>
-                );
-              })()}
-            </div>
-
-            <div className="mt-3 rounded-2xl border border-white/[0.05] bg-black/20 p-3">
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 font-semibold text-white/78">
-                  Status: {String(selectedMatch.status || 'unknown').replace(/_/g, ' ')}
-                </span>
-                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 font-semibold text-white/66">
-                  Match ID: {selectedMatch.match_id.slice(0, 8)}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              {[selectedMatch.cat_a, selectedMatch.cat_b].map((cat, index) => {
-                const isWinner = selectedMatch.winner_id === cat.id;
-                const votes = index === 0 ? selectedMatch.votes_a : selectedMatch.votes_b;
-                const share = index === 0 ? calcSnapshot(selectedMatch.votes_a, selectedMatch.votes_b).percentA : calcSnapshot(selectedMatch.votes_a, selectedMatch.votes_b).percentB;
-                return (
-                  <div key={cat.id} className={`rounded-2xl border border-white/[0.05] bg-black/20 p-3 ${selectedMatch.winner_id && !isWinner ? 'opacity-65' : ''}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="h-14 w-14 overflow-hidden rounded-xl border border-white/[0.06] bg-black/30">
-                        <img
-                          src={cat.image_url || '/cat-placeholder.svg'}
-                          alt={cat.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
-                          }}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white">{cat.name}</p>
-                        <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-white/42">{cat.rarity}</p>
-                        <p className="mt-1 text-xs text-white/55">{votes} votes · {share}% share</p>
-                      </div>
-                      {isWinner ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/16 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-100">
-                          <Trophy className="h-3 w-3" />
-                          Winner
-                        </span>
-                      ) : null}
-                    </div>
                   </div>
-                );
-              })}
-            </div>
 
-            <div className="mt-4 rounded-2xl border border-white/[0.05] bg-black/20 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-white/38">Vote Split</p>
-                <p className="text-[11px] text-white/55">{selectedMatch.total_votes} total votes</p>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/[0.05] bg-white/[0.05]">
-                <div className="flex h-full w-full">
-                  <div
-                    className="tournament-bracket-segment tournament-bracket-segment--a"
-                    style={{ width: `${calcSnapshot(selectedMatch.votes_a, selectedMatch.votes_b).percentA}%` }}
-                  />
-                  <div
-                    className="tournament-bracket-segment tournament-bracket-segment--b"
-                    style={{ width: `${calcSnapshot(selectedMatch.votes_a, selectedMatch.votes_b).percentB}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {[
+                      {
+                        key: 'a' as const,
+                        cat: selectedMatch.cat_a,
+                        votes: selectedMatch.votes_a,
+                        percent: snapshot.percentA,
+                        winner: selectedMatch.winner_id === selectedMatch.cat_a.id,
+                        dimmed: !!selectedMatch.winner_id && selectedMatch.winner_id !== selectedMatch.cat_a.id,
+                      },
+                      {
+                        key: 'b' as const,
+                        cat: selectedMatch.cat_b,
+                        votes: selectedMatch.votes_b,
+                        percent: snapshot.percentB,
+                        winner: selectedMatch.winner_id === selectedMatch.cat_b.id,
+                        dimmed: !!selectedMatch.winner_id && selectedMatch.winner_id !== selectedMatch.cat_b.id,
+                      },
+                    ].map((entry) => {
+                      const isVoted = votedCatId === entry.cat.id || voteNotice === entry.key;
+                      const isOtherDimmed = (voteNotice === 'a' && entry.key === 'b') || (voteNotice === 'b' && entry.key === 'a');
+                      return (
+                        <button
+                          type="button"
+                          key={entry.cat.id}
+                          disabled={!canVote}
+                          onClick={() => handleVote(selectedMatch.match_id, entry.cat.id)}
+                          className={`tournament-bracket-fighter tournament-bracket-sheet-card rounded-2xl border border-white/[0.06] bg-black/20 p-3 text-left transition ${
+                            canVote ? 'cursor-pointer active:scale-[0.985]' : 'cursor-default'
+                          } ${entry.winner ? 'ring-1 ring-emerald-300/20' : ''} ${
+                            isVoted ? 'scale-[1.01] border-cyan-300/18 bg-cyan-500/[0.08]' : ''
+                          } ${isOtherDimmed || entry.dimmed ? 'opacity-60' : ''}`}
+                        >
+                          <div className="aspect-[4/3] overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03]">
+                            <img
+                              src={entry.cat.image_url || '/cat-placeholder.svg'}
+                              alt={entry.cat.name}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                              onError={(event) => {
+                                (event.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
+                              }}
+                            />
+                          </div>
+                          <div className="mt-3">
+                            <p className="text-sm font-semibold text-white">{entry.cat.name}</p>
+                            <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/42">{entry.cat.rarity}</p>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-xs text-white/52">
+                            <span>{entry.votes} votes</span>
+                            <span>{entry.percent}%</span>
+                          </div>
+                          {entry.winner ? (
+                            <span className="mt-3 inline-flex items-center gap-1 rounded-full border border-emerald-300/18 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-100">
+                              <Trophy className="h-3.5 w-3.5" />
+                              Winner
+                            </span>
+                          ) : null}
+                          {isVoted ? (
+                            <span className="mt-3 inline-flex rounded-full border border-cyan-300/18 bg-cyan-500/12 px-2.5 py-1 text-[11px] font-semibold text-cyan-100">
+                              Vote locked
+                            </span>
+                          ) : canVote ? (
+                            <span className="mt-3 inline-flex rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-white/74">
+                              Tap to vote
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-            {currentRoundMatches.length > 0 ? (
-              <div className="mt-4 rounded-2xl border border-white/[0.05] bg-black/20 p-3">
-                <div className="flex items-center gap-2">
-                  <Clock3 className="h-4 w-4 text-cyan-200/70" />
-                  <p className="text-sm font-semibold text-white">Current Round Snapshot</p>
-                </div>
-                <p className="mt-1 text-xs text-white/55">
-                  {currentRoundMatches.length} matchup{currentRoundMatches.length === 1 ? '' : 's'} in the current lane.
-                </p>
-              </div>
-            ) : null}
+                  <div className="mt-4 rounded-2xl border border-white/[0.05] bg-black/20 p-3 text-xs text-white/55">
+                    <div className="flex items-center gap-2">
+                      <Clock3 className="h-4 w-4 text-white/42" />
+                      <span>Status: {String(selectedMatch.status || 'unknown').replace(/_/g, ' ')}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Target className="h-4 w-4 text-white/42" />
+                      <span>Match ID: {selectedMatch.match_id.slice(0, 8)}</span>
+                    </div>
+                    {currentRoundMatches.length > 0 ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-white/42" />
+                        <span>
+                          {currentRoundMatches.length} matchup{currentRoundMatches.length === 1 ? '' : 's'} in the current lane.
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              );
+            })()}
           </section>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </BracketShell>
   );
 }

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Swords, Target, ChevronDown, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { Swords, Target, ChevronDown, ChevronLeft, ChevronRight, Sparkles, Info, Coins } from 'lucide-react';
 import SigilIcon from './icons/SigilIcon';
 import CatCardBack from './CatCardBack';
+import { LoadingState } from './LoadingState';
 import { showGlobalToast } from '../lib/global-toast';
 import { thumbUrlForCat } from '../lib/cat-images';
 import { deriveTournamentMatchState, summarizeTournamentPlayable } from '../lib/tournament-state';
@@ -59,10 +60,6 @@ interface Arena {
   rounds: ArenaRound[];
 }
 
-interface HomeDashboardData {
-  highlights: Array<{ id: string; title: string; subtitle: string; created_at: string }>;
-}
-
 type BracketOverviewMatch = {
   match_id: string;
   round: number;
@@ -81,6 +78,14 @@ type BracketOverviewPayload = {
 type BracketQueuePayload = {
   currentRound: number;
   matches: ArenaMatch[];
+};
+
+type BetFeedItem = {
+  id: string;
+  amount: number;
+  catName: string;
+  username: string;
+  side: 'a' | 'b';
 };
 
 type PulseStatus = {
@@ -168,6 +173,15 @@ function spotlightEmptyCopy(segment: Segment) {
   if (segment === 'voting') return { title: 'No votable matchups right now.', subtitle: 'Current-round voting is either locked or waiting on the next bracket update.' };
   if (segment === 'upcoming') return { title: 'No upcoming matchups queued.', subtitle: 'Future rounds will stack here once the bracket advances.' };
   return { title: 'No completed matchups yet.', subtitle: 'Results will appear here after the first tournament battle closes.' };
+}
+
+function formatTournamentRoundLabel(round: number | null | undefined) {
+  const value = Number(round || 0);
+  if (value === 4) return 'Final';
+  if (value === 3) return 'Semifinal';
+  if (value === 2) return 'Quarterfinal';
+  if (value === 1) return 'First Round';
+  return value > 0 ? `Round ${value}` : 'No active round';
 }
 
 function calcSnapshot(votesA: number, votesB: number): MatchVoteSnapshot {
@@ -264,8 +278,8 @@ function TournamentBracket({
 
   const bracketMatches = overviewData?.matches || [];
   const roundCount = overviewData ? new Set(bracketMatches.map((match) => Number(match.round || 1))).size : 0;
-  const currentRoundNumber = overviewData?.tournament
-    ? clampRoundNumber(Number(overviewData.tournament.round || 1), 1, Math.max(1, roundCount || 1))
+  const currentRoundNumber = arena
+    ? clampRoundNumber(Number(arena.current_round || 1), 1, Math.max(1, roundCount || Number(arena.rounds?.length || 1)))
     : null;
   const currentRound = bracketMatches.filter((match) => Number(match.round || 1) === currentRoundNumber);
   const overviewStates = useMemo(() => {
@@ -287,18 +301,14 @@ function TournamentBracket({
   const quietResolvedCount = overviewStates.length > 0 ? overviewStates.filter((state) => state.isResolved).length : null;
   const featured = overviewData ? currentRound[0] || null : null;
   const currentRoundPairs = currentRound.slice(0, 3);
-  const currentRoundLabel = currentRoundNumber !== null && currentRoundNumber > 0
-    ? currentRoundNumber === roundCount
-      ? 'Final'
-      : `Round ${currentRoundNumber}`
-    : '—';
+  const currentRoundLabel = currentRoundNumber !== null ? formatTournamentRoundLabel(currentRoundNumber) : '—';
 
   return (
-    <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
+    <section className="rounded-[1.7rem] border border-white/[0.05] bg-white/[0.02] p-4 shadow-[0_14px_30px_rgba(0,0,0,0.18)]">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Bracket</p>
-          <h3 className="mt-1 text-lg font-semibold text-white">Bracket Overview</h3>
+          <h3 className="mt-1 text-xl font-bold text-white">Bracket Overview</h3>
           <p className="mt-1 text-xs text-white/55">
             {isExpanded ? 'Keep voting in the spotlight or open the full bracket map.' : 'Quick tournament snapshot.'}
           </p>
@@ -306,7 +316,7 @@ function TournamentBracket({
         <div className="flex items-center gap-2">
           <Link
             href="/tournament/bracket"
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.045] px-4 text-sm font-semibold text-white/88 transition hover:bg-white/[0.08]"
+            className="tournament-bracket-cta inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-semibold transition"
           >
             View Full Bracket
           </Link>
@@ -322,21 +332,21 @@ function TournamentBracket({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-white/[0.05] bg-black/20 px-3 py-2.5">
+          <div className="rounded-2xl border border-white/[0.05] bg-black/18 px-3 py-3">
             <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Voted Matches</p>
-            <p className="mt-1 text-lg font-semibold text-white">{playableSummary.votedCount}</p>
+            <p className="mt-1 text-[1.35rem] font-bold leading-none text-white">{playableSummary.votedCount}</p>
           </div>
-          <div className="rounded-2xl border border-white/[0.05] bg-black/20 px-3 py-2.5">
+          <div className="rounded-2xl border border-white/[0.05] bg-black/18 px-3 py-3">
             <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Open Matchups</p>
-            <p className="mt-1 text-lg font-semibold text-white">{playableSummary.openCount}</p>
+            <p className="mt-1 text-[1.35rem] font-bold leading-none text-white">{playableSummary.openCount}</p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/[0.05] bg-black/20 px-4 py-3 sm:min-w-[220px]">
+        <div className="rounded-2xl border border-white/[0.05] bg-black/18 px-4 py-3">
           <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Current Round</p>
-          <p className="mt-1 text-sm font-semibold text-white">{currentRoundLabel}</p>
+          <p className="mt-1 text-base font-bold text-white">{currentRoundLabel}</p>
           {overviewData?.tournament?.champion ? <p className="mt-1 text-xs text-amber-200/80">Champion: {overviewData.tournament.champion.name}</p> : null}
         </div>
       </div>
@@ -419,16 +429,6 @@ function TournamentBracket({
             </div>
           </div>
 
-          {featured ? (
-            <div className="mt-3 rounded-2xl border border-white/[0.05] bg-black/20 px-4 py-3">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Featured pairing</p>
-              <div className="mt-2 flex items-center justify-between gap-3 text-sm text-white/82">
-                <span className="truncate">{featured.cat_a.name}</span>
-                <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-white/38">VS</span>
-                <span className="truncate text-right">{featured.cat_b.name}</span>
-              </div>
-            </div>
-          ) : null}
         </>
       ) : null}
     </section>
@@ -469,6 +469,7 @@ function SpotlightMatchCard({
   availableSigils,
   activeIndex,
   total,
+  voteSessionCount,
   onVote,
   onPredict,
   onPrev,
@@ -483,8 +484,9 @@ function SpotlightMatchCard({
   availableSigils: number;
   activeIndex: number;
   total: number;
+  voteSessionCount: number;
   onVote: (matchId: string, catId: string) => void;
-  onPredict: (matchId: string, catId: string, bet: number) => void;
+  onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onPrev: () => void;
   onNext: () => void;
 }) {
@@ -494,7 +496,10 @@ function SpotlightMatchCard({
   const [bet, setBet] = useState(10);
   const [flippedSides, setFlippedSides] = useState<{ a: boolean; b: boolean }>({ a: false, b: false });
   const [isSmallScreen, setIsSmallScreen] = useState(false);
-  const lastTapRef = useRef<{ a: number; b: number }>({ a: 0, b: 0 });
+  const [flashSide, setFlashSide] = useState<'a' | 'b' | null>(null);
+  const [lockedToast, setLockedToast] = useState(false);
+  const [betSheetCatId, setBetSheetCatId] = useState<string | null>(null);
+  const [betFeed, setBetFeed] = useState<BetFeedItem[]>([]);
 
   const aPower = statPower(match.cat_a);
   const bPower = statPower(match.cat_b);
@@ -503,6 +508,8 @@ function SpotlightMatchCard({
   const snapshot = calcSnapshot(match.votes_a, match.votes_b);
   const pctA = snapshot.percent_a;
   const pctB = snapshot.percent_b;
+  const [animatedPctA, setAnimatedPctA] = useState(() => pctA);
+  const [animatedPctB, setAnimatedPctB] = useState(() => pctB);
   const tierA = rarityTier(match.cat_a.rarity);
   const tierB = rarityTier(match.cat_b.rarity);
   const reopenAtMs = pulseBoundaryMs(pulseResumeAt || match.resolves_at || match.vote_locks_at);
@@ -534,7 +541,69 @@ function SpotlightMatchCard({
   useEffect(() => {
     setFlippedSides({ a: false, b: false });
     setBet(10);
+    setFlashSide(null);
+    setLockedToast(false);
+    setAnimatedPctA(pctA);
+    setAnimatedPctB(pctB);
+    setBetSheetCatId(null);
+    setBetFeed([]);
   }, [match.match_id]);
+
+  useEffect(() => {
+    const nextA = Math.max(0, Math.min(100, pctA));
+    const nextB = Math.max(0, Math.min(100, pctB));
+    const raf = window.requestAnimationFrame(() => {
+      setAnimatedPctA(nextA);
+      setAnimatedPctB(nextB);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [pctA, pctB]);
+
+  useEffect(() => {
+    if (!betSheetCatId) return;
+    const names = ['@nova', '@rookiecat', '@arenafox', '@sigilrun', '@clawlord', '@zenpaw', '@vuxstar', '@whiskerqt'];
+    const bets = [5, 10, 10, 15, 20];
+    const seedSide: 'a' | 'b' = match.votes_a >= match.votes_b ? 'a' : 'b';
+    const seed: BetFeedItem[] = Array.from({ length: 4 }).map((_, index) => {
+      const side: 'a' | 'b' = index % 2 === 0 ? seedSide : (seedSide === 'a' ? 'b' : 'a');
+      const catName = side === 'a' ? match.cat_a.name : match.cat_b.name;
+      return {
+        id: `seed-${match.match_id}-${index}`,
+        amount: bets[index % bets.length],
+        catName,
+        username: names[index % names.length],
+        side,
+      };
+    });
+    setBetFeed(seed);
+    const id = window.setInterval(() => {
+      const side: 'a' | 'b' = Math.random() > 0.54 ? 'a' : 'b';
+      const catName = side === 'a' ? match.cat_a.name : match.cat_b.name;
+      const entry: BetFeedItem = {
+        id: `live-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        amount: bets[Math.floor(Math.random() * bets.length)],
+        catName,
+        username: names[Math.floor(Math.random() * names.length)],
+        side,
+      };
+      setBetFeed((prev) => [entry, ...prev].slice(0, 8));
+    }, 1400);
+    return () => window.clearInterval(id);
+  }, [betSheetCatId, match.cat_a.name, match.cat_b.name, match.match_id, match.votes_a, match.votes_b]);
+
+  useEffect(() => {
+    if (!voted) return;
+    const side = voted === match.cat_a.id ? 'a' : voted === match.cat_b.id ? 'b' : null;
+    if (!side) return;
+    setFlashSide(side);
+    setLockedToast(true);
+    const hideToastId = window.setTimeout(() => setLockedToast(false), 1400);
+    const clearFlashId = window.setTimeout(() => setFlashSide(null), 1200);
+    return () => {
+      window.clearTimeout(hideToastId);
+      window.clearTimeout(clearFlashId);
+    };
+  }, [voted, match.cat_a.id, match.cat_b.id]);
 
   const aStatEdge = {
     label: edgePct <= 3 ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'favored' : 'underdog'} +${edgePct}%`,
@@ -551,57 +620,29 @@ function SpotlightMatchCard({
     setFlippedSides((prev) => ({ ...prev, [side]: !prev[side] }));
   }
 
-  function handleCardTouch(side: 'a' | 'b') {
-    const now = Date.now();
-    if (now - lastTapRef.current[side] < 280) {
-      toggleFlip(side);
-      lastTapRef.current[side] = 0;
-      return;
-    }
-    lastTapRef.current[side] = now;
-  }
-
-  function renderActionStack(cat: ArenaCat, side: 'a' | 'b') {
-    const votedForThisSide = voted === cat.id;
-    const predictedForThisSide = predictedCatId === cat.id;
-    const canPredictThisSide = canPredict && !predictedCatId && !predictBusy && bet <= availableSigils;
-    return (
-      <div className="mt-2 space-y-2">
-        <button
-          type="button"
-          onClick={() => onVote(match.match_id, cat.id)}
-          aria-label={`Vote for ${cat.name}`}
-          disabled={!canVote}
-          data-side={side}
-          data-active={votedForThisSide ? 'true' : 'false'}
-          className="tournament-vote-btn tournament-side-btn arena-vote-btn inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border text-[12px] font-semibold touch-manipulation disabled:opacity-50 active:scale-[0.97]"
-        >
-          <span className="tournament-side-dot inline-block h-1.5 w-1.5 rounded-full" />
-          {isVoting && !voted ? 'Submitting…' : votedForThisSide ? `Voted ${side.toUpperCase()}` : canVote ? `Vote ${side.toUpperCase()}` : done ? 'Closed' : 'Locked'}
-        </button>
-
-        <button
-          type="button"
-          disabled={!canPredictThisSide}
-          onClick={() => onPredict(match.match_id, cat.id, bet)}
-          data-side={side}
-          data-active={predictedForThisSide ? 'true' : 'false'}
-          className="tournament-predict-btn tournament-side-btn inline-flex h-10 w-full items-center justify-center gap-1 rounded-xl border text-xs font-semibold disabled:opacity-40 active:scale-[0.97]"
-        >
-          {predictedForThisSide ? `Predicted ${side.toUpperCase()}` : `Predict ${side.toUpperCase()}`}
-          <span className="tournament-side-meta inline-flex items-center gap-0.5 text-[10px]">
-            +<SigilIcon className="h-3 w-3" />{bet}
-          </span>
-        </button>
-      </div>
-    );
-  }
+  const betTargetCat = betSheetCatId === match.cat_a.id
+    ? match.cat_a
+    : betSheetCatId === match.cat_b.id
+      ? match.cat_b
+      : null;
+  const betTargetSide: 'a' | 'b' | null = betTargetCat ? (betTargetCat.id === match.cat_a.id ? 'a' : 'b') : null;
+  const potFromFeed = betFeed.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const basePot = Math.max(0, Number(match.total_votes ?? (match.votes_a + match.votes_b))) * 2;
+  const displayedPot = basePot + potFromFeed;
+  const targetPct = betTargetSide === 'a' ? pctA : pctB;
+  const targetOdds = targetPct >= 55 ? 'favored' : `underdog (+${Math.max(4, 55 - targetPct)}%)`;
+  const recentWindow = betFeed.slice(0, 4);
+  const actionBias = recentWindow.reduce((acc, item) => acc + (item.side === 'a' ? 1 : -1), 0);
+  const momentumLabel = Math.abs(actionBias) <= 1 ? 'Balanced' : Math.abs(actionBias) >= 3 ? 'Heavy action' : 'Trending';
+  const momentumIcon = Math.abs(actionBias) <= 1 ? '⚖️' : Math.abs(actionBias) >= 3 ? '🔥' : '📈';
 
   function renderFront(cat: ArenaCat, side: 'a' | 'b') {
     const tier = side === 'a' ? tierA : tierB;
     const isLiveSide = flippedSides[side];
     const role = side === 'a' ? 'Challenger' : 'Defender';
     const votedForThisSide = voted === cat.id;
+    const isSelected = flashSide === side || votedForThisSide;
+    const isDimmed = !!flashSide && flashSide !== side;
     const votedLabel =
       done && match.winner_id === cat.id
         ? 'Winner'
@@ -619,16 +660,59 @@ function SpotlightMatchCard({
 
     return (
       <div
-        onDoubleClick={() => toggleFlip(side)}
-        onTouchEnd={() => handleCardTouch(side)}
-        className={`tournament-fighter-card arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tier} relative rounded-[1.4rem] border border-white/7 bg-gradient-to-br ${frameTone} p-2 shadow-[0_18px_40px_rgba(0,0,0,0.32)]`}
+        role={canVote ? 'button' : undefined}
+        tabIndex={canVote ? 0 : undefined}
+        onClick={() => {
+          if (!canVote) return;
+          setFlashSide(side);
+          onVote(match.match_id, cat.id);
+        }}
+        onKeyDown={(event) => {
+          if (!canVote) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setFlashSide(side);
+            onVote(match.match_id, cat.id);
+          }
+        }}
+        data-selected={isSelected ? 'true' : 'false'}
+        data-dimmed={isDimmed ? 'true' : 'false'}
+        className={`tournament-fighter-card tournament-fighter-card--interactive arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tier} relative rounded-[1.4rem] border border-white/7 bg-gradient-to-br ${frameTone} p-2 shadow-[0_18px_40px_rgba(0,0,0,0.32)]`}
       >
-        <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-full bg-white/10 blur-3xl opacity-40" />
+        {lockedToast && isSelected ? (
+          <div className="pointer-events-none absolute inset-x-4 top-4 z-[3] flex items-center justify-between gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/16 px-3 py-1.5 text-[10px] font-semibold text-emerald-50 backdrop-blur-sm">
+            <span>Vote locked</span>
+            <span className="text-emerald-100/80">+1 impact</span>
+          </div>
+        ) : null}
         <div className="relative z-[1] flex items-center justify-between gap-2">
           <span className={`rarity-badge rarity-badge--${tier} inline-flex rounded-full border px-2 py-1 text-[9px] font-semibold tracking-[0.08em] uppercase`}>
             {cat.rarity}
           </span>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/42">Double tap</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setBetSheetCatId(cat.id);
+              }}
+              aria-label={`Back ${cat.name}`}
+              className="tournament-inspect-btn inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/20 text-white/72 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              <Coins className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleFlip(side);
+              }}
+              aria-label={`Inspect ${cat.name}`}
+              className="tournament-inspect-btn inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-black/20 text-white/72 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         <div className="tournament-image-shell mt-2 rounded-[1.15rem] border border-white/7 bg-black/30 p-1">
@@ -653,11 +737,9 @@ function SpotlightMatchCard({
         </div>
 
         <div data-side={side} className="tournament-subpanel tournament-subpanel--side relative z-[1] mt-2 flex items-center justify-between gap-2 rounded-xl border border-white/7 bg-black/24 px-3 py-2 text-[10px] text-white/72">
-          <span>{side === 'a' ? pctA : pctB}% vote share</span>
+          <span>{side === 'a' ? 'Left side' : 'Right side'}</span>
           <span className={`${votedForThisSide ? 'text-white' : 'text-white/54'}`}>{votedLabel}</span>
         </div>
-
-        {renderActionStack(cat, side)}
 
         {isLiveSide && isSmallScreen ? null : (
           <div className="pointer-events-none absolute inset-x-4 bottom-4 h-10 rounded-full bg-white/5 blur-2xl opacity-70" />
@@ -668,7 +750,7 @@ function SpotlightMatchCard({
 
   function renderBack(cat: ArenaCat, side: 'a' | 'b') {
     return (
-      <div onDoubleClick={() => toggleFlip(side)} onTouchEnd={() => handleCardTouch(side)}>
+      <div>
         <CatCardBack
           cat={cat}
           role={side === 'a' ? 'Challenger' : 'Defender'}
@@ -701,6 +783,16 @@ function SpotlightMatchCard({
         </div>
       </div>
 
+      <div className="tournament-retention-strip relative z-[1] mt-2 flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] text-white/62">
+        <span className="inline-flex items-center gap-2">
+          <span className="tournament-streak-pill rounded-full border border-emerald-300/18 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-100">
+            Streak {voteSessionCount}
+          </span>
+          <span className="truncate">{Math.min(10, voteSessionCount)} / 10 votes today</span>
+        </span>
+        <span className="text-white/44">{availableSigils} sigils</span>
+      </div>
+
       <div className="relative z-[1] mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_36px_minmax(0,1fr)] sm:gap-4">
         <div className="min-w-0">
           <div className="arena-flip-scene min-h-[0]">
@@ -711,9 +803,17 @@ function SpotlightMatchCard({
           </div>
         </div>
 
-        <div className="flex items-center justify-center py-1 sm:pt-14">
+        <div className="flex flex-col items-center justify-center gap-2 py-1 sm:pt-14">
           <div className="tournament-vs-pill rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-white/60">
             VS
+          </div>
+          <div className="tournament-share-bar tournament-share-bar--inline relative h-2.5 w-full max-w-[84px] overflow-hidden rounded-full border border-white/[0.12] bg-white/10 sm:max-w-[92px]">
+            <div className="tournament-share-segment tournament-share-segment--a absolute left-0 top-0 h-full" style={{ width: `${animatedPctA}%`, transition: 'width 180ms ease-out' }} />
+            <div className="tournament-share-segment tournament-share-segment--b absolute right-0 top-0 h-full" style={{ width: `${animatedPctB}%`, transition: 'width 180ms ease-out' }} />
+            <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
+          </div>
+          <div className="text-center text-[10px] font-semibold tabular-nums text-white/52">
+            {pctA}% · {pctB}% · {Number(match.total_votes ?? (match.votes_a + match.votes_b))} votes
           </div>
         </div>
 
@@ -727,70 +827,105 @@ function SpotlightMatchCard({
         </div>
       </div>
 
-      <div className="tournament-helper-row relative z-[1] mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] text-white/58">
+      <div className="tournament-helper-row relative z-[1] mt-3 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] text-white/58">
         <span>
           {votingLocked
             ? (lockCopy ? `Voting is paused while this pulse resolves. It reopens ${lockCopy}.` : 'Voting is paused while this pulse resolves.')
-            : 'Double tap either card to flip and inspect rarity, skill, and stat edge.'}
+            : 'Tap either fighter to vote instantly. Use the info icon to inspect details.'}
         </span>
-        <span className="text-white/36">{votingLocked ? 'Watch the split. Results resolve soon.' : `Prediction bet: ${bet} sigils`}</span>
       </div>
 
       <div className="relative z-[1] mt-3 flex items-center justify-between text-[10px] text-white/68">
         <span data-tone={edgeTone} className="tournament-balance-chip inline-flex rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1">
-          {edgePct <= 3 ? 'Balanced matchup' : `${strongerA ? match.cat_a.name : match.cat_b.name} has the stat edge`}
+          {edgePct <= 3 ? 'Stat edge neutral' : `${strongerA ? match.cat_a.name : match.cat_b.name} has the stat edge`}
         </span>
-        <span className="tabular-nums text-white/50">{pctA}% · {pctB}% · {Number(match.total_votes ?? (match.votes_a + match.votes_b))} votes</span>
+        {predictBusy || predictedCatId ? (
+          <span className="tabular-nums text-white/50">{predictBusy ? 'Locking…' : 'Prediction locked'}</span>
+        ) : null}
       </div>
 
-      <div className="tournament-share-bar relative z-[1] mt-1.5 h-1.5 overflow-hidden rounded-full border border-white/[0.06] bg-white/8">
-        <div className="tournament-share-segment tournament-share-segment--a absolute left-0 top-0 h-full transition-[width] duration-500" style={{ width: `${Math.max(0, Math.min(100, pctA))}%` }} />
-        <div className="tournament-share-segment tournament-share-segment--b absolute right-0 top-0 h-full transition-[width] duration-500" style={{ width: `${Math.max(0, Math.min(100, pctB))}%` }} />
-        <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
-      </div>
-
-      <div className="tournament-predict-panel relative z-[1] mt-3 rounded-2xl border border-white/[0.06] bg-black/[0.2] p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">Prediction Bet</p>
-            <p className="mt-1 text-xs text-white/56">
+      {betSheetCatId && betTargetCat ? (
+        <div className="fixed inset-0 z-[1900]">
+          <button
+            type="button"
+            aria-label="Close prediction sheet"
+            className="absolute inset-0 bg-black/55"
+            onClick={() => setBetSheetCatId(null)}
+          />
+          <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border border-white/[0.1] bg-[linear-gradient(180deg,rgba(19,25,38,0.98),rgba(9,14,24,0.99))] p-4 pb-[calc(env(safe-area-inset-bottom)+14px)] shadow-[0_-14px_28px_rgba(0,0,0,0.34)]">
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/18" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/52">Prediction</p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">Back {betTargetCat.name}</p>
+              </div>
+              {predictedCatId ? (
+                <span className="tournament-lock-chip inline-flex items-center gap-1 rounded-full border border-cyan-300/22 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
+                  Locked +<SigilIcon className="h-3 w-3" />{match.user_prediction?.bet_sigils || bet}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {[5, 10, 15, 20].map((chip) => (
+                <button
+                  type="button"
+                  key={`${match.match_id}-${betTargetCat.id}-${chip}`}
+                  disabled={chip > availableSigils || !!predictedCatId}
+                  onClick={() => setBet(chip)}
+                  data-selected={bet === chip ? 'true' : 'false'}
+                  className="tournament-chip-btn h-9 rounded-full border px-3 text-xs font-semibold disabled:opacity-40 active:scale-[0.97]"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-white/80">
+                <span className="font-semibold">Pot: {displayedPot} sigils</span>
+                <span className="text-white/68">{momentumIcon} {momentumLabel}</span>
+              </div>
+              <p className="mt-1 text-[10px] text-white/58">
+                Odds feel: <span className="text-white/78">{betTargetCat.name}</span> is <span className="text-amber-100/92">{targetOdds}</span>
+              </p>
+            </div>
+            <p className="mt-3 text-xs text-white/64">
               {predictedCatId
-                ? 'Prediction locked for this battle.'
-                : votingLocked
-                  ? (lockCopy ? `Predictions reopen ${lockCopy}.` : 'Predictions reopen when the next live window starts.')
-                  : canPredict
-                    ? 'Pick a sigil amount, then predict from either fighter card.'
-                    : 'Predictions reopen when the next live matchup appears.'}
+                ? 'Prediction already locked for this battle.'
+                : !canPredict
+                  ? (votingLocked ? (lockCopy ? `Predictions reopen ${lockCopy}.` : 'Predictions are locked right now.') : 'Vote first to back this pick.')
+                  : `Lock prediction for ${bet} sigils.`}
             </p>
-          </div>
-          {(predictedCatId || match.user_prediction) ? (
-            <span className="tournament-lock-chip inline-flex items-center gap-1 rounded-full border border-cyan-300/22 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
-              Locked +<SigilIcon className="h-3 w-3" />{match.user_prediction?.bet_sigils || bet}
-            </span>
-          ) : null}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {[5, 10, 15, 20].map((chip) => (
             <button
               type="button"
-              key={`${match.match_id}-${chip}`}
-              disabled={!canPredict || chip > availableSigils || !!predictedCatId}
-              onClick={() => setBet(chip)}
-              className={`tournament-chip-btn h-9 rounded-full border px-3 text-xs font-semibold ${bet === chip ? 'border-amber-300/35 text-amber-200 bg-amber-500/14' : 'border-white/10 text-white/70 bg-white/[0.04]'} disabled:opacity-40 active:scale-[0.97]`}
+              disabled={!canPredict || !!predictedCatId || predictBusy || bet > availableSigils}
+              onClick={async () => {
+                const ok = await onPredict(match.match_id, betTargetCat.id, bet);
+                if (ok) setBetSheetCatId(null);
+              }}
+              className="tournament-queue-btn tournament-queue-btn--next mt-3 inline-flex h-10 w-full items-center justify-center gap-1 rounded-xl border px-3 text-sm font-semibold disabled:opacity-35 active:scale-[0.98]"
             >
-              {chip}
+              {predictBusy ? 'Locking…' : predictedCatId ? 'Prediction Locked' : `Confirm +${bet}`}
             </button>
-          ))}
+            <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/24 px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">Live bets</p>
+              <div className="mt-2 space-y-1.5">
+                {betFeed.slice(0, 8).map((entry) => (
+                  <p key={entry.id} className="animate-[fadeIn_220ms_ease-out] text-xs text-white/80">
+                    +{entry.amount} on {entry.catName} <span className="text-white/56">— {entry.username}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="tournament-queue-row relative z-[1] mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
         <button
           type="button"
           onClick={onPrev}
           disabled={activeIndex <= 0}
-          className="tournament-queue-btn inline-flex h-10 items-center justify-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs font-semibold text-white/80 disabled:opacity-35 active:scale-[0.97]"
+          className="tournament-queue-btn tournament-queue-btn--prev inline-flex h-10 items-center justify-center gap-1 rounded-full border px-3 text-xs font-semibold disabled:opacity-35 active:scale-[0.98]"
         >
           <ChevronLeft className="h-4 w-4" />
           Prev
@@ -803,7 +938,7 @@ function SpotlightMatchCard({
           type="button"
           onClick={onNext}
           disabled={activeIndex >= total - 1}
-          className="tournament-queue-btn inline-flex h-10 items-center justify-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs font-semibold text-white/80 disabled:opacity-35 active:scale-[0.97]"
+          className="tournament-queue-btn tournament-queue-btn--next inline-flex h-10 items-center justify-center gap-1 rounded-full border px-3 text-xs font-semibold disabled:opacity-35 active:scale-[0.98]"
         >
           Next
           <ChevronRight className="h-4 w-4" />
@@ -827,9 +962,9 @@ export default function TournamentPage() {
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [sigils, setSigils] = useState(0);
   const [predictionStreak, setPredictionStreak] = useState(0);
-  const [dashboard, setDashboard] = useState<HomeDashboardData | null>(null);
   const [segment, setSegment] = useState<Segment>('voting');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [voteSessionCount, setVoteSessionCount] = useState(0);
 
   useEffect(() => { void load(); }, []);
 
@@ -868,14 +1003,12 @@ export default function TournamentPage() {
   async function load(options: LoadOptions = {}) {
     if (!options.silent) setLoading(true);
     try {
-      const [res, me, home] = await Promise.all([
+      const [res, me] = await Promise.all([
         fetch('/api/tournament/active', { cache: 'no-store' }),
         fetch('/api/me', { cache: 'no-store' }),
-        fetch('/api/home/dashboard', { cache: 'no-store' }),
       ]);
       const data = await res.json().catch(() => ({}));
       const meData = await me.json().catch(() => ({}));
-      const homeData = await home.json().catch(() => ({}));
       const activeArenas = nextArenasFromLoad(data);
       const activeTournamentId = String(activeArenas?.[0]?.tournament_id || '').trim();
       const bracketData = activeTournamentId
@@ -932,11 +1065,6 @@ export default function TournamentPage() {
       }
       setSigils(meData?.data?.progress?.sigils || 0);
       setPredictionStreak(meData?.data?.prediction_streak || data?.prediction_meta?.current_streak || 0);
-      if (home.ok && homeData?.ok) {
-        setDashboard({
-          highlights: homeData.highlights || [],
-        });
-      }
     } finally {
       if (!options.silent) setLoading(false);
     }
@@ -986,6 +1114,9 @@ export default function TournamentPage() {
       : null;
     setVotingMatch(matchId);
     if (optimisticSnapshot) applyMatchSnapshot(matchId, optimisticSnapshot);
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(12);
+    }
     try {
       const r = await fetch('/api/vote', {
         method: 'POST',
@@ -1020,8 +1151,9 @@ export default function TournamentPage() {
         const nextIndex = advanceSpotlightIndex(activeList, activeIndex, matchId);
         // Briefly hold the current card so the submit state is visible,
         // then advance smoothly after we commit the vote locally.
-        await new Promise((resolve) => window.setTimeout(resolve, 160));
+        await new Promise((resolve) => window.setTimeout(resolve, 220));
         setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
+        setVoteSessionCount((prev) => prev + 1);
         setActiveIndex(nextIndex);
         showGlobalToast('Vote recorded', 2200);
       }
@@ -1038,8 +1170,8 @@ export default function TournamentPage() {
     setVotingMatch(null);
   }
 
-  async function handlePredict(matchId: string, catId: string, bet: number) {
-    if (predictBusyMatch) return;
+  async function handlePredict(matchId: string, catId: string, bet: number): Promise<boolean> {
+    if (predictBusyMatch) return false;
     setPredictBusyMatch(matchId);
     try {
       const r = await fetch('/api/match/predict', {
@@ -1056,14 +1188,17 @@ export default function TournamentPage() {
         } else {
           showGlobalToast(data?.error || 'Prediction failed', 2200);
         }
+        return false;
       } else {
         setSigils(data.sigils_after ?? sigils);
         setPredictionStreak(data.current_streak ?? predictionStreak);
         showGlobalToast(`Prediction locked (-${bet})`, 2200);
         void load({ silent: true });
+        return true;
       }
     } catch {
       showGlobalToast('Network error', 2200);
+      return false;
     } finally {
       setPredictBusyMatch(null);
     }
@@ -1220,39 +1355,53 @@ export default function TournamentPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#08090d] text-white flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-white/50" />
-      </div>
+      <LoadingState
+        fullPage
+        icon="⚔️"
+        message="Loading tournament..."
+        className="min-h-screen bg-[#08090d] text-white"
+        phrases={[
+          'Finding worthy opponents...',
+          'Balancing the matchup...',
+          'Summoning contenders...',
+          'Checking live vote states...'
+        ]}
+      />
     );
   }
 
   const emptyCopy = spotlightEmptyCopy(segment);
+  const currentRoundLabel = primaryArena ? formatTournamentRoundLabel(primaryArena.current_round) : 'No active round';
 
   return (
     <div className="min-h-screen bg-[#08090d] px-4 pb-8 pt-4 sm:pt-5 text-white">
       <div className={`mx-auto max-w-3xl ${isEmptyVoting ? 'space-y-2.5' : 'space-y-3.5'}`}>
-        <section className="tournament-spotlight-shell rounded-[2rem] border border-white/[0.06] bg-white/[0.025] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.28)] sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
+        <div className={`tournament-info-module rounded-[1.7rem] border border-white/[0.05] bg-[linear-gradient(135deg,rgba(88,28,135,0.08),rgba(34,211,238,0.04))] shadow-[0_14px_28px_rgba(0,0,0,0.18)] ${isEmptyVoting ? 'p-3 opacity-90' : 'p-3.5'}`}>
+          <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Tournament Spotlight</p>
-              <h2 className="mt-1 text-lg font-semibold">{primaryArena?.type === 'rookie' ? 'Rookie Tournament' : 'Daily Tournament'}</h2>
+              <div className="tournament-status-pill inline-flex items-center gap-1 rounded-full border border-violet-300/14 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/82">
+                <Sparkles className="h-3.5 w-3.5" />
+                Whisker Arena
+              </div>
+              <p className="mt-2 text-sm font-semibold text-white">Whisker Arena is coming soon for faster ranked repeat battles.</p>
             </div>
-            <span className={`tournament-round-pill shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${primaryArena ? 'border-white/[0.08] bg-white/[0.05] text-white/80' : 'border-white/[0.05] bg-white/[0.03] text-white/40'}`}>
-              {primaryArena ? `Round ${primaryArena.current_round}` : 'No active round'}
-            </span>
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              className="tournament-primary-link inline-flex h-11 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-cyan-300/12 bg-cyan-500/8 px-4 text-sm font-semibold text-cyan-50/72 opacity-80"
+            >
+              <Swords className="h-4 w-4" />
+              Coming Soon
+            </button>
           </div>
+        </div>
 
-          <div className={`mb-3 grid gap-2 ${availableSegments.length === 1 ? 'grid-cols-1' : availableSegments.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-            {availableSegments.map((s) => (
-              <button
-                type="button"
-                key={s}
-                onClick={() => setSegment(s)}
-                className={`tournament-segment-btn h-10 rounded-full border px-2 text-[11px] font-semibold capitalize transition-colors ${segment === s ? 'border-white/[0.08] bg-white/[0.12] text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)]' : 'border-transparent bg-white/[0.04] text-white/72 hover:bg-white/[0.07]'}`}
-              >
-                {s === 'voting' ? 'Voting Now' : s}
-              </button>
-            ))}
+        <section className="tournament-spotlight-shell rounded-[2rem] border border-white/[0.06] bg-white/[0.025] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.28)] sm:p-4">
+          <div className="mb-3 flex items-center justify-end">
+            <span className={`tournament-round-pill shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${primaryArena ? 'border-white/[0.08] bg-white/[0.05] text-white/80' : 'border-white/[0.05] bg-white/[0.03] text-white/40'}`}>
+              {currentRoundLabel}
+            </span>
           </div>
 
           {activeMatch ? (
@@ -1267,6 +1416,7 @@ export default function TournamentPage() {
               availableSigils={sigils}
               activeIndex={activeIndex}
               total={activeList.length}
+              voteSessionCount={voteSessionCount}
               onVote={handleVote}
               onPredict={handlePredict}
               onPrev={() => setActiveIndex((prev) => Math.max(0, prev - 1))}
@@ -1304,34 +1454,6 @@ export default function TournamentPage() {
 
         <div className={isEmptyVoting ? 'opacity-90' : ''}>
           <TournamentBracket arena={primaryArena} votedMatches={votedMatches} pulseLocked={pulseLocked} />
-        </div>
-
-        <details className={`tournament-info-module rounded-2xl border border-white/[0.05] bg-white/[0.03] ${isEmptyVoting ? 'p-2.5 opacity-90' : 'p-3'}`}>
-          <summary className="flex h-11 cursor-pointer items-center justify-between rounded-xl px-2 text-sm font-semibold">
-            Tournament Highlights
-            <ChevronRight className="h-4 w-4 text-white/50" />
-          </summary>
-          <div className="space-y-2 pt-2">
-            {(dashboard?.highlights || []).slice(0, 8).map((h) => (
-              <div key={h.id} className="tournament-detail-card rounded-xl bg-white/[0.03] p-2.5">
-                <p className="text-sm font-medium">{h.title}</p>
-                <p className="mt-0.5 text-xs text-white/60">{h.subtitle}</p>
-              </div>
-            ))}
-            {!(dashboard?.highlights || []).length && <p className="px-1 text-xs text-white/55">No highlights yet. Battles are still warming up.</p>}
-          </div>
-        </details>
-
-        <div className={`tournament-info-module rounded-2xl border border-white/[0.05] bg-[linear-gradient(135deg,rgba(109,40,217,0.08),rgba(56,189,248,0.04))] text-center shadow-[0_14px_32px_rgba(0,0,0,0.18)] ${isEmptyVoting ? 'p-2.5 opacity-90' : 'p-3'}`}>
-          <div className="tournament-status-pill inline-flex items-center gap-1 rounded-full border border-violet-300/16 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/80">
-            <Sparkles className="h-3.5 w-3.5" />
-            Secondary Mode
-          </div>
-          <p className="mt-2 text-sm text-white/70">Want a deeper ranked climb after the bracket? Whisker Arena is still here as a separate beta ladder.</p>
-          <Link href="/arena" className="tournament-secondary-link mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-300/16 bg-violet-500/10 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/16">
-            <Swords className="h-4 w-4" />
-            Try Whisker Arena (Beta)
-          </Link>
         </div>
       </div>
     </div>

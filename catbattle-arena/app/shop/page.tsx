@@ -12,7 +12,7 @@ import CosmeticTitle from '../components/cosmetics/CosmeticTitle';
 import CosmeticThemeProvider from '../components/cosmetics/CosmeticThemeProvider';
 import { canPurchaseCosmetic, resolveCosmeticEffect } from '../_lib/cosmetics/effectsRegistry';
 import { cosmeticTextClassFromSlug } from '../_lib/cosmetics/effectsRegistry';
-import { Badge, Button, Card, Chip, SectionHeader } from '../components/ui/primitives';
+import { Badge, Card, Chip, SectionHeader, buttonStyles } from '../components/ui/primitives';
 
 type ShopItem = {
   id: string;
@@ -516,6 +516,19 @@ export default function ShopPage() {
               <p className="shop-wallet-subcopy">Spend sigils on profile flex, vote flair, and premium cosmetics.</p>
             </div>
             <SigilWidget balance={sigils} size="shop" className="w-full" />
+          </div>
+          <div className="mt-3">
+            <Card className="border-amber-300/20 bg-gradient-to-br from-amber-500/10 via-black/30 to-violet-500/10 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-amber-200/80">Casino</p>
+                  <p className="text-sm font-semibold text-white">Put your sigils on the line in the Casino.</p>
+                </div>
+                <Link href="/casino" className={buttonStyles({ variant: 'secondary', size: 'sm', className: 'shrink-0' })}>
+                  Open Casino
+                </Link>
+              </div>
+            </Card>
           </div>
         </div>
 

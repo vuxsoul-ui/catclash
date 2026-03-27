@@ -29,6 +29,8 @@ type LeaderPlayer = {
   total_wins: number;
 };
 
+type PlayerBoardMode = 'richest' | 'predictor' | 'streak' | 'active' | 'chaos';
+
 export default function LeaderboardPage() {
   const [cats, setCats] = useState<LeaderCat[]>([]);
   const [players, setPlayers] = useState<LeaderPlayer[]>([]);
@@ -37,6 +39,7 @@ export default function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [playerMoves, setPlayerMoves] = useState<Record<string, 'up' | 'down'>>({});
   const [catMoves, setCatMoves] = useState<Record<string, 'up' | 'down'>>({});
+  const [playerMode, setPlayerMode] = useState<PlayerBoardMode>('richest');
   const lowEgressMode = process.env.NEXT_PUBLIC_LOW_EGRESS === '1';
 
   useEffect(() => {
@@ -117,6 +120,48 @@ export default function LeaderboardPage() {
     return `#${rank + 1}`;
   }
 
+  function playerTitle(mode: PlayerBoardMode): string {
+    if (mode === 'richest') return 'Sigil Tycoon';
+    if (mode === 'predictor') return 'Oracle';
+    if (mode === 'streak') return 'Flame Keeper';
+    if (mode === 'active') return 'Arena Grinder';
+    return 'King of Chaos';
+  }
+
+  function predictorScore(player: LeaderPlayer): number {
+    const streakPressure = Math.min(45, player.current_streak * 5.5);
+    const experienceBias = Math.min(35, (player.level - 1) * 1.6 + player.total_wins * 0.15);
+    return Math.max(40, Math.min(97, Math.round(46 + streakPressure + experienceBias * 0.25)));
+  }
+
+  function underdogWinsScore(player: LeaderPlayer): number {
+    const volatility = Math.max(0, player.total_wins - player.current_streak);
+    const efficiency = Math.max(1, player.level);
+    return Math.max(0, Math.round(volatility / efficiency));
+  }
+
+  const rankedPlayers = React.useMemo(() => {
+    const list = [...players];
+    if (playerMode === 'richest') {
+      list.sort((a, b) => b.sigils - a.sigils || b.total_wins - a.total_wins || b.level - a.level);
+      return list;
+    }
+    if (playerMode === 'predictor') {
+      list.sort((a, b) => predictorScore(b) - predictorScore(a) || b.current_streak - a.current_streak || b.total_wins - a.total_wins);
+      return list;
+    }
+    if (playerMode === 'streak') {
+      list.sort((a, b) => b.current_streak - a.current_streak || b.total_wins - a.total_wins || b.level - a.level);
+      return list;
+    }
+    if (playerMode === 'active') {
+      list.sort((a, b) => b.total_wins - a.total_wins || b.xp - a.xp || b.level - a.level);
+      return list;
+    }
+    list.sort((a, b) => underdogWinsScore(b) - underdogWinsScore(a) || b.total_wins - a.total_wins || b.current_streak - a.current_streak);
+    return list;
+  }, [playerMode, players]);
+
   const isEmpty = !loading && !error && ((tab === 'players' && players.length === 0) || (tab === 'cats' && cats.length === 0));
 
   if (loading) {
@@ -171,8 +216,29 @@ export default function LeaderboardPage() {
         </div>
 
         {tab === 'players' ? (
-          <div className="space-y-3">
-            {players.map((player, i) => (
+          <>
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {([
+                ['richest', 'Richest'],
+                ['predictor', 'Best Predictor'],
+                ['streak', 'Hottest Streak'],
+                ['active', 'Most Active'],
+                ['chaos', 'Underdog Wins'],
+              ] as Array<[PlayerBoardMode, string]>).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setPlayerMode(mode)}
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                    playerMode === mode ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-white/12 bg-white/[0.04] text-white/70'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-3">
+            {rankedPlayers.map((player, i) => (
               <Link
                 key={player.id}
                 href={`/profile/${player.id}`}
@@ -190,14 +256,26 @@ export default function LeaderboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold truncate">{player.username}</p>
+                    <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/78">{playerTitle(playerMode)}</p>
                     <div className="text-xs text-white/40 flex items-center gap-3 mt-1">
                       <span className="inline-flex items-center gap-1"><Zap className="w-3 h-3 text-yellow-400" />Lvl {player.level} · {player.xp} XP</span>
                       <span className="inline-flex items-center gap-1"><Flame className="w-3 h-3 text-orange-400" />{player.current_streak}</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-yellow-400">{player.total_wins}</div>
-                    <div className="text-xs text-white/40">wins</div>
+                    <div className="font-bold text-yellow-400">
+                      {playerMode === 'richest' ? player.sigils :
+                        playerMode === 'predictor' ? `${predictorScore(player)}%` :
+                        playerMode === 'streak' ? player.current_streak :
+                        playerMode === 'active' ? player.total_wins :
+                        underdogWinsScore(player)}
+                    </div>
+                    <div className="text-xs text-white/40">
+                      {playerMode === 'richest' ? 'sigils' :
+                        playerMode === 'predictor' ? 'win rate' :
+                        playerMode === 'streak' ? 'streak' :
+                        playerMode === 'active' ? 'votes' : 'upsets'}
+                    </div>
                     {playerMoves[player.id] === 'up' && (
                       <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-green-400">
                         <TrendingUp className="w-3 h-3" /> Rising
@@ -212,7 +290,8 @@ export default function LeaderboardPage() {
                 </div>
               </Link>
             ))}
-          </div>
+            </div>
+          </>
         ) : (
           <div className="space-y-3">
             {cats.map((cat, i) => {

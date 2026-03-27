@@ -582,6 +582,7 @@ function MiniMatchPreview({
   const tierB = getTierKey(match.cat_b.rarity);
   const votingLocked = !!match.voting_locked;
   const lockLabel = pulseCountdown ? `Votes reopen in ${pulseCountdown}.` : 'Voting is between pulses right now.';
+  const canVote = !voting && !votingLocked && !votedSide;
 
   return (
     <div className="relative overflow-hidden rounded-[1.85rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.98),rgba(6,14,26,0.94),rgba(11,20,33,0.92))] p-4 shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_26px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
@@ -607,9 +608,33 @@ function MiniMatchPreview({
           </button>
         </div>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 sm:gap-3.5">
+        <div className="mb-3 flex items-center justify-between text-[10px] text-white/60">
+          <span>{votingLocked ? 'Pulse status' : voteSyncing ? 'Updating...' : votedSide ? 'Vote locked' : 'Tap a fighter'}</span>
+          <span className="tabular-nums">{votingLocked ? (pulseCountdown || 'Locked') : `${pctA}% · ${pctB}%`}</span>
+        </div>
+        <div className="mt-1.5 relative h-2 overflow-hidden rounded-full bg-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
+          <div className="absolute left-0 top-0 h-full bg-blue-500 transition-[width] duration-300" style={{ width: `${pctA}%` }} />
+          <div className="absolute right-0 top-0 h-full bg-rose-500 transition-[width] duration-300" style={{ width: `${pctB}%` }} />
+        </div>
+
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 sm:gap-3.5">
           <div className="min-w-0">
-            <div className={`rounded-[1.45rem] p-2.5 shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] ${votedSide === 'a' ? 'bg-white/[0.08]' : 'bg-white/[0.04]'}`}>
+            <button
+              type="button"
+              onClick={() => {
+                if (!canVote) return;
+                onVote(match.cat_a.id);
+              }}
+              disabled={!canVote}
+              aria-pressed={votedSide === 'a'}
+              className={`block w-full rounded-[1.45rem] p-2.5 text-left shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
+                votedSide === 'a'
+                  ? 'scale-[1.015] bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(59,130,246,0.14),inset_0_0_0_1px_rgba(147,197,253,0.24)]'
+                  : votedSide === 'b'
+                    ? 'bg-white/[0.03] opacity-65'
+                    : 'bg-white/[0.04]'
+              } ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
+            >
               <div className="relative overflow-hidden rounded-[1.1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
                 <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover object-center" />
               </div>
@@ -618,8 +643,11 @@ function MiniMatchPreview({
                 <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getRarityColor(match.cat_a.rarity)}`}>
                   {match.cat_a.rarity}
                 </p>
+                <p className="mt-2 text-[11px] font-semibold text-white/72">
+                  {votedSide === 'a' ? 'Vote locked' : canVote ? 'Tap to vote' : voting ? 'Voting...' : 'Unavailable'}
+                </p>
               </div>
-            </div>
+            </button>
           </div>
           <div className="flex flex-col items-center gap-2">
             <div className="rounded-full bg-white/[0.06] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
@@ -630,7 +658,22 @@ function MiniMatchPreview({
             </div>
           </div>
           <div className="min-w-0">
-            <div className={`rounded-[1.45rem] p-2.5 shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] ${votedSide === 'b' ? 'bg-white/[0.08]' : 'bg-white/[0.04]'}`}>
+            <button
+              type="button"
+              onClick={() => {
+                if (!canVote) return;
+                onVote(match.cat_b.id);
+              }}
+              disabled={!canVote}
+              aria-pressed={votedSide === 'b'}
+              className={`block w-full rounded-[1.45rem] p-2.5 text-left shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
+                votedSide === 'b'
+                  ? 'scale-[1.015] bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(244,63,94,0.14),inset_0_0_0_1px_rgba(253,164,175,0.24)]'
+                  : votedSide === 'a'
+                    ? 'bg-white/[0.03] opacity-65'
+                    : 'bg-white/[0.04]'
+              } ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
+            >
               <div className="relative overflow-hidden rounded-[1.1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
                 <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover object-center" />
               </div>
@@ -639,37 +682,12 @@ function MiniMatchPreview({
                 <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getRarityColor(match.cat_b.rarity)}`}>
                   {match.cat_b.rarity}
                 </p>
+                <p className="mt-2 text-[11px] font-semibold text-white/72">
+                  {votedSide === 'b' ? 'Vote locked' : canVote ? 'Tap to vote' : voting ? 'Voting...' : 'Unavailable'}
+                </p>
               </div>
-            </div>
+            </button>
           </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            onClick={() => onVote(match.cat_a.id)}
-            disabled={voting || votingLocked}
-            className={`h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'a' ? 'bg-blue-500/20 text-blue-100 shadow-[0_12px_26px_rgba(59,130,246,0.2),0_0_18px_rgba(59,130,246,0.12),inset_0_0_0_1px_rgba(147,197,253,0.32)]' : 'bg-[linear-gradient(180deg,rgba(59,130,246,0.16),rgba(37,99,235,0.12))] text-white shadow-[0_10px_20px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[linear-gradient(180deg,rgba(59,130,246,0.2),rgba(37,99,235,0.15))] hover:shadow-[0_14px_24px_rgba(0,0,0,0.16),0_0_18px_rgba(59,130,246,0.1)]'}`}
-          >
-            {votingLocked ? 'Locked' : voting ? 'Voting...' : votedSide === 'a' ? 'Voted A' : 'Vote A'}
-          </button>
-          <button
-            type="button"
-            onClick={() => onVote(match.cat_b.id)}
-            disabled={voting || votingLocked}
-            className={`h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-55 ${votedSide === 'b' ? 'bg-rose-500/20 text-rose-100 shadow-[0_12px_26px_rgba(244,63,94,0.2),0_0_18px_rgba(244,63,94,0.12),inset_0_0_0_1px_rgba(253,164,175,0.32)]' : 'bg-[linear-gradient(180deg,rgba(244,63,94,0.16),rgba(225,29,72,0.12))] text-white shadow-[0_10px_20px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-[linear-gradient(180deg,rgba(244,63,94,0.2),rgba(225,29,72,0.15))] hover:shadow-[0_14px_24px_rgba(0,0,0,0.16),0_0_18px_rgba(244,63,94,0.1)]'}`}
-          >
-            {votingLocked ? 'Locked' : voting ? 'Voting...' : votedSide === 'b' ? 'Voted B' : 'Vote B'}
-          </button>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between text-[10px] text-white/60">
-          <span>{votingLocked ? 'Pulse status' : voteSyncing ? 'Updating...' : 'Current split'}</span>
-          <span className="tabular-nums">{votingLocked ? (pulseCountdown || 'Locked') : `${pctA}% · ${pctB}%`}</span>
-        </div>
-        <div className="mt-1.5 relative h-1.5 overflow-hidden rounded-full bg-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
-          <div className="absolute left-0 top-0 h-full bg-blue-500 transition-[width] duration-300" style={{ width: `${pctA}%` }} />
-          <div className="absolute right-0 top-0 h-full bg-rose-500 transition-[width] duration-300" style={{ width: `${pctB}%` }} />
         </div>
 
         {votingLocked && !votedSide ? (
@@ -1801,7 +1819,6 @@ const MatchCard = React.memo(function MatchCard({
 
       <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[10px] text-white/52">
         <span>Tap a fighter to flip the card.</span>
-        <span className="text-white/34">Double tap still votes fast.</span>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">
@@ -1827,21 +1844,21 @@ const MatchCard = React.memo(function MatchCard({
         </button>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-[10px] text-white/70">
+      <div className="mt-3 flex items-center justify-between text-[10px] text-white/78">
         <span className="inline-flex px-2 py-0.5 rounded-full border border-white/12 bg-white/[0.04] text-white/78">
           {voteSyncing ? 'Updating...' : match.is_close_match ? 'Tight matchup' : 'Current split'}
         </span>
         <span className="arena-vote-pct tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
       </div>
 
-      <div className="arena-vote-split mt-1.5 relative h-1.5 rounded-full overflow-hidden bg-white/8 border border-white/10">
+      <div className="arena-vote-split mt-1.5 relative h-2.5 rounded-full overflow-hidden bg-white/10 border border-white/16">
         <div
-          className={`arena-vote-split-a absolute left-0 top-0 h-full bg-blue-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'a' ? 'shadow-[0_0_12px_rgba(59,130,246,0.55)]' : ''}`}
-          style={{ width: `${Math.max(0, Math.min(100, displayPct.a))}%` }}
+          className={`arena-vote-split-a absolute left-0 top-0 h-full bg-blue-400 ${liveSide === 'a' ? 'shadow-[0_0_8px_rgba(96,165,250,0.45)]' : ''}`}
+          style={{ width: `${Math.max(0, Math.min(100, displayPct.a))}%`, transition: `width ${reduceMotion ? 140 : 200}ms ease-out` }}
         />
         <div
-          className={`arena-vote-split-b absolute right-0 top-0 h-full bg-red-500 ${reduceMotion ? 'duration-200' : 'duration-500'} transition-[width] ${liveSide === 'b' ? 'shadow-[0_0_12px_rgba(239,68,68,0.55)]' : ''}`}
-          style={{ width: `${Math.max(0, Math.min(100, displayPct.b))}%` }}
+          className={`arena-vote-split-b absolute right-0 top-0 h-full bg-rose-400 ${liveSide === 'b' ? 'shadow-[0_0_8px_rgba(251,113,133,0.45)]' : ''}`}
+          style={{ width: `${Math.max(0, Math.min(100, displayPct.b))}%`, transition: `width ${reduceMotion ? 140 : 200}ms ease-out` }}
         />
         <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
       </div>
@@ -3417,14 +3434,14 @@ function ArenaSection({
             id={`arena-section-${arena.tournament_id}-${s}-tab`}
             className={`h-10 rounded-full text-xs font-semibold capitalize transition-all ${
               segment === s
-                ? "bg-white/15 text-white border border-emerald-300/45 shadow-[0_0_18px_rgba(16,185,129,0.20)]"
+                ? "bg-white/14 text-white border border-emerald-300/38 shadow-[0_8px_16px_rgba(0,0,0,0.24)]"
                 : "bg-white/8 text-white/80 border border-transparent"
             }`}
           >
             {s === "voting" ? (
               <span className="inline-flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                Voting Now
+                Voting
               </span>
             ) : s}
           </button>
@@ -4771,10 +4788,11 @@ export default function Page() {
       showToast("Too fast — take a breath 😼");
       return false;
     }
-    const matchedMatch = arenas
+    const arenaSearchPool = [...displayedArenas, ...arenas];
+    const matchedMatch = arenaSearchPool
       .flatMap((a) => (a.rounds || []).flatMap((r) => r.matches || []))
       .find((m) => m.match_id === matchId);
-    const matchedArenaType = arenas.find((a) =>
+    const matchedArenaType = arenaSearchPool.find((a) =>
       (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
     )?.type as 'main' | 'rookie' | undefined;
     const baselineSnapshot = normalizeVoteSnapshot(voteSnapshotByMatchId[matchId] || matchedMatch || null);
@@ -4791,7 +4809,7 @@ export default function Page() {
     setVotedMatches((prev) => {
       const next = upsertVotedMatch(prev, matchId, catId);
       writeVotedMatchesToStorage(next, voteStateScope);
-      const arenaType = arenas.find((a) =>
+      const arenaType = arenaSearchPool.find((a) =>
         (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
       )?.type as 'main' | 'rookie' | undefined;
       if (arenaType === 'main' || arenaType === 'rookie') {
@@ -4810,6 +4828,41 @@ export default function Page() {
         body: JSON.stringify({ match_id: matchId, voted_for: catId }),
       });
       const data = await r.json().catch(() => null);
+      const hasServerVoteSnapshot = (payload: any): boolean => {
+        if (!payload || typeof payload !== 'object') return false;
+        const candidates = [
+          payload?.votes_a, payload?.votesA,
+          payload?.votes_b, payload?.votesB,
+          payload?.percent_a, payload?.percentA,
+          payload?.percent_b, payload?.percentB,
+          payload?.total_votes, payload?.totalVotes,
+        ];
+        return candidates.some((value) => Number.isFinite(Number(value)));
+      };
+      const hydrateVisibleMatchSnapshot = async (): Promise<VoteSnapshot | null> => {
+        const sources = await Promise.all([
+          fetch('/api/tournament/active', { cache: 'no-store' }).then((res) => res.json().catch(() => null)).catch(() => null),
+          fetch('/api/tournament/rookie', { cache: 'no-store' }).then((res) => res.json().catch(() => null)).catch(() => null),
+        ]);
+        const allArenas = sources
+          .flatMap((payload) => (Array.isArray(payload?.arenas) ? payload.arenas : []))
+          .filter(Boolean);
+        for (const arena of allArenas) {
+          const rounds = Array.isArray(arena?.rounds) ? arena.rounds : [];
+          for (const round of rounds) {
+            const matches = Array.isArray(round?.matches) ? round.matches : [];
+            const found = matches.find((m: any) => String(m?.match_id || '') === String(matchId));
+            if (!found) continue;
+            const snapshot = normalizeVoteSnapshot(found);
+            if (snapshot) {
+              setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: snapshot }));
+              setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, snapshot));
+              return snapshot;
+            }
+          }
+        }
+        return null;
+      };
       const asFiniteNumber = (...values: any[]): number | null => {
         for (const value of values) {
           if (value == null || value === "") continue;
@@ -4913,7 +4966,12 @@ export default function Page() {
           incomingChoice === 'a' ? String(matchedMatch?.cat_a?.id || catId)
           : incomingChoice === 'b' ? String(matchedMatch?.cat_b?.id || catId)
           : String(catId || incomingChoice || 'already');
-        applyServerVoteSnapshot(data);
+        if (hasServerVoteSnapshot(data)) {
+          applyServerVoteSnapshot(data);
+        } else {
+          await hydrateVisibleMatchSnapshot();
+          clearVoteSyncing(matchId);
+        }
         setVotedMatches((prev) => {
           const next = upsertVotedMatch(prev, matchId, resolvedChoice || 'already');
           writeVotedMatchesToStorage(next, voteStateScope);
@@ -4949,7 +5007,12 @@ export default function Page() {
           return next;
         });
         setLastVoteAtMs(nowMs);
-        applyServerVoteSnapshot(data);
+        if (hasServerVoteSnapshot(data)) {
+          applyServerVoteSnapshot(data);
+        } else {
+          await hydrateVisibleMatchSnapshot();
+          clearVoteSyncing(matchId);
+        }
         if (hasCredentials && !hasProfileUsername) {
           try {
             const k = 'guest_vote_count';
