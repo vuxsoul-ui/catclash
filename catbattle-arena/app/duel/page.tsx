@@ -4,11 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Download, Loader2, Share2, Swords, X } from 'lucide-react';
-import DuelRow from '../components/duel/DuelRow';
-import DuelCardFull from '../components/duel/DuelCardFull';
 import { LoadingState } from '../components/LoadingState';
 import type { DuelRowData } from '../components/duel/types';
-import { Badge, Button, Card, SectionHeader, Tabs, buttonStyles } from '../components/ui/primitives';
+import { Button, Card, Tabs, buttonStyles } from '../components/ui/primitives';
 import { pickLiveDuels } from '../lib/duel-live';
 
 type MyCat = { id: string; name: string; image_url: string | null; rarity: string; status?: string };
@@ -21,6 +19,75 @@ function dedupeById(rows: DuelRowData[]): DuelRowData[] {
     if (r?.id) map.set(String(r.id), r);
   });
   return [...map.values()];
+}
+
+function relativeTime(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const delta = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (delta < 60) return `${delta}s`;
+  if (delta < 3600) return `${Math.floor(delta / 60)}m`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h`;
+  return `${Math.floor(delta / 86400)}d`;
+}
+
+function duelStatusMeta(duel: DuelRowData): { label: string; chipClass: string } {
+  const status = String(duel.status || '').toLowerCase();
+  if (status === 'pending') return { label: 'Pending', chipClass: 'border-amber-300/35 bg-amber-500/14 text-amber-100' };
+  if (status === 'completed') return { label: 'Result', chipClass: 'border-cyan-300/28 bg-cyan-500/10 text-cyan-100/90' };
+  return { label: 'Live', chipClass: 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' };
+}
+
+function CombatInboxRow({
+  duel,
+  onOpen,
+}: {
+  duel: DuelRowData;
+  onOpen: (duelId: string) => void;
+}) {
+  const meta = duelStatusMeta(duel);
+  const created = duel.created_at ? relativeTime(duel.created_at) : '';
+  const votes = Number(duel.votes?.total || 0);
+  const mineWon = duel.winner_cat_id
+    ? duel.winner_cat_id === duel.challenger_cat?.id || duel.winner_cat_id === duel.challenged_cat?.id
+    : null;
+  const resultTint = String(duel.status || '').toLowerCase() === 'completed'
+    ? mineWon
+      ? 'border-emerald-300/28'
+      : 'border-rose-300/25'
+    : 'border-white/12';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(duel.id)}
+      className={`group w-full rounded-2xl border ${resultTint} bg-slate-900/45 p-2.5 text-left shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition-all duration-150 active:scale-[0.98]`}
+    >
+      <div className="grid grid-cols-[44px_1fr_44px] items-center gap-2">
+        <img
+          src={duel.challenger_cat?.image_url || '/cat-placeholder.svg'}
+          alt={duel.challenger_cat?.name || 'Cat A'}
+          className="h-11 w-11 rounded-full border border-white/18 object-cover"
+          loading="lazy"
+        />
+        <div className="min-w-0 flex flex-col items-center gap-1.5">
+          <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold ${meta.chipClass}`}>
+            {meta.label}{created ? ` • ${created}` : ''}
+          </span>
+          <p className="w-full truncate text-center text-[12px] font-semibold text-white/82">
+            {duel.challenger_cat?.name || 'Challenger'} vs {duel.challenged_cat?.name || 'Defender'}
+            {votes > 0 ? ` • ${votes} votes` : ''}
+          </p>
+        </div>
+        <img
+          src={duel.challenged_cat?.image_url || '/cat-placeholder.svg'}
+          alt={duel.challenged_cat?.name || 'Cat B'}
+          className="h-11 w-11 rounded-full border border-white/18 object-cover"
+          loading="lazy"
+        />
+      </div>
+    </button>
+  );
 }
 
 export default function DuelPage() {
@@ -41,7 +108,7 @@ export default function DuelPage() {
   const [launchOpen, setLaunchOpen] = useState(false);
   const [shareSheetDuelId, setShareSheetDuelId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DuelTab>('live');
-  const [selectedDuelId, setSelectedDuelId] = useState<string | null>(null);
+  const [targetQuery, setTargetQuery] = useState('');
   const loadAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -51,8 +118,6 @@ export default function DuelPage() {
     if (tabParam === 'live' || tabParam === 'pending' || tabParam === 'results') {
       setActiveTab(tabParam as DuelTab);
     }
-    const duelParam = String(params.get('duel') || '').trim();
-    if (duelParam) setSelectedDuelId(duelParam);
   }, []);
 
   useEffect(() => {
@@ -91,26 +156,19 @@ export default function DuelPage() {
   );
 
   const activeRows = activeTab === 'live' ? liveRows : activeTab === 'pending' ? pendingRows : resultRows;
-
-  useEffect(() => {
-    if (!activeRows.length) {
-      setSelectedDuelId(null);
-      return;
-    }
-    if (!selectedDuelId || !activeRows.some((d) => d.id === selectedDuelId)) {
-      setSelectedDuelId(activeRows[0].id);
-    }
-  }, [activeRows, selectedDuelId]);
-
-  const selectedDuel = useMemo(
-    () => activeRows.find((d) => d.id === selectedDuelId) || null,
-    [activeRows, selectedDuelId]
+  const selectedFighter = useMemo(
+    () => activeCats.find((c) => String(c.id) === String(myCatId)) || activeCats[0] || null,
+    [activeCats, myCatId]
   );
+  const filteredTargets = useMemo(() => {
+    const q = targetQuery.trim().toLowerCase();
+    if (!q) return players;
+    return players.filter((p) => p.username.toLowerCase().includes(q));
+  }, [players, targetQuery]);
 
-  function setRouteState(nextTab: DuelTab, duelId?: string | null) {
+  function setRouteState(nextTab: DuelTab) {
     const params = new URLSearchParams();
     params.set('tab', nextTab);
-    if (duelId) params.set('duel', duelId);
     router.replace(`/duel?${params.toString()}`, { scroll: false });
   }
 
@@ -224,8 +282,7 @@ export default function DuelPage() {
       setMessage('Rematch sent');
       await loadAll();
       setActiveTab('pending');
-      setRouteState('pending', data?.duel?.id || null);
-      if (data?.duel?.id) setSelectedDuelId(String(data.duel.id));
+      setRouteState('pending');
       return true;
     } catch {
       setMessage('Rematch failed');
@@ -329,149 +386,108 @@ export default function DuelPage() {
     return <LoadingState fullPage icon="⚔️" message="Summoning combatants..." />;
   }
 
+  const pendingCount = pendingRows.length;
+  const urgentHeader = pendingCount > 0;
+  const tabMeta = [
+    { key: 'live' as const, label: 'Live', count: liveRows.length, dot: 'bg-cyan-300/80' },
+    { key: 'pending' as const, label: 'Pending', count: pendingRows.length, dot: '' },
+    { key: 'results' as const, label: 'Results', count: resultRows.length, dot: 'bg-amber-300/80' },
+  ];
+  const emptyCopy =
+    activeTab === 'live'
+      ? { title: 'The Arena is quiet...', cta: 'Launch Duel' }
+      : activeTab === 'pending'
+        ? { title: 'No pending challenges. Claim your next rival.', cta: 'Launch Duel' }
+        : { title: 'Your legend begins here.', cta: 'Find Live Duels' };
+
   return (
     <div className="min-h-screen bg-black px-3 py-6 text-white sm:px-4 sm:py-8">
       <div className="mx-auto max-w-3xl space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Link href="/" className="inline-flex items-center gap-2 text-white/45 hover:text-white text-xs">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
-          <button
-            onClick={() => setLaunchOpen(true)}
-            disabled={disabled || activeCats.length === 0 || players.length === 0}
-            className={buttonStyles({ variant: 'primary', size: 'xl', className: 'gap-2 text-xs' })}
-          >
-            <Swords className="w-4 h-4" />
-            Launch Duel
-          </button>
         </div>
 
-        <Card className="bg-white/[0.03]">
-          <SectionHeader>
+        <Card className={`bg-white/[0.03] ${urgentHeader ? 'border-amber-300/25 shadow-[0_0_18px_rgba(251,191,36,0.12)]' : ''}`}>
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white">Duel Arena</h1>
-              <p className="text-sm leading-relaxed text-white/60">Battle inbox for live clashes, pending challenges, and completed results.</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-white">{urgentHeader ? `${pendingCount} Challenges Await` : 'Ready for Battle'}</h1>
+              <p className={`text-sm leading-relaxed ${urgentHeader ? 'text-amber-100/76' : 'text-white/60'} ${urgentHeader ? 'animate-[subtleBreathe_2200ms_ease-in-out_infinite]' : ''}`}>
+                Combat Inbox
+              </p>
             </div>
-            <Button
-              onClick={loadAll}
-              size="sm"
-            >
-              Refresh
-            </Button>
-          </SectionHeader>
+            <Button onClick={loadAll} size="sm">Refresh</Button>
+          </div>
           {message && <p className="mt-1.5 text-xs text-cyan-300">{message}</p>}
           {disabled && <p className="mt-1.5 text-xs text-amber-300">Duel Arena migration not applied yet on this deployment.</p>}
         </Card>
 
         <Card className="bg-white/[0.03]">
-          <Tabs className="grid-cols-3">
-            {[
-              { key: 'live', label: 'Live', count: liveRows.length },
-              { key: 'pending', label: 'Pending', count: pendingRows.length },
-              { key: 'results', label: 'Results', count: resultRows.length },
-            ].map((tab) => (
+          <Tabs className="grid-cols-3 rounded-full bg-slate-900/50 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.35)]">
+            {tabMeta.map((tab) => (
               <button
                 key={tab.key}
                 data-testid={`duel-tab-${tab.key}`}
                 onClick={() => {
-                  const next = tab.key as DuelTab;
+                  const next = tab.key;
                   setActiveTab(next);
-                  setRouteState(next, selectedDuelId);
+                  setRouteState(next);
                 }}
                 role="tab"
                 aria-selected={activeTab === tab.key}
-                className={`focus-ring h-11 rounded-lg border text-sm font-semibold transition-all duration-150 active:translate-y-[1px] ${activeTab === tab.key ? 'scale-[1.02] bg-white border-white text-black shadow-md' : 'bg-white/5 border-white/15 text-white/70'}`}
+                className={`focus-ring h-10 rounded-full border text-xs font-semibold transition-all duration-150 active:translate-y-[1px] ${activeTab === tab.key ? 'scale-[1.01] border-white/35 bg-white/14 text-white shadow-[0_6px_14px_rgba(0,0,0,0.2)]' : 'border-white/10 bg-white/4 text-white/68'}`}
               >
-                {tab.label} <span className="text-xs opacity-60">{tab.count}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  {(tab.key === 'live' || tab.key === 'results') ? <span className={`h-1.5 w-1.5 rounded-full ${tab.dot}`} /> : null}
+                  {tab.label}
+                  <span className="text-[10px] opacity-70">{tab.count}</span>
+                </span>
               </button>
             ))}
           </Tabs>
 
-          <div className="mt-3 space-y-3">
+          <button
+            onClick={() => setLaunchOpen(true)}
+            disabled={disabled || activeCats.length === 0 || players.length === 0}
+            className={buttonStyles({ variant: 'primary', size: 'xl', className: 'mt-3 h-11 w-full gap-2 text-xs shadow-[0_12px_26px_rgba(6,182,212,0.3)] active:scale-95' })}
+          >
+            <Swords className="w-4 h-4" />
+            Launch Duel
+          </button>
+
+          <div key={activeTab} className="mt-3 space-y-2.5 animate-[fadeIn_260ms_ease-out]">
             {activeRows.length === 0 && (
-              <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm text-white/50">No duels in this tab yet.</div>
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4 text-center">
+                <p className="text-sm font-semibold text-white/78">{emptyCopy.title}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeTab === 'results') {
+                      setActiveTab('live');
+                      setRouteState('live');
+                    } else {
+                      setLaunchOpen(true);
+                    }
+                  }}
+                  className="mt-3 inline-flex h-9 items-center justify-center rounded-full border border-cyan-300/28 bg-cyan-500/12 px-4 text-xs font-semibold text-cyan-100 transition-all duration-100 active:scale-95"
+                >
+                  {emptyCopy.cta}
+                </button>
+              </div>
             )}
             {activeRows.map((d) => (
-              <DuelRow
-                key={d.id}
-                duel={d}
-                onOpen={(duel) => {
-                  setSelectedDuelId(duel.id);
-                  setRouteState(activeTab, duel.id);
-                }}
-                actionLabel={activeTab === 'live' ? 'Vote' : 'View'}
-              />
+              <CombatInboxRow key={d.id} duel={d} onOpen={(duelId) => router.push(`/duel/${encodeURIComponent(duelId)}`)} />
             ))}
           </div>
         </Card>
-
-        {selectedDuel && (
-          <Card className="border-cyan-300/20 bg-cyan-500/8">
-            <DuelCardFull duel={selectedDuel} meId={meId} busy={!!busy} onVote={voteDuel} onShare={shareDuel} />
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <Badge>{String(selectedDuel.status || 'voting').toUpperCase()}</Badge>
-              <Button
-                size="sm"
-                variant="secondary"
-                aria-label="Share match"
-                onClick={() => setShareSheetDuelId(selectedDuel.id)}
-              >
-                <Share2 className="w-3.5 h-3.5 mr-1" />
-                Share Match
-              </Button>
-            </div>
-
-            {selectedDuel.status === 'pending' && selectedDuel.challenged_user_id === meId && (
-              <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3 sm:p-4">
-                <p className="mb-2 text-sm text-white/60">Choose your defender cat:</p>
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
-                  <select
-                    value={defenderCatsByDuel[selectedDuel.id] || myCatId}
-                    onChange={(e) => setDefenderCatsByDuel((prev) => ({ ...prev, [selectedDuel.id]: e.target.value }))}
-                    className="input-focus h-11 rounded-lg bg-black/30 border border-white/15 px-2 text-xs"
-                  >
-                    {activeCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <button
-                    onClick={() => respond(selectedDuel.id, 'accept')}
-                    disabled={!!busy}
-                    className={buttonStyles({ variant: 'primary', size: 'md', className: 'px-3 text-xs' })}
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => respond(selectedDuel.id, 'decline')}
-                    disabled={!!busy}
-                    className={buttonStyles({ variant: 'danger', size: 'md', className: 'px-3 text-xs' })}
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            )}
-            {selectedDuel.status === 'completed' && (selectedDuel.challenger_user_id === meId || selectedDuel.challenged_user_id === meId) && (
-              <div className="mt-3 rounded-lg border border-cyan-300/30 bg-cyan-500/10 p-3 sm:p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm text-cyan-100">Run it back with the same opponent.</p>
-                  <button
-                    onClick={() => void rematch(selectedDuel)}
-                    disabled={!!busy}
-                    className={buttonStyles({ variant: 'primary', size: 'md', className: 'px-3 text-xs' })}
-                  >
-                    {busy?.startsWith('rematch:') ? 'Creating…' : 'Rematch'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </Card>
-        )}
       </div>
 
       {launchOpen && (
         <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-neutral-950/95 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:p-5 sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+          <div className="scrollbar-none w-full max-w-xl max-h-[86vh] overflow-y-auto rounded-2xl border border-white/15 bg-slate-900/90 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-2xl sm:p-5 sm:pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-bold">Launch Duel</h3>
+              <h3 className="text-base font-bold">Combat Deployment</h3>
               <button
                 onClick={() => setLaunchOpen(false)}
                 aria-label="Close launch duel"
@@ -480,13 +496,19 @@ export default function DuelPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="mb-2 text-sm text-white/60">1) Select your fighter</p>
-            <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+
+            <div className="mb-4 rounded-xl border border-orange-300/12 p-2.5 relative">
+              <span className="pointer-events-none absolute left-1 top-1 h-2.5 w-2.5 border-l border-t border-orange-300/28" />
+              <span className="pointer-events-none absolute right-1 top-1 h-2.5 w-2.5 border-r border-t border-orange-300/28" />
+              <span className="pointer-events-none absolute left-1 bottom-1 h-2.5 w-2.5 border-l border-b border-orange-300/28" />
+              <span className="pointer-events-none absolute right-1 bottom-1 h-2.5 w-2.5 border-r border-b border-orange-300/28" />
+              <p className="mb-2 text-sm font-semibold text-white/80">Select Fighter</p>
+              <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1">
               {activeCats.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setMyCatId(c.id)}
-                  className={`focus-ring min-w-[132px] rounded-xl border p-2 text-left transition-all duration-150 active:translate-y-[1px] ${myCatId === c.id ? 'scale-[1.02] border-cyan-300 bg-cyan-500/10 shadow-md' : 'border-white/15 bg-white/[0.03]'}`}
+                  className={`focus-ring min-w-[126px] rounded-xl border p-2 text-left transition-all duration-150 active:translate-y-[1px] ${myCatId === c.id ? 'scale-[1.05] border-violet-300 bg-violet-500/10 shadow-[0_0_18px_rgba(167,139,250,0.24)] ring-1 ring-violet-300/45' : 'border-white/15 bg-white/[0.03]'}`}
                 >
                   <img
                     src={c.image_url || '/cat-placeholder.svg'}
@@ -496,31 +518,83 @@ export default function DuelPage() {
                     className="w-full h-16 rounded-lg object-cover mb-1.5"
                     loading="lazy"
                   />
-                  <p className="text-xs font-semibold truncate">{c.name}</p>
-                  <p className="text-xs text-white/50">{c.rarity}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold truncate">{c.name}</p>
+                    <span className="rounded-full border border-white/20 bg-white/8 px-1.5 py-0.5 text-[9px] font-semibold text-white/72">
+                      {c.rarity}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-white/50 mt-0.5">Power ready</p>
                 </button>
               ))}
             </div>
-            <p className="mb-2 text-sm text-white/60">2) Select target</p>
-            <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-              <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)} className="input-focus h-11 rounded-xl bg-black/30 border border-white/15 px-3 text-sm">
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.username}{p.guild ? ` · ${p.guild === 'sun' ? 'Solar' : 'Lunar'}` : ''}
-                  </option>
-                ))}
-              </select>
-              <button onClick={pickRandomTraitor} className={buttonStyles({ variant: 'secondary', size: 'md', className: 'px-3 text-xs' })}>
-                Random
-              </button>
             </div>
+
+            <div className="mb-4 rounded-xl border border-orange-300/12 p-2.5 relative">
+              <span className="pointer-events-none absolute left-1 top-1 h-2.5 w-2.5 border-l border-t border-orange-300/28" />
+              <span className="pointer-events-none absolute right-1 top-1 h-2.5 w-2.5 border-r border-t border-orange-300/28" />
+              <span className="pointer-events-none absolute left-1 bottom-1 h-2.5 w-2.5 border-l border-b border-orange-300/28" />
+              <span className="pointer-events-none absolute right-1 bottom-1 h-2.5 w-2.5 border-r border-b border-orange-300/28" />
+              <p className="mb-2 text-sm font-semibold text-white/80">Target Acquisition</p>
+              <input
+                type="text"
+                value={targetQuery}
+                onChange={(e) => setTargetQuery(e.target.value)}
+                placeholder="Search by name"
+                className="input-focus mb-2.5 h-11 w-full rounded-xl border border-white/15 bg-white/5 px-3 text-sm text-white placeholder:text-white/45"
+              />
+              <div className="scrollbar-none space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                <button
+                  type="button"
+                  onClick={pickRandomTraitor}
+                  className={`w-full rounded-xl border p-2 text-left transition-all duration-150 active:scale-[0.98] ${!targetUserId ? 'border-cyan-300/35 bg-[linear-gradient(120deg,rgba(34,211,238,0.12),rgba(167,139,250,0.12))]' : 'border-white/14 bg-[linear-gradient(120deg,rgba(255,255,255,0.04),rgba(34,211,238,0.06))]'}`}
+                >
+                  <p className="text-xs font-semibold text-white/88">Unknown Encounter</p>
+                  <p className="text-[10px] text-white/58">Unscouted rival. High risk, high chaos.</p>
+                </button>
+                {filteredTargets.map((p) => {
+                  const selected = p.id === targetUserId;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setTargetUserId(p.id)}
+                      className={`w-full rounded-xl border p-2 text-left transition-all duration-150 active:scale-[0.98] ${selected ? 'border-cyan-300/38 bg-cyan-500/10 ring-1 ring-cyan-300/35' : 'border-white/14 bg-white/[0.02]'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-white/86">{p.username}</p>
+                          <p className="text-[10px] text-white/52">{p.guild ? (p.guild === 'sun' ? 'Solar guild' : 'Lunar guild') : 'Arena active'}</p>
+                        </div>
+                        <span className={`h-2 w-2 rounded-full ${selected ? 'bg-cyan-300' : 'bg-white/25'}`} />
+                      </div>
+                    </button>
+                  );
+                })}
+                {filteredTargets.length === 0 ? (
+                  <p className="rounded-xl border border-white/12 bg-white/[0.02] p-2 text-[11px] text-white/58">No targets match your search.</p>
+                ) : null}
+              </div>
+            </div>
+
+            {selectedFighter && targetUserId ? (
+              <div className="mb-4 rounded-xl border border-white/14 bg-white/[0.03] p-2.5 animate-[fadeIn_180ms_ease-out]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/52 mb-1.5">VS Preview</p>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                  <p className="truncate text-xs font-semibold text-white/86">{selectedFighter.name}</p>
+                  <span className="rounded-full border border-white/20 bg-white/8 px-2 py-1 text-[10px] font-semibold text-white/70">VS</span>
+                  <p className="truncate text-right text-xs font-semibold text-white/86">{players.find((p) => p.id === targetUserId)?.username || 'Unknown'}</p>
+                </div>
+              </div>
+            ) : null}
+
             <button
               onClick={async () => {
                 const ok = await createChallenge();
                 if (ok) setLaunchOpen(false);
               }}
               disabled={disabled || !targetUserId || !myCatId || busy === 'create'}
-              className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2' })}
+              className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2 bg-[linear-gradient(90deg,rgba(139,92,246,0.95),rgba(34,211,238,0.92))] shadow-[0_12px_24px_rgba(34,211,238,0.24)] active:scale-95' })}
             >
               {busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
               Confirm Duel

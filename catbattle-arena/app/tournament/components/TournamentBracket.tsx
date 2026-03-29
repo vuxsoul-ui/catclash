@@ -206,8 +206,13 @@ export default function TournamentBracket() {
         }, []),
       }));
   }, [matches]);
+  const visibleRounds = useMemo(() => rounds.filter((round) => round.matches.length > 0), [rounds]);
+  const visibleMatchCount = useMemo(
+    () => visibleRounds.reduce((sum, round) => sum + round.matches.length, 0),
+    [visibleRounds]
+  );
 
-  const totalRounds = rounds.length;
+  const totalRounds = visibleRounds.length;
   const currentRound = tournament
     ? Math.min(Math.max(Number(tournament.round || 1), 1), Math.max(1, totalRounds || 1))
     : 1;
@@ -240,16 +245,32 @@ export default function TournamentBracket() {
     matches[0] ||
     null;
 
-  const currentRoundMatches = rounds.find((entry) => entry.round === currentRound)?.matches || [];
+  const currentRoundMatches = visibleRounds.find((entry) => entry.round === currentRound)?.matches || [];
+  const nextVoteMatch = useMemo(
+    () =>
+      matches.find((match) => {
+        const state = deriveTournamentMatchState({
+          matchId: match.match_id,
+          status: match.status,
+          round: match.round,
+          currentRound,
+          voted: !!votedMatches[match.match_id],
+          pulseLocked,
+          spotlightMatchId: currentSpotlightMatchId,
+        });
+        return state.state === 'votable';
+      }) || null,
+    [matches, currentRound, votedMatches, pulseLocked, currentSpotlightMatchId]
+  );
 
   useEffect(() => {
-    if (loading || initialFocusDone.current || rounds.length === 0) return;
+    if (loading || initialFocusDone.current || visibleRounds.length === 0) return;
     const targetRound = roundRefs.current[currentRound];
     if (targetRound) {
       targetRound.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
       initialFocusDone.current = true;
     }
-  }, [loading, rounds, currentRound]);
+  }, [loading, visibleRounds, currentRound]);
 
   useEffect(() => {
     if (!matches.length) {
@@ -406,6 +427,16 @@ export default function TournamentBracket() {
     }
   }
 
+  function jumpToNextVote() {
+    if (!nextVoteMatch) return;
+    setExpandedRounds((prev) => ({ ...prev, [nextVoteMatch.round]: true }));
+    roundRefs.current[nextVoteMatch.round]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    setSelectedMatchId(nextVoteMatch.match_id);
+  }
+
   if (loading) {
     return (
       <BracketShell subtitle="Loading the current tournament path and bracket summary.">
@@ -435,7 +466,7 @@ export default function TournamentBracket() {
     );
   }
 
-  if (!tournament || rounds.length === 0) {
+  if (!tournament || visibleMatchCount === 0) {
     return (
       <BracketShell subtitle="There is no active seeded bracket to render right now, but the bracket route is available.">
         <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-5 text-center shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
@@ -470,6 +501,16 @@ export default function TournamentBracket() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {nextVoteMatch ? (
+              <button
+                type="button"
+                onClick={jumpToNextVote}
+                className="inline-flex h-9 items-center justify-center gap-1 rounded-full border border-emerald-300/18 bg-emerald-500/10 px-3 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-500/16"
+              >
+                <Target className="h-3.5 w-3.5" />
+                Next Vote
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={jumpToCurrentRound}
@@ -553,7 +594,7 @@ export default function TournamentBracket() {
           </div>
 
           <div className="space-y-3">
-            {rounds.map((roundData) => {
+            {visibleRounds.map((roundData) => {
               const isCurrent = roundData.round === currentRound;
               const isExpanded = expandedRounds[roundData.round] ?? isCurrent;
               return (
@@ -567,7 +608,7 @@ export default function TournamentBracket() {
                   <button
                     type="button"
                     onClick={() => setExpandedRounds((prev) => ({ ...prev, [roundData.round]: !isExpanded }))}
-                    className="tournament-bracket-round-toggle flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+                    className="tournament-bracket-round-toggle sticky top-0 z-[2] flex w-full items-center justify-between gap-3 border-b border-white/[0.05] bg-[rgba(5,9,18,0.78)] px-3 py-3 text-left backdrop-blur-md"
                     aria-expanded={isExpanded}
                   >
                     <div className="min-w-0">
@@ -585,7 +626,7 @@ export default function TournamentBracket() {
                   </button>
 
                   {isExpanded ? (
-                    <div className="space-y-2 border-t border-white/[0.05] px-3 pb-3 pt-2">
+                    <div className="space-y-2 border-l border-white/10 px-3 pb-3 pt-2 pl-4">
                       {roundData.matches.map((match) => {
                         const snapshot = calcSnapshot(match.votes_a, match.votes_b);
                         const tierA = rarityTier(match.cat_a.rarity);
@@ -603,6 +644,9 @@ export default function TournamentBracket() {
                         const selected = match.match_id === selectedMatchId;
                         const winnerA = match.winner_id === match.cat_a.id;
                         const winnerB = match.winner_id === match.cat_b.id;
+                        const isActive = state.state === 'votable';
+                        const isCompleted = state.state === 'resolved' || state.state === 'voted';
+                        const isUpcoming = !isActive && !isCompleted;
                         return (
                           <button
                             type="button"
@@ -613,7 +657,7 @@ export default function TournamentBracket() {
                             data-state={state.state}
                             data-selected={selected ? 'true' : 'false'}
                             aria-pressed={selected}
-                            className={`tournament-bracket-card tournament-bracket-node tournament-bracket-node--compact w-full rounded-[1.1rem] border px-3 py-3 text-left ${
+                            className={`tournament-bracket-card tournament-bracket-node tournament-bracket-node--compact w-full rounded-[1.1rem] border px-3 text-left transition-all ${
                               state.state === 'votable'
                                 ? 'is-active border-cyan-300/18 bg-cyan-500/[0.06]'
                                 : state.state === 'voted'
@@ -621,7 +665,7 @@ export default function TournamentBracket() {
                                   : state.state === 'resolved'
                                     ? 'border-emerald-300/14 bg-emerald-500/[0.04]'
                                     : 'border-white/[0.06] bg-white/[0.02]'
-                            } ${selected ? 'ring-1 ring-white/18' : ''}`}
+                            } ${selected ? 'ring-1 ring-white/18' : ''} ${isUpcoming ? 'py-2.5' : 'py-3'} ${isCompleted ? 'opacity-90' : ''}`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
@@ -648,25 +692,33 @@ export default function TournamentBracket() {
                             </div>
 
                             <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                              <div className={`min-w-0 ${match.winner_id && !winnerA ? 'opacity-55' : ''}`}>
+                              <div className={`min-w-0 ${match.winner_id && !winnerA ? 'opacity-60 grayscale-[20%]' : ''}`}>
                                 <p className={`truncate text-sm font-semibold ${winnerA ? 'text-white' : 'text-white/84'}`}>{match.cat_a.name}</p>
                               </div>
                               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">VS</div>
-                              <div className={`min-w-0 text-right ${match.winner_id && !winnerB ? 'opacity-55' : ''}`}>
+                              <div className={`min-w-0 text-right ${match.winner_id && !winnerB ? 'opacity-60 grayscale-[20%]' : ''}`}>
                                 <p className={`truncate text-sm font-semibold ${winnerB ? 'text-white' : 'text-white/84'}`}>{match.cat_b.name}</p>
                               </div>
                             </div>
 
-                            <div className="mt-2 flex items-center justify-between text-[10px] text-white/46">
-                              <span>{snapshot.percentA}%</span>
-                              <span>{snapshot.percentB}%</span>
-                            </div>
-                            <div className="mt-1 h-1.5 overflow-hidden rounded-full border border-white/[0.06] bg-white/[0.06]">
-                              <div className="flex h-full w-full">
-                                <div className="tournament-bracket-segment tournament-bracket-segment--a" style={{ width: `${snapshot.percentA}%` }} />
-                                <div className="tournament-bracket-segment tournament-bracket-segment--b" style={{ width: `${snapshot.percentB}%` }} />
+                            {!isUpcoming ? (
+                              <>
+                                <div className="mt-2 flex items-center justify-between text-[10px] text-white/46">
+                                  <span>{snapshot.percentA}%</span>
+                                  <span>{snapshot.percentB}%</span>
+                                </div>
+                                <div className="mt-1 h-1.5 overflow-hidden rounded-full border border-white/[0.06] bg-white/[0.06]">
+                                  <div className="flex h-full w-full">
+                                    <div className="tournament-bracket-segment tournament-bracket-segment--a transition-[width] duration-600 ease-out" style={{ width: `${snapshot.percentA}%` }} />
+                                    <div className="tournament-bracket-segment tournament-bracket-segment--b transition-[width] duration-600 ease-out" style={{ width: `${snapshot.percentB}%` }} />
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="mt-1 text-[10px] text-white/45">
+                                {match.cat_a.rarity} vs {match.cat_b.rarity}
                               </div>
-                            </div>
+                            )}
                           </button>
                         );
                       })}
@@ -741,8 +793,8 @@ export default function TournamentBracket() {
                     </div>
                     <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/[0.06] bg-white/[0.05]">
                       <div className="flex h-full w-full">
-                        <div className="tournament-bracket-segment tournament-bracket-segment--a transition-[width] duration-300" style={{ width: `${snapshot.percentA}%` }} />
-                        <div className="tournament-bracket-segment tournament-bracket-segment--b transition-[width] duration-300" style={{ width: `${snapshot.percentB}%` }} />
+                        <div className="tournament-bracket-segment tournament-bracket-segment--a transition-[width] duration-600 ease-out" style={{ width: `${snapshot.percentA}%` }} />
+                        <div className="tournament-bracket-segment tournament-bracket-segment--b transition-[width] duration-600 ease-out" style={{ width: `${snapshot.percentB}%` }} />
                       </div>
                     </div>
                   </div>

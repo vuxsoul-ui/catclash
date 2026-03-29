@@ -5,10 +5,17 @@ import Link from 'next/link';
 import { Swords, Target, ChevronDown, ChevronLeft, ChevronRight, Sparkles, Info, Coins } from 'lucide-react';
 import SigilIcon from './icons/SigilIcon';
 import CatCardBack from './CatCardBack';
+import type { DuelRowData } from './duel/types';
+import { VoteSplitBar } from './VoteSplitBar';
+import FlameStreak from './FlameStreak';
+import VoteConfirmToast from './VoteConfirmToast';
+import LiveDuelsTicker from './LiveDuelsTicker';
 import { LoadingState } from './LoadingState';
 import { showGlobalToast } from '../lib/global-toast';
 import { thumbUrlForCat } from '../lib/cat-images';
+import { countLiveDuels, pickLiveDuels } from '../lib/duel-live';
 import { deriveTournamentMatchState, summarizeTournamentPlayable } from '../lib/tournament-state';
+import { formatPulseCountdown, getVirtualPulse } from '../lib/virtual-pulse';
 
 interface ArenaCat {
   id: string;
@@ -104,6 +111,12 @@ type MatchVoteSnapshot = {
   percent_b: number;
 };
 
+function rankLiveDuels(rows: DuelRowData[] | null | undefined): DuelRowData[] {
+  return pickLiveDuels<DuelRowData>(rows)
+    .sort((a, b) => Number(b?.votes?.total || 0) - Number(a?.votes?.total || 0))
+    .slice(0, 6);
+}
+
 function catImg(c: ArenaCat) {
   return thumbUrlForCat(c.id);
 }
@@ -170,7 +183,7 @@ function pulseBoundaryMs(value?: string | null) {
 }
 
 function spotlightEmptyCopy(segment: Segment) {
-  if (segment === 'voting') return { title: 'No votable matchups right now.', subtitle: 'Current-round voting is either locked or waiting on the next bracket update.' };
+  if (segment === 'voting') return { title: 'Queue complete! Results in motion.', subtitle: 'Your Flame is protected. Jump into the bracket for standings.' };
   if (segment === 'upcoming') return { title: 'No upcoming matchups queued.', subtitle: 'Future rounds will stack here once the bracket advances.' };
   return { title: 'No completed matchups yet.', subtitle: 'Results will appear here after the first tournament battle closes.' };
 }
@@ -194,6 +207,33 @@ function calcSnapshot(votesA: number, votesB: number): MatchVoteSnapshot {
     percent_a: percentA,
     percent_b: Math.max(0, 100 - percentA),
   };
+}
+
+function resolveVoteSnapshot(
+  payload: any,
+  fallback: MatchVoteSnapshot | null
+): MatchVoteSnapshot | null {
+  const asNumber = (...values: any[]) => {
+    for (const value of values) {
+      if (value == null || value === '') continue;
+      const n = Number(value);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  };
+  const votesA = asNumber(payload?.votes_a, payload?.votesA, fallback?.votes_a);
+  const votesB = asNumber(payload?.votes_b, payload?.votesB, fallback?.votes_b);
+  if (votesA == null || votesB == null) return fallback;
+  return calcSnapshot(votesA, votesB);
+}
+
+function preferHigherTotalSnapshot(
+  primary: MatchVoteSnapshot | null,
+  secondary: MatchVoteSnapshot | null
+): MatchVoteSnapshot | null {
+  if (!primary) return secondary;
+  if (!secondary) return primary;
+  return primary.total_votes >= secondary.total_votes ? primary : secondary;
 }
 
 function applySnapshotToArenas(arenas: Arena[], matchId: string, snapshot: MatchVoteSnapshot): Arena[] {
@@ -264,22 +304,12 @@ function TournamentBracket({
     };
   }, [arena?.tournament_id]);
 
-  if (!arena || !Array.isArray(arena.rounds) || arena.rounds.length === 0) {
-    return (
-      <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Bracket</p>
-          <h3 className="mt-1 text-lg font-semibold text-white">Tournament Bracket</h3>
-        </div>
-        <p className="mt-3 text-sm text-white/55">Bracket data appears once the current tournament round is seeded.</p>
-      </section>
-    );
-  }
-
+  const hasArenaRounds = !!arena && Array.isArray(arena.rounds) && arena.rounds.length > 0;
   const bracketMatches = overviewData?.matches || [];
   const roundCount = overviewData ? new Set(bracketMatches.map((match) => Number(match.round || 1))).size : 0;
+  const maxRound = Math.max(1, roundCount || Number(arena?.rounds?.length || 1));
   const currentRoundNumber = arena
-    ? clampRoundNumber(Number(arena.current_round || 1), 1, Math.max(1, roundCount || Number(arena.rounds?.length || 1)))
+    ? clampRoundNumber(Number(arena.current_round || 1), 1, maxRound)
     : null;
   const currentRound = bracketMatches.filter((match) => Number(match.round || 1) === currentRoundNumber);
   const overviewStates = useMemo(() => {
@@ -303,51 +333,56 @@ function TournamentBracket({
   const currentRoundPairs = currentRound.slice(0, 3);
   const currentRoundLabel = currentRoundNumber !== null ? formatTournamentRoundLabel(currentRoundNumber) : '—';
 
-  return (
-    <section className="rounded-[1.7rem] border border-white/[0.05] bg-white/[0.02] p-4 shadow-[0_14px_30px_rgba(0,0,0,0.18)]">
-      <div className="flex items-center justify-between gap-3">
+  if (!hasArenaRounds) {
+    return (
+      <section className="rounded-[1.8rem] border border-white/[0.06] bg-white/[0.025] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/60">Bracket</p>
-          <h3 className="mt-1 text-xl font-bold text-white">Bracket Overview</h3>
-          <p className="mt-1 text-xs text-white/55">
-            {isExpanded ? 'Keep voting in the spotlight or open the full bracket map.' : 'Quick tournament snapshot.'}
-          </p>
+          <h3 className="mt-1 text-lg font-semibold text-white">Tournament Bracket</h3>
         </div>
+        <p className="mt-3 text-sm text-white/55">Bracket data appears once the current tournament round is seeded.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-[1.7rem] border border-white/[0.05] bg-[linear-gradient(180deg,rgba(15,23,42,0.42),rgba(15,23,42,0.34))] p-3 backdrop-blur-md shadow-[0_14px_30px_rgba(0,0,0,0.18)]">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-lg font-bold text-white">Bracket</h3>
         <div className="flex items-center gap-2">
           <Link
             href="/tournament/bracket"
-            className="tournament-bracket-cta inline-flex h-10 items-center justify-center rounded-xl border px-4 text-sm font-semibold transition"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-white/72 transition hover:text-white"
           >
             View Full Bracket
+            <ChevronRight className="h-3.5 w-3.5" />
           </Link>
           <button
             type="button"
             onClick={() => setIsExpanded((prev) => !prev)}
             aria-expanded={isExpanded}
             aria-label={isExpanded ? 'Collapse bracket overview' : 'Expand bracket overview'}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.045] text-white/72 transition hover:bg-white/[0.08]"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-white/64 transition hover:text-white"
           >
-            <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
           </button>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-white/[0.05] bg-black/18 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Voted Matches</p>
-            <p className="mt-1 text-[1.35rem] font-bold leading-none text-white">{playableSummary.votedCount}</p>
+      <div className="mt-2.5 overflow-hidden rounded-2xl border border-slate-800/90 bg-slate-900/40">
+        <div className="grid grid-cols-2 gap-0">
+          <div className="px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-white/40">Voted</p>
+            <p className="mt-1 text-[1.28rem] font-extrabold leading-none text-white [text-shadow:0_0_10px_rgba(34,211,238,0.14)]">{playableSummary.votedCount}</p>
           </div>
-          <div className="rounded-2xl border border-white/[0.05] bg-black/18 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Open Matchups</p>
-            <p className="mt-1 text-[1.35rem] font-bold leading-none text-white">{playableSummary.openCount}</p>
+          <div className="border-l border-slate-800/90 px-3 py-2.5 text-right">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-white/40">Open</p>
+            <p className="mt-1 text-[1.28rem] font-extrabold leading-none text-white [text-shadow:0_0_10px_rgba(34,211,238,0.12)]">{playableSummary.openCount}</p>
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/[0.05] bg-black/18 px-4 py-3">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Current Round</p>
-          <p className="mt-1 text-base font-bold text-white">{currentRoundLabel}</p>
-          {overviewData?.tournament?.champion ? <p className="mt-1 text-xs text-amber-200/80">Champion: {overviewData.tournament.champion.name}</p> : null}
+          <div className="col-span-2 border-t border-slate-800/90 px-3 py-2.5 text-center">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-white/44">Current Round</p>
+            <p className="mt-1 text-[15px] font-bold text-white">{currentRoundLabel}</p>
+          </div>
         </div>
       </div>
       {quietResolvedCount !== null ? (
@@ -463,6 +498,7 @@ function SpotlightMatchCard({
   match,
   mode,
   pulseResumeAt,
+  isFlameLitForPulse,
   voted,
   isVoting,
   predictBusy,
@@ -470,6 +506,7 @@ function SpotlightMatchCard({
   activeIndex,
   total,
   voteSessionCount,
+  voteAnimTick = 0,
   onVote,
   onPredict,
   onPrev,
@@ -478,6 +515,7 @@ function SpotlightMatchCard({
   match: ArenaMatch;
   mode: Segment;
   pulseResumeAt?: string | null;
+  isFlameLitForPulse: boolean;
   voted: string | null;
   isVoting: boolean;
   predictBusy: boolean;
@@ -485,6 +523,7 @@ function SpotlightMatchCard({
   activeIndex: number;
   total: number;
   voteSessionCount: number;
+  voteAnimTick?: number;
   onVote: (matchId: string, catId: string) => void;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onPrev: () => void;
@@ -500,6 +539,13 @@ function SpotlightMatchCard({
   const [lockedToast, setLockedToast] = useState(false);
   const [betSheetCatId, setBetSheetCatId] = useState<string | null>(null);
   const [betFeed, setBetFeed] = useState<BetFeedItem[]>([]);
+  const [justVoted, setJustVoted] = useState(false);
+  const [tapReward, setTapReward] = useState<{ x: number; y: number; id: number } | null>(null);
+  const [nextBreathe, setNextBreathe] = useState(false);
+  const [pressSide, setPressSide] = useState<'a' | 'b' | null>(null);
+  const [localFlameCount, setLocalFlameCount] = useState(Math.max(0, Number(voteSessionCount || 0)));
+  const [pulseNowMs, setPulseNowMs] = useState(() => Date.now());
+  const pulse = useMemo(() => getVirtualPulse(pulseNowMs), [pulseNowMs]);
 
   const aPower = statPower(match.cat_a);
   const bPower = statPower(match.cat_b);
@@ -508,8 +554,6 @@ function SpotlightMatchCard({
   const snapshot = calcSnapshot(match.votes_a, match.votes_b);
   const pctA = snapshot.percent_a;
   const pctB = snapshot.percent_b;
-  const [animatedPctA, setAnimatedPctA] = useState(() => pctA);
-  const [animatedPctB, setAnimatedPctB] = useState(() => pctB);
   const tierA = rarityTier(match.cat_a.rarity);
   const tierB = rarityTier(match.cat_b.rarity);
   const reopenAtMs = pulseBoundaryMs(pulseResumeAt || match.resolves_at || match.vote_locks_at);
@@ -526,6 +570,8 @@ function SpotlightMatchCard({
       ? lockCopy
         ? `Voting reopens ${lockCopy}`
         : 'Voting locked for this pulse'
+    : hasVoted
+      ? 'Vote locked'
     : match.is_close_match
       ? 'Tight matchup'
       : 'Voting open';
@@ -543,21 +589,9 @@ function SpotlightMatchCard({
     setBet(10);
     setFlashSide(null);
     setLockedToast(false);
-    setAnimatedPctA(pctA);
-    setAnimatedPctB(pctB);
     setBetSheetCatId(null);
     setBetFeed([]);
   }, [match.match_id]);
-
-  useEffect(() => {
-    const nextA = Math.max(0, Math.min(100, pctA));
-    const nextB = Math.max(0, Math.min(100, pctB));
-    const raf = window.requestAnimationFrame(() => {
-      setAnimatedPctA(nextA);
-      setAnimatedPctB(nextB);
-    });
-    return () => window.cancelAnimationFrame(raf);
-  }, [pctA, pctB]);
 
   useEffect(() => {
     if (!betSheetCatId) return;
@@ -605,6 +639,39 @@ function SpotlightMatchCard({
     };
   }, [voted, match.cat_a.id, match.cat_b.id]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setPulseNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!voteAnimTick) return;
+    setJustVoted(true);
+    setLocalFlameCount((prev) => Math.max(0, prev + 1));
+    const off = window.setTimeout(() => setJustVoted(false), 620);
+    const breatheOn = window.setTimeout(() => setNextBreathe(true), 520);
+    const breatheOff = window.setTimeout(() => setNextBreathe(false), 1200);
+    const rewardOff = window.setTimeout(() => setTapReward(null), 460);
+    return () => {
+      window.clearTimeout(off);
+      window.clearTimeout(breatheOn);
+      window.clearTimeout(breatheOff);
+      window.clearTimeout(rewardOff);
+    };
+  }, [voteAnimTick]);
+
+  useEffect(() => {
+    const next = Math.max(0, Number(voteSessionCount || 0));
+    setLocalFlameCount((prev) => {
+      if (next > prev) return next;
+      if (next === 0 && prev > 0) return 0;
+      return prev;
+    });
+  }, [voteSessionCount]);
+
   const aStatEdge = {
     label: edgePct <= 3 ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'favored' : 'underdog'} +${edgePct}%`,
     tone: edgePct <= 3 ? 'neutral' as const : strongerA ? 'a' as const : 'neutral' as const,
@@ -614,7 +681,6 @@ function SpotlightMatchCard({
     label: edgePct <= 3 ? 'Stat edge: balanced' : `Stat edge: ${strongerA ? 'underdog' : 'favored'} +${edgePct}%`,
     tone: edgePct <= 3 ? 'neutral' as const : strongerA ? 'neutral' as const : 'b' as const,
   };
-  const edgeTone = edgePct <= 3 ? 'neutral' : strongerA ? 'a' : 'b';
 
   function toggleFlip(side: 'a' | 'b') {
     setFlippedSides((prev) => ({ ...prev, [side]: !prev[side] }));
@@ -635,24 +701,34 @@ function SpotlightMatchCard({
   const actionBias = recentWindow.reduce((acc, item) => acc + (item.side === 'a' ? 1 : -1), 0);
   const momentumLabel = Math.abs(actionBias) <= 1 ? 'Balanced' : Math.abs(actionBias) >= 3 ? 'Heavy action' : 'Trending';
   const momentumIcon = Math.abs(actionBias) <= 1 ? '⚖️' : Math.abs(actionBias) >= 3 ? '🔥' : '📈';
+  const queueRemaining = Math.max(0, total - activeIndex - 1);
+  const queueComplete = queueRemaining === 0;
+  const queueCenterCopy = queueComplete
+    ? pulse.state === 'live'
+      ? `Queue complete! Results in ${formatPulseCountdown(pulse.msRemaining)}`
+      : pulse.state === 'resolving'
+        ? 'Queue complete! Results resolving...'
+        : `Queue complete! Next pulse in ${formatPulseCountdown(pulse.msRemaining)}`
+    : `${queueRemaining} waiting after this`;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    // Debug the exact rendered spotlight bar inputs without polluting prod logs.
+    console.debug('[TOURNAMENT_BAR_RENDER]', {
+      matchId: match.match_id,
+      pctA,
+      pctB,
+      voteAnimTick,
+      voted,
+    });
+  }, [match.match_id, pctA, pctB, voteAnimTick, voted]);
 
   function renderFront(cat: ArenaCat, side: 'a' | 'b') {
     const tier = side === 'a' ? tierA : tierB;
     const isLiveSide = flippedSides[side];
-    const role = side === 'a' ? 'Challenger' : 'Defender';
     const votedForThisSide = voted === cat.id;
     const isSelected = flashSide === side || votedForThisSide;
     const isDimmed = !!flashSide && flashSide !== side;
-    const votedLabel =
-      done && match.winner_id === cat.id
-        ? 'Winner'
-        : votedForThisSide
-          ? `Voted ${side.toUpperCase()}`
-          : canVote
-            ? `Vote ${side.toUpperCase()}`
-            : done
-              ? 'Closed'
-              : 'Waiting';
     const frameTone =
       side === 'a'
         ? 'from-blue-500/18 via-cyan-400/10 to-transparent'
@@ -667,6 +743,11 @@ function SpotlightMatchCard({
           setFlashSide(side);
           onVote(match.match_id, cat.id);
         }}
+        onPointerDown={(event) => {
+          setPressSide(side);
+          setTapReward({ x: event.clientX, y: event.clientY, id: Date.now() });
+          window.setTimeout(() => setPressSide((prev) => (prev === side ? null : prev)), 110);
+        }}
         onKeyDown={(event) => {
           if (!canVote) return;
           if (event.key === 'Enter' || event.key === ' ') {
@@ -677,7 +758,7 @@ function SpotlightMatchCard({
         }}
         data-selected={isSelected ? 'true' : 'false'}
         data-dimmed={isDimmed ? 'true' : 'false'}
-        className={`tournament-fighter-card tournament-fighter-card--interactive arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tier} relative rounded-[1.4rem] border border-white/7 bg-gradient-to-br ${frameTone} p-2 shadow-[0_18px_40px_rgba(0,0,0,0.32)]`}
+        className={`tournament-fighter-card tournament-fighter-card--interactive arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tier} relative rounded-[1.4rem] border border-white/7 bg-gradient-to-br ${frameTone} p-2 shadow-[0_18px_40px_rgba(0,0,0,0.32)] transition-transform duration-100 ease-out ${pressSide === side ? 'scale-[0.95]' : ''}`}
       >
         {lockedToast && isSelected ? (
           <div className="pointer-events-none absolute inset-x-4 top-4 z-[3] flex items-center justify-between gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/16 px-3 py-1.5 text-[10px] font-semibold text-emerald-50 backdrop-blur-sm">
@@ -733,12 +814,6 @@ function SpotlightMatchCard({
 
         <div className="relative z-[1] mt-2 min-w-0">
           <p className="truncate text-[15px] font-semibold text-white">{cat.name}</p>
-          <p className={`mt-0.5 truncate text-[10px] uppercase tracking-[0.14em] ${rarityColor(cat.rarity)}`}>{role}</p>
-        </div>
-
-        <div data-side={side} className="tournament-subpanel tournament-subpanel--side relative z-[1] mt-2 flex items-center justify-between gap-2 rounded-xl border border-white/7 bg-black/24 px-3 py-2 text-[10px] text-white/72">
-          <span>{side === 'a' ? 'Left side' : 'Right side'}</span>
-          <span className={`${votedForThisSide ? 'text-white' : 'text-white/54'}`}>{votedLabel}</span>
         </div>
 
         {isLiveSide && isSmallScreen ? null : (
@@ -770,27 +845,17 @@ function SpotlightMatchCard({
       <div className="pointer-events-none absolute inset-x-10 top-0 h-24 rounded-full bg-cyan-400/10 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 right-4 h-24 w-24 rounded-full bg-amber-400/10 blur-3xl" />
 
-      <div className="tournament-stage-meta relative z-[1] flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+      <div className="tournament-stage-meta relative z-[1] flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">
-            {mode === 'voting' ? 'Spotlight Match' : mode === 'upcoming' ? 'Up Next' : 'Finished Battle'}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-white">{roundStatus}</p>
+          <p className="text-sm font-semibold text-white">{roundStatus}</p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-white/35">Queue</p>
-          <p className="mt-1 text-sm font-semibold text-white">{Math.min(total, activeIndex + 1)} / {Math.max(1, total)}</p>
+          <FlameStreak count={localFlameCount} reactionTick={voteAnimTick} className="mb-1" />
+          <p className="text-xs font-semibold text-white/72">Queue {Math.min(total, activeIndex + 1)} / {Math.max(1, total)}</p>
+          <p className={`text-[10px] ${isFlameLitForPulse ? 'text-amber-200/78' : 'text-white/52'}`}>
+            {isFlameLitForPulse ? `Arena Flame ${localFlameCount} · +10% bonus` : `Arena Flame ${localFlameCount} · Vote this pulse to keep it lit`}
+          </p>
         </div>
-      </div>
-
-      <div className="tournament-retention-strip relative z-[1] mt-2 flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] text-white/62">
-        <span className="inline-flex items-center gap-2">
-          <span className="tournament-streak-pill rounded-full border border-emerald-300/18 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-100">
-            Streak {voteSessionCount}
-          </span>
-          <span className="truncate">{Math.min(10, voteSessionCount)} / 10 votes today</span>
-        </span>
-        <span className="text-white/44">{availableSigils} sigils</span>
       </div>
 
       <div className="relative z-[1] mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_36px_minmax(0,1fr)] sm:gap-4">
@@ -807,12 +872,17 @@ function SpotlightMatchCard({
           <div className="tournament-vs-pill rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-white/60">
             VS
           </div>
-          <div className="tournament-share-bar tournament-share-bar--inline relative h-2.5 w-full max-w-[84px] overflow-hidden rounded-full border border-white/[0.12] bg-white/10 sm:max-w-[92px]">
-            <div className="tournament-share-segment tournament-share-segment--a absolute left-0 top-0 h-full" style={{ width: `${animatedPctA}%`, transition: 'width 180ms ease-out' }} />
-            <div className="tournament-share-segment tournament-share-segment--b absolute right-0 top-0 h-full" style={{ width: `${animatedPctB}%`, transition: 'width 180ms ease-out' }} />
-            <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
-          </div>
-          <div className="text-center text-[10px] font-semibold tabular-nums text-white/52">
+          <VoteSplitBar
+            pctA={pctA}
+            rarityA={match.cat_a.rarity}
+            rarityB={match.cat_b.rarity}
+            animTick={voteAnimTick}
+            justVoted={justVoted}
+            selectedSide={flashSide}
+            className="mt-1.5 h-2 w-full"
+            durationMs={600}
+          />
+          <div className="text-center text-[14px] font-black tracking-[0.02em] tabular-nums text-white">
             {pctA}% · {pctB}% · {Number(match.total_votes ?? (match.votes_a + match.votes_b))} votes
           </div>
         </div>
@@ -827,22 +897,24 @@ function SpotlightMatchCard({
         </div>
       </div>
 
-      <div className="tournament-helper-row relative z-[1] mt-3 flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] text-white/58">
-        <span>
-          {votingLocked
-            ? (lockCopy ? `Voting is paused while this pulse resolves. It reopens ${lockCopy}.` : 'Voting is paused while this pulse resolves.')
-            : 'Tap either fighter to vote instantly. Use the info icon to inspect details.'}
-        </span>
-      </div>
-
-      <div className="relative z-[1] mt-3 flex items-center justify-between text-[10px] text-white/68">
-        <span data-tone={edgeTone} className="tournament-balance-chip inline-flex rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1">
-          {edgePct <= 3 ? 'Stat edge neutral' : `${strongerA ? match.cat_a.name : match.cat_b.name} has the stat edge`}
-        </span>
-        {predictBusy || predictedCatId ? (
-          <span className="tabular-nums text-white/50">{predictBusy ? 'Locking…' : 'Prediction locked'}</span>
+      <div className="relative z-[1] mt-3 flex items-center justify-end text-[10px] text-white/68">
+        {votingLocked ? (
+          <span className="inline-flex rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1 text-white/64">
+            {lockCopy ? `Voting reopens ${lockCopy}` : 'Voting paused'}
+          </span>
+        ) : predictBusy || predictedCatId ? (
+          <span className="tabular-nums text-white/54">{predictBusy ? 'Locking…' : 'Prediction locked'}</span>
         ) : null}
       </div>
+      {tapReward && justVoted ? (
+        <div
+          key={tapReward.id}
+          className="pointer-events-none fixed z-[120] text-[11px] font-bold text-emerald-200 animate-[floatUp_420ms_ease-out_forwards]"
+          style={{ left: tapReward.x, top: tapReward.y, transform: 'translate(-50%, -120%)' }}
+        >
+          +1 Impact
+        </div>
+      ) : null}
 
       {betSheetCatId && betTargetCat ? (
         <div className="fixed inset-0 z-[1900]">
@@ -920,7 +992,7 @@ function SpotlightMatchCard({
         </div>
       ) : null}
 
-      <div className="tournament-queue-row relative z-[1] mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+      <div className="tournament-queue-row relative z-[1] mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-black/24 px-3 py-2.5 shadow-[0_12px_24px_rgba(0,0,0,0.14)]">
         <button
           type="button"
           onClick={onPrev}
@@ -932,17 +1004,28 @@ function SpotlightMatchCard({
         </button>
         <div className="text-center">
           <p className="text-[10px] uppercase tracking-[0.18em] text-white/35">Battle Queue</p>
-          <p className="mt-1 text-xs text-white/62">{total > 1 ? `${total - activeIndex - 1} waiting after this` : 'Last battle in view'}</p>
+          <p className="mt-1 text-xs text-white/48">{queueCenterCopy}</p>
+          {queueComplete ? <p className="text-[10px] text-amber-100/78">Your Flame is protected 🔥</p> : null}
         </div>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={activeIndex >= total - 1}
-          className="tournament-queue-btn tournament-queue-btn--next inline-flex h-10 items-center justify-center gap-1 rounded-full border px-3 text-xs font-semibold disabled:opacity-35 active:scale-[0.98]"
-        >
-          Next
-          <ChevronRight className="h-4 w-4" />
-        </button>
+        {queueComplete ? (
+          <Link
+            href="/tournament/bracket"
+            className={`tournament-queue-btn tournament-queue-btn--next inline-flex h-10 items-center justify-center gap-1 rounded-full border px-3 text-xs font-semibold shadow-[0_12px_24px_rgba(34,211,238,0.14)] active:scale-[0.98] ${nextBreathe ? 'animate-[subtleBreathe_900ms_ease-in-out_1]' : ''}`}
+          >
+            View Bracket
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={activeIndex >= total - 1}
+            className={`tournament-queue-btn tournament-queue-btn--next inline-flex h-10 items-center justify-center gap-1 rounded-full border px-3 text-xs font-semibold shadow-[0_12px_24px_rgba(34,211,238,0.14)] disabled:opacity-35 active:scale-[0.98] ${nextBreathe ? 'animate-[subtleBreathe_900ms_ease-in-out_1]' : ''}`}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -955,6 +1038,8 @@ export default function TournamentPage() {
   const [queueMatches, setQueueMatches] = useState<ArenaMatch[]>([]);
   const [bracketQueue, setBracketQueue] = useState<BracketQueuePayload | null>(null);
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
+  const [resolvedVoteByMatchId, setResolvedVoteByMatchId] = useState<Record<string, string>>({});
+  const [voteAnimTickByMatchId, setVoteAnimTickByMatchId] = useState<Record<string, number>>({});
   const [votingMatch, setVotingMatch] = useState<string | null>(null);
   const [predictBusyMatch, setPredictBusyMatch] = useState<string | null>(null);
 
@@ -962,11 +1047,27 @@ export default function TournamentPage() {
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [sigils, setSigils] = useState(0);
   const [predictionStreak, setPredictionStreak] = useState(0);
+  const [liveDuels, setLiveDuels] = useState<DuelRowData[]>([]);
+  const [liveDuelCount, setLiveDuelCount] = useState(0);
+  const [voteConfirmToast, setVoteConfirmToast] = useState<{ visible: boolean; rarity: string | null; pulseTick: number }>({
+    visible: false,
+    rarity: null,
+    pulseTick: 0,
+  });
+  const voteConfirmToastTimerRef = React.useRef<number | null>(null);
   const [segment, setSegment] = useState<Segment>('voting');
   const [activeIndex, setActiveIndex] = useState(0);
   const [voteSessionCount, setVoteSessionCount] = useState(0);
+  const [, setLocalTotals] = useState<Record<string, { votes_a: number; votes_b: number; total_votes: number }>>({});
+  const [currentPulseVoteCount, setCurrentPulseVoteCount] = useState(0);
+  const [pulseResults, setPulseResults] = useState<{ pulseId: string; votes: number; bonus: number; flameMaintained: boolean } | null>(null);
+  const [lastVotedPulseId, setLastVotedPulseId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem('catclash:last-voted-pulse');
+  });
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => { void refreshLiveDuels(); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1084,6 +1185,44 @@ export default function TournamentPage() {
           }
         : match
     )));
+    setBracketQueue((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        matches: (prev.matches || []).map((match) => (
+          match.match_id === matchId
+            ? {
+                ...match,
+                votes_a: snapshot.votes_a,
+                votes_b: snapshot.votes_b,
+                total_votes: snapshot.total_votes,
+                percent_a: snapshot.percent_a,
+                percent_b: snapshot.percent_b,
+              }
+            : match
+        )),
+      };
+    });
+  }
+
+  function bumpVoteAnimTick(matchId: string) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[TOURNAMENT_VOTE_ANIM_TICK]', { matchId });
+    }
+    setVoteAnimTickByMatchId((prev) => ({ ...prev, [matchId]: (prev[matchId] || 0) + 1 }));
+  }
+
+  function stageResolvedVote(matchId: string, catId: string) {
+    setResolvedVoteByMatchId((prev) => ({ ...prev, [matchId]: catId }));
+  }
+
+  function clearResolvedVote(matchId: string) {
+    setResolvedVoteByMatchId((prev) => {
+      if (!prev[matchId]) return prev;
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
   }
 
   async function refreshPulseStatus() {
@@ -1097,6 +1236,58 @@ export default function TournamentPage() {
           isPulseLocked: !!data.isPulseLocked,
         });
       }
+    } catch {}
+  }
+
+  async function refreshLiveDuels() {
+    try {
+      const res = await fetch('/api/duel/challenges', { cache: 'no-store' });
+      const duel = await res.json().catch(() => ({}));
+      if (!res.ok || !duel?.ok) {
+        setLiveDuelCount(0);
+        setLiveDuels([]);
+        return;
+      }
+      const open = Array.isArray(duel.open) ? duel.open : [];
+      setLiveDuelCount(countLiveDuels(open));
+      setLiveDuels(rankLiveDuels(open));
+    } catch {
+      setLiveDuelCount(0);
+      setLiveDuels([]);
+    }
+  }
+
+  function mergeTotals(rows: Array<{ match_id: string; votes_a: number; votes_b: number; total_votes: number }> | null | undefined) {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    setLocalTotals((prev) => {
+      const next = { ...prev };
+      for (const row of rows) {
+        const matchId = String(row?.match_id || '').trim();
+        if (!matchId) continue;
+        const votesA = Math.max(0, Number(row?.votes_a || 0));
+        const votesB = Math.max(0, Number(row?.votes_b || 0));
+        next[matchId] = {
+          votes_a: votesA,
+          votes_b: votesB,
+          total_votes: Math.max(0, Number(row?.total_votes ?? (votesA + votesB))),
+        };
+        applyMatchSnapshot(matchId, calcSnapshot(votesA, votesB));
+      }
+      return next;
+    });
+  }
+
+  async function refreshAggregates(matchIds: string[]) {
+    const ids = Array.from(new Set((matchIds || []).map((id) => String(id || '').trim()).filter(Boolean))).slice(0, 10);
+    if (!ids.length) return;
+    try {
+      const res = await fetch('/api/matches/aggregates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchIds: ids }),
+      });
+      const payload = await res.json().catch(() => null);
+      mergeTotals(Array.isArray(payload?.data) ? payload.data : []);
     } catch {}
   }
 
@@ -1124,6 +1315,17 @@ export default function TournamentPage() {
         body: JSON.stringify({ match_id: matchId, voted_for: catId }),
       });
       const data = await r.json().catch(() => null);
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[TOURNAMENT_VOTE_RESOLVE]', {
+          matchId,
+          ok: !!data?.ok,
+          status: r.status,
+          error: data?.error || null,
+          alreadyVoted: !!data?.alreadyVoted,
+          votes_a: data?.votes_a ?? data?.votesA ?? null,
+          votes_b: data?.votes_b ?? data?.votesB ?? null,
+        });
+      }
       if (!r.ok || !data?.ok) {
         const msg = data?.error || 'Vote failed';
         if (originalSnapshot) applyMatchSnapshot(matchId, originalSnapshot);
@@ -1137,6 +1339,15 @@ export default function TournamentPage() {
           showGlobalToast(lockCopy ? `Voting reopens ${lockCopy}` : 'Voting is locked for this pulse', 2600);
           void load({ silent: true });
         } else if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('duplicate')) {
+          const resolvedSnapshot = resolveVoteSnapshot(data, originalSnapshot);
+          const stableSnapshot = preferHigherTotalSnapshot(resolvedSnapshot, optimisticSnapshot);
+          if (stableSnapshot) applyMatchSnapshot(matchId, stableSnapshot);
+          stageResolvedVote(matchId, catId);
+          bumpVoteAnimTick(matchId);
+          await new Promise((resolve) => window.setTimeout(resolve, 560));
+          setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
+          void refreshAggregates([matchId]);
+          window.setTimeout(() => clearResolvedVote(matchId), 700);
           void load({ silent: true });
         } else {
           setVotedMatches((p) => {
@@ -1148,14 +1359,41 @@ export default function TournamentPage() {
           showGlobalToast(msg, 2200);
         }
       } else {
-        const nextIndex = advanceSpotlightIndex(activeList, activeIndex, matchId);
+        const resolvedSnapshot = resolveVoteSnapshot(data, originalSnapshot);
+        const stableSnapshot = preferHigherTotalSnapshot(resolvedSnapshot, optimisticSnapshot);
+        if (stableSnapshot) applyMatchSnapshot(matchId, stableSnapshot);
+        stageResolvedVote(matchId, catId);
+        bumpVoteAnimTick(matchId);
         // Briefly hold the current card so the submit state is visible,
         // then advance smoothly after we commit the vote locally.
-        await new Promise((resolve) => window.setTimeout(resolve, 220));
+        await new Promise((resolve) => window.setTimeout(resolve, 560));
         setVotedMatches((prev) => ({ ...prev, [matchId]: catId }));
+        void refreshAggregates([matchId]);
+        window.setTimeout(() => clearResolvedVote(matchId), 700);
         setVoteSessionCount((prev) => prev + 1);
-        setActiveIndex(nextIndex);
-        showGlobalToast('Vote recorded', 2200);
+        const freshAcceptedVote = !data?.alreadyVoted && !String(data?.error || '').toLowerCase().includes('already') && !String(data?.error || '').toLowerCase().includes('duplicate');
+        if (pulse.state === 'live' && freshAcceptedVote) {
+          const votedPulseId = pulse.pulseId;
+          setCurrentPulseVoteCount((prev) => prev + 1);
+          setLastVotedPulseId(votedPulseId);
+          window.localStorage.setItem('catclash:last-voted-pulse', votedPulseId);
+        }
+        const votedCatRarity =
+          arenaMatch?.cat_a?.id === catId ? arenaMatch?.cat_a?.rarity
+          : arenaMatch?.cat_b?.id === catId ? arenaMatch?.cat_b?.rarity
+          : null;
+        setVoteConfirmToast((prev) => ({
+          visible: true,
+          rarity: votedCatRarity || prev.rarity || null,
+          pulseTick: prev.pulseTick + 1,
+        }));
+        if (voteConfirmToastTimerRef.current) window.clearTimeout(voteConfirmToastTimerRef.current);
+        voteConfirmToastTimerRef.current = window.setTimeout(() => {
+          setVoteConfirmToast((prev) => ({ ...prev, visible: false }));
+        }, 2000);
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(10);
+        }
       }
     } catch {
       if (originalSnapshot) applyMatchSnapshot(matchId, originalSnapshot);
@@ -1169,6 +1407,12 @@ export default function TournamentPage() {
     }
     setVotingMatch(null);
   }
+
+  useEffect(() => {
+    return () => {
+      if (voteConfirmToastTimerRef.current) window.clearTimeout(voteConfirmToastTimerRef.current);
+    };
+  }, []);
 
   async function handlePredict(matchId: string, catId: string, bet: number): Promise<boolean> {
     if (predictBusyMatch) return false;
@@ -1213,6 +1457,26 @@ export default function TournamentPage() {
   const pulseBoundaryPassed = pulseResumeAtMs !== null && nowTs >= pulseResumeAtMs;
   const pulseLocked = false;
   const pulseResumeLabel = pulseBoundaryPassed ? null : formatPulseTime(pulseStatus?.nextPulseAtUtc || null);
+  const pulse = useMemo(() => getVirtualPulse(nowTs), [nowTs]);
+  const isFlameLitForPulse = lastVotedPulseId === pulse.pulseId;
+
+  useEffect(() => {
+    setCurrentPulseVoteCount(0);
+    setPulseResults(null);
+  }, [pulse.pulseId]);
+
+  useEffect(() => {
+    if (pulse.state !== 'resolving') return;
+    setPulseResults((prev) => {
+      if (prev?.pulseId === pulse.pulseId) return prev;
+      return {
+        pulseId: pulse.pulseId,
+        votes: currentPulseVoteCount,
+        bonus: Math.floor(currentPulseVoteCount / 3),
+        flameMaintained: isFlameLitForPulse,
+      };
+    });
+  }, [currentPulseVoteCount, isFlameLitForPulse, pulse.pulseId, pulse.state]);
 
   const arenaView = useMemo(() => {
     if (!primaryArena) {
@@ -1264,7 +1528,7 @@ export default function TournamentPage() {
     return sourceMatches.filter((match) => {
       const id = String(match?.match_id || '');
       if (!id || isBye(match)) return false;
-      if (votedMatches[id]) return false;
+      if (votedMatches[id] && !resolvedVoteByMatchId[id]) return false;
       const roundFromArena = (primaryArena?.rounds || []).find((round) =>
         (round.matches || []).some((entry) => String(entry.match_id || '') === id)
       )?.round;
@@ -1279,7 +1543,7 @@ export default function TournamentPage() {
       });
       return state.state === 'votable';
     });
-  }, [bracketQueue?.currentRound, bracketQueue?.matches, primaryArena?.current_round, primaryArena?.rounds, pulseLocked, queueMatches, votedMatches]);
+  }, [bracketQueue?.currentRound, bracketQueue?.matches, primaryArena?.current_round, primaryArena?.rounds, pulseLocked, queueMatches, resolvedVoteByMatchId, votedMatches]);
 
   const availableSegments = useMemo(() => {
     const segments: Segment[] = ['voting'];
@@ -1294,6 +1558,10 @@ export default function TournamentPage() {
       ? arenaView.upcoming
       : arenaView.results;
   const activeMatch = activeList[Math.min(activeIndex, Math.max(0, activeList.length - 1))] || null;
+  const renderedMatchIdsSig = useMemo(
+    () => activeList.slice(0, 10).map((match) => String(match.match_id || '')).filter(Boolean).join(','),
+    [activeList]
+  );
   const isEmptyVoting = segment === 'voting' && !activeMatch;
   const hasRemainingMatches = arenaView.summary.remainingCount > 0;
   const hasOpenMatches = arenaView.summary.openCount > 0;
@@ -1324,6 +1592,31 @@ export default function TournamentPage() {
   useEffect(() => {
     setActiveIndex(0);
   }, [segment]);
+
+  useEffect(() => {
+    const ids = renderedMatchIdsSig.split(',').filter(Boolean);
+    if (!ids.length) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch('/api/matches/aggregates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchIds: ids }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (cancelled) return;
+        mergeTotals(Array.isArray(payload?.data) ? payload.data : []);
+      } catch {}
+    };
+    void tick();
+    const timer = window.setInterval(tick, 6000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [renderedMatchIdsSig]);
 
   useEffect(() => {
     if (availableSegments.includes(segment)) return;
@@ -1376,26 +1669,28 @@ export default function TournamentPage() {
   return (
     <div className="min-h-screen bg-[#08090d] px-4 pb-8 pt-4 sm:pt-5 text-white">
       <div className={`mx-auto max-w-3xl ${isEmptyVoting ? 'space-y-2.5' : 'space-y-3.5'}`}>
-        <div className={`tournament-info-module rounded-[1.7rem] border border-white/[0.05] bg-[linear-gradient(135deg,rgba(88,28,135,0.08),rgba(34,211,238,0.04))] shadow-[0_14px_28px_rgba(0,0,0,0.18)] ${isEmptyVoting ? 'p-3 opacity-90' : 'p-3.5'}`}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="tournament-status-pill inline-flex items-center gap-1 rounded-full border border-violet-300/14 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/82">
-                <Sparkles className="h-3.5 w-3.5" />
-                Whisker Arena
+        {(!activeMatch || segment !== 'voting') ? (
+          <div className={`tournament-info-module rounded-[1.7rem] border border-white/[0.05] bg-[linear-gradient(135deg,rgba(88,28,135,0.08),rgba(34,211,238,0.04))] shadow-[0_14px_28px_rgba(0,0,0,0.18)] ${isEmptyVoting ? 'p-3 opacity-90' : 'p-3.5'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="tournament-status-pill inline-flex items-center gap-1 rounded-full border border-violet-300/14 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/82">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Whisker Arena
+                </div>
+                <p className="mt-2 text-sm font-semibold text-white">Whisker Arena is coming soon for faster ranked repeat battles.</p>
               </div>
-              <p className="mt-2 text-sm font-semibold text-white">Whisker Arena is coming soon for faster ranked repeat battles.</p>
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                className="tournament-primary-link inline-flex h-11 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-cyan-300/12 bg-cyan-500/8 px-4 text-sm font-semibold text-cyan-50/72 opacity-80"
+              >
+                <Swords className="h-4 w-4" />
+                Coming Soon
+              </button>
             </div>
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              className="tournament-primary-link inline-flex h-11 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-cyan-300/12 bg-cyan-500/8 px-4 text-sm font-semibold text-cyan-50/72 opacity-80"
-            >
-              <Swords className="h-4 w-4" />
-              Coming Soon
-            </button>
           </div>
-        </div>
+        ) : null}
 
         <section className="tournament-spotlight-shell rounded-[2rem] border border-white/[0.06] bg-white/[0.025] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.28)] sm:p-4">
           <div className="mb-3 flex items-center justify-end">
@@ -1410,13 +1705,15 @@ export default function TournamentPage() {
               match={activeMatch}
               mode={segment}
               pulseResumeAt={pulseStatus?.nextPulseAtUtc || null}
-              voted={votedMatches[activeMatch.match_id] || null}
+              isFlameLitForPulse={isFlameLitForPulse}
+              voted={resolvedVoteByMatchId[activeMatch.match_id] || votedMatches[activeMatch.match_id] || null}
               isVoting={votingMatch === activeMatch.match_id}
               predictBusy={predictBusyMatch === activeMatch.match_id}
               availableSigils={sigils}
               activeIndex={activeIndex}
               total={activeList.length}
               voteSessionCount={voteSessionCount}
+              voteAnimTick={voteAnimTickByMatchId[activeMatch.match_id] || 0}
               onVote={handleVote}
               onPredict={handlePredict}
               onPrev={() => setActiveIndex((prev) => Math.max(0, prev - 1))}
@@ -1451,11 +1748,30 @@ export default function TournamentPage() {
             </div>
           )}
         </section>
+        {pulse.state === 'resolving' && pulseResults ? (
+          <section className="rounded-[1.2rem] border border-amber-300/16 bg-[linear-gradient(135deg,rgba(251,191,36,0.08),rgba(30,41,59,0.36))] px-3 py-2.5">
+            <p className="text-xs font-semibold text-amber-100">🔥 Pulse Complete</p>
+            <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-white/80">
+              <span>+{pulseResults.votes} matches processed</span>
+              <span>+{pulseResults.bonus} bonus sigils earned</span>
+            </div>
+            <p className="mt-1 text-[10px] text-white/65">
+              {pulseResults.flameMaintained ? 'Flame maintained 🔥' : 'Flame faded...'}
+            </p>
+          </section>
+        ) : null}
+
+        <LiveDuelsTicker duels={liveDuels} liveDuelCount={liveDuelCount} />
 
         <div className={isEmptyVoting ? 'opacity-90' : ''}>
           <TournamentBracket arena={primaryArena} votedMatches={votedMatches} pulseLocked={pulseLocked} />
         </div>
       </div>
+      <VoteConfirmToast
+        visible={voteConfirmToast.visible}
+        rarity={voteConfirmToast.rarity}
+        pulseTick={voteConfirmToast.pulseTick}
+      />
     </div>
   );
 }

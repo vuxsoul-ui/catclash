@@ -28,6 +28,7 @@
     "images:backfill": "node scripts/backfill-cat-image-derivatives.mjs --write"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "framer-motion": "^12.34.3",

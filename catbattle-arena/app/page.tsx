@@ -3,9 +3,10 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react";
 import {
-  Sparkles, Flame, Target, Zap, Loader2, Check, Crosshair,
+  Sparkles, Flame, Target, Zap, Loader2, Check, Crosshair, Trophy, AlertTriangle,
   ArrowRight, Crown, Swords, MessageCircle, Send,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SigilIcon from "./components/icons/SigilIcon";
@@ -37,6 +38,9 @@ import DebugWidget from "./components/DebugWidget";
 import CosmicStatsBar from "./components/CosmicStatsBar";
 import { LoadingState } from "./components/LoadingState";
 import { useHeaderExtension } from "./components/HeaderSystem";
+import { VoteSplitBar } from "./components/VoteSplitBar";
+import FlameStreak from "./components/FlameStreak";
+import VoteConfirmToast from "./components/VoteConfirmToast";
 
 // Types
 interface UserProgress {
@@ -284,25 +288,64 @@ function getVotePercent(
   snapshot?: VoteSnapshot | null
 ): [number, number] {
   const source = snapshot || match;
+  const totalVotes = Number(source.votes_a || 0) + Number(source.votes_b || 0);
+  if (totalVotes > 0) {
+    const aPct = Math.round((Number(source.votes_a || 0) / totalVotes) * 100);
+    return [aPct, Math.max(0, 100 - aPct)];
+  }
   const pA = Number(source.percent_a);
   const pB = Number(source.percent_b);
-  const totalVotes = Number(source.votes_a || 0) + Number(source.votes_b || 0);
   const hasUsablePercentPair =
     Number.isFinite(pA) &&
     Number.isFinite(pB) &&
     pA >= 0 &&
     pB >= 0 &&
-    (
-      totalVotes === 0
-        ? (pA + pB) >= 0
-        : (pA + pB) > 0
-    );
+    (pA + pB) > 0;
   if (hasUsablePercentPair) {
     return [Math.max(0, Math.min(100, Math.round(pA))), Math.max(0, Math.min(100, Math.round(pB)))];
   }
-  if (totalVotes === 0) return [50, 50];
-  const aPct = Math.round((Number(source.votes_a || 0) / totalVotes) * 100);
-  return [aPct, Math.max(0, 100 - aPct)];
+  return [50, 50];
+}
+
+function getVoteCounts(
+  match: Pick<ArenaMatch, 'votes_a' | 'votes_b'>,
+  snapshot?: Pick<VoteSnapshot, 'votes_a' | 'votes_b'> | null
+): [number, number, number] {
+  const source = snapshot || match;
+  const votesA = Math.max(0, Number(source?.votes_a || 0));
+  const votesB = Math.max(0, Number(source?.votes_b || 0));
+  return [votesA, votesB, votesA + votesB];
+}
+
+function preferNonRegressingSnapshot(
+  current: VoteSnapshot | undefined,
+  incoming: VoteSnapshot | null | undefined
+): VoteSnapshot | null {
+  if (!incoming) return current || null;
+  if (!current) return incoming;
+  const currentTotal = Math.max(0, Number(current.total_votes || (current.votes_a + current.votes_b)));
+  const incomingTotal = Math.max(0, Number(incoming.total_votes || (incoming.votes_a + incoming.votes_b)));
+  if (incomingTotal < currentTotal) return current;
+  return incoming;
+}
+
+function preferNonRegressingMatchVotes(
+  match: ArenaMatch,
+  incoming: { votesA?: number; votesB?: number; totalVotes?: number; percentA?: number; percentB?: number }
+): ArenaMatch {
+  const currentTotal = Math.max(0, Number(match.total_votes ?? (match.votes_a + match.votes_b)));
+  const nextVotesA = Math.max(0, Number(incoming.votesA || 0));
+  const nextVotesB = Math.max(0, Number(incoming.votesB || 0));
+  const incomingTotal = Math.max(0, Number(incoming.totalVotes ?? (nextVotesA + nextVotesB)));
+  if (incomingTotal < currentTotal) return match;
+  return {
+    ...match,
+    votes_a: nextVotesA,
+    votes_b: nextVotesB,
+    total_votes: incomingTotal,
+    percent_a: Number(incoming.percentA || 0),
+    percent_b: Number(incoming.percentB || 0),
+  };
 }
 
 function normalizeVoteSnapshot(
@@ -323,6 +366,36 @@ function normalizeVoteSnapshot(
     total_votes: votesA + votesB,
     percent_a: percentA,
     percent_b: percentB,
+  };
+}
+
+function getResolvedMatchView(
+  match: ArenaMatch,
+  snapshot?: VoteSnapshot | null,
+  votedCatId?: string | null
+): ArenaMatch {
+  const merged = snapshot || normalizeVoteSnapshot(match) || null;
+  const votesA = Math.max(0, Number(merged?.votes_a ?? match.votes_a ?? 0));
+  const votesB = Math.max(0, Number(merged?.votes_b ?? match.votes_b ?? 0));
+  const totalVotes = Math.max(0, Number(merged?.total_votes ?? (votesA + votesB)));
+  const [pctA, pctB] = getVotePercent(
+    {
+      votes_a: votesA,
+      votes_b: votesB,
+      percent_a: Number(merged?.percent_a ?? match.percent_a ?? 0),
+      percent_b: Number(merged?.percent_b ?? match.percent_b ?? 0),
+    },
+    null
+  );
+  return {
+    ...match,
+    votes_a: votesA,
+    votes_b: votesB,
+    total_votes: totalVotes,
+    percent_a: pctA,
+    percent_b: pctB,
+    is_close_match: Math.abs(votesA - votesB) <= 2,
+    user_voted_cat_id: votedCatId ?? match.user_voted_cat_id ?? null,
   };
 }
 
@@ -514,7 +587,7 @@ function LiveDuelsModule({
         </Link>
       </SectionHeader>
       {visibleDuels.length > 0 ? (
-        <div className="relative z-10 -mx-0.5 px-0.5 flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="scrollbar-none relative z-10 -mx-0.5 px-0.5 flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {visibleDuels.map((duel) => (
             <div key={`live-duel-${duel.id}`} className="snap-start w-[44vw] min-w-[156px] max-w-[196px]">
               <DuelCardMini duel={duel} />
@@ -540,6 +613,7 @@ function MiniMatchPreview({
   voting,
   voteSnapshot,
   voteSyncing = false,
+  voteAnimTick = 0,
   pulseCountdown,
   onVote,
   onOpenTournament,
@@ -549,6 +623,7 @@ function MiniMatchPreview({
   voting: boolean;
   voteSnapshot?: VoteSnapshot | null;
   voteSyncing?: boolean;
+  voteAnimTick?: number;
   pulseCountdown?: string | null;
   onVote: (catId: string) => void;
   onOpenTournament: () => void;
@@ -575,6 +650,7 @@ function MiniMatchPreview({
   }
 
   const [pctA, pctB] = getVotePercent(match, voteSnapshot);
+  const [, , totalVotes] = getVoteCounts(match, voteSnapshot || null);
   const catAName = getCatDisplayName(match.cat_a);
   const catBName = getCatDisplayName(match.cat_b);
   const votedSide = voted === match.cat_a.id ? 'a' : voted === match.cat_b.id ? 'b' : null;
@@ -583,41 +659,94 @@ function MiniMatchPreview({
   const votingLocked = !!match.voting_locked;
   const lockLabel = pulseCountdown ? `Votes reopen in ${pulseCountdown}.` : 'Voting is between pulses right now.';
   const canVote = !voting && !votingLocked && !votedSide;
+  const [lockPulse, setLockPulse] = useState(false);
+  const [justVoted, setJustVoted] = useState(false);
+  const [showUpdatingLabel, setShowUpdatingLabel] = useState(false);
+  const [tapFx, setTapFx] = useState<{ x: number; y: number; id: number } | null>(null);
+  const [pressSide, setPressSide] = useState<'a' | 'b' | null>(null);
+  const [localFlameCount, setLocalFlameCount] = useState(votedSide ? 1 : 0);
+
+  useEffect(() => {
+    if (!voteAnimTick) return;
+    setLockPulse(true);
+    setJustVoted(true);
+    setLocalFlameCount((prev) => prev + 1);
+    const timer = window.setTimeout(() => setLockPulse(false), 320);
+    const voteTimer = window.setTimeout(() => setJustVoted(false), 620);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(voteTimer);
+    };
+  }, [voteAnimTick]);
+
+  useEffect(() => {
+    if (votedSide) return;
+    setLocalFlameCount((prev) => (prev > 0 ? prev - 1 : 0));
+  }, [match.match_id, votedSide]);
+
+  useEffect(() => {
+    if (!voteSyncing) {
+      setShowUpdatingLabel(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowUpdatingLabel(true), 280);
+    return () => window.clearTimeout(timer);
+  }, [voteSyncing]);
 
   return (
-    <div className="relative overflow-hidden rounded-[1.85rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.98),rgba(6,14,26,0.94),rgba(11,20,33,0.92))] p-4 shadow-[0_26px_60px_rgba(0,0,0,0.35),0_0_26px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
+    <div className="relative overflow-hidden rounded-[1.6rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.95),rgba(6,14,26,0.9),rgba(11,20,33,0.88))] p-3.5 shadow-[0_20px_46px_rgba(0,0,0,0.3),0_0_18px_rgba(34,211,238,0.05),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-4">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(250,204,21,0.12),transparent_34%)]" />
       <div className="relative">
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/72 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.1)]">
               <span>Starter Vote</span>
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
             </div>
-            <h2 className="mt-2 text-[1.35rem] font-black tracking-[-0.04em] text-white sm:text-[1.6rem]">Pick today&apos;s winner.</h2>
+            <h2 className="mt-1.5 text-[1.2rem] font-black tracking-[-0.035em] text-white sm:text-[1.4rem]">Pick today&apos;s winner.</h2>
             <p className="mt-1 text-sm text-white/58">
-              {votingLocked ? `${lockLabel} Open the bracket to follow the next round.` : 'Cast one clean vote here, then step into the full bracket.'}
+              {votingLocked ? `${lockLabel}` : 'One vote here. Full bracket in Tournament.'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onOpenTournament}
-            className="rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] px-3 py-2 text-xs font-semibold text-white/82 shadow-[0_10px_18px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-all hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.11),rgba(255,255,255,0.05))] hover:text-white active:scale-[0.96]"
+          <div className="flex flex-col items-end gap-2">
+            <FlameStreak count={localFlameCount} reactionTick={voteAnimTick} />
+            <button
+              type="button"
+              onClick={onOpenTournament}
+              className="rounded-xl border border-cyan-200/35 bg-gradient-to-r from-cyan-500 to-sky-400 px-3 py-2 text-xs font-bold text-white shadow-[0_10px_22px_rgba(16,185,129,0.2),0_0_14px_rgba(34,211,238,0.1)] transition-all hover:shadow-[0_12px_24px_rgba(16,185,129,0.24),0_0_16px_rgba(34,211,238,0.14)] active:scale-[0.96]"
+            >
+              Enter Full Tournament
+            </button>
+          </div>
+        </div>
+
+        <VoteSplitBar
+          pctA={pctA}
+          rarityA={match.cat_a.rarity}
+          rarityB={match.cat_b.rarity}
+          selectedSide={votedSide}
+          animTick={voteAnimTick + (voteSyncing || lockPulse ? 1 : 0)}
+          justVoted={justVoted}
+          className="mt-1 h-2"
+          durationMs={600}
+        />
+        <p className={`mt-1 text-center text-[12px] font-black tracking-[0.02em] tabular-nums ${(voteSyncing || lockPulse) ? 'animate-pulse text-white' : 'text-white/92'}`}>
+          {pctA}% · {pctB}% · {Math.max(0, totalVotes)} votes
+        </p>
+        <p className={`mt-1 text-center text-[11px] font-semibold ${lockPulse && votedSide ? 'text-emerald-100 animate-pulse' : 'text-white/68'}`}>
+          {votingLocked ? `Pulse ${pulseCountdown || 'locked'}` : showUpdatingLabel ? 'Updating...' : votedSide ? 'Vote locked' : 'Tap a fighter to vote'}
+        </p>
+        {tapFx ? (
+          <div
+            key={tapFx.id}
+            className="pointer-events-none fixed z-[120] text-[11px] font-bold text-emerald-200 animate-[floatUp_420ms_ease-out_forwards]"
+            style={{ left: tapFx.x, top: tapFx.y, transform: 'translate(-50%, -120%)' }}
           >
-            View Tournament
-          </button>
-        </div>
+            +1 Impact
+          </div>
+        ) : null}
 
-        <div className="mb-3 flex items-center justify-between text-[10px] text-white/60">
-          <span>{votingLocked ? 'Pulse status' : voteSyncing ? 'Updating...' : votedSide ? 'Vote locked' : 'Tap a fighter'}</span>
-          <span className="tabular-nums">{votingLocked ? (pulseCountdown || 'Locked') : `${pctA}% · ${pctB}%`}</span>
-        </div>
-        <div className="mt-1.5 relative h-2 overflow-hidden rounded-full bg-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
-          <div className="absolute left-0 top-0 h-full bg-blue-500 transition-[width] duration-300" style={{ width: `${pctA}%` }} />
-          <div className="absolute right-0 top-0 h-full bg-rose-500 transition-[width] duration-300" style={{ width: `${pctB}%` }} />
-        </div>
-
-        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 sm:gap-3.5">
+        <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
           <div className="min-w-0">
             <button
               type="button"
@@ -625,20 +754,26 @@ function MiniMatchPreview({
                 if (!canVote) return;
                 onVote(match.cat_a.id);
               }}
+              onPointerDown={(event) => {
+                setPressSide('a');
+                setTapFx({ x: event.clientX, y: event.clientY, id: Date.now() });
+                window.setTimeout(() => setPressSide((prev) => (prev === 'a' ? null : prev)), 110);
+                window.setTimeout(() => setTapFx((prev) => (prev && prev.id ? null : prev)), 460);
+              }}
               disabled={!canVote}
               aria-pressed={votedSide === 'a'}
-              className={`block w-full rounded-[1.45rem] p-2.5 text-left shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
+              className={`block w-full rounded-[1.25rem] p-2 text-left shadow-[0_12px_26px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
                 votedSide === 'a'
-                  ? 'scale-[1.015] bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(59,130,246,0.14),inset_0_0_0_1px_rgba(147,197,253,0.24)]'
+                  ? `scale-[1.05] ring-2 ${lockPulse ? 'ring-cyan-300/95' : 'ring-blue-400/70'} bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(59,130,246,0.14),inset_0_0_0_1px_rgba(147,197,253,0.24)]`
                   : votedSide === 'b'
-                    ? 'bg-white/[0.03] opacity-65'
+                    ? 'bg-white/[0.03] opacity-60'
                     : 'bg-white/[0.04]'
-              } ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
+              } ${pressSide === 'a' ? 'scale-[0.95]' : ''} ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
             >
-              <div className="relative overflow-hidden rounded-[1.1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-                <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover object-center" />
+              <div className="relative overflow-hidden rounded-[1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+                <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" className="aspect-[4/5] max-h-[230px] w-full object-cover object-center sm:max-h-[250px]" />
               </div>
-              <div className="mt-2.5 text-center">
+              <div className="mt-2 text-center">
                 <p className="truncate text-sm font-bold text-white sm:text-[15px]">{catAName}</p>
                 <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getRarityColor(match.cat_a.rarity)}`}>
                   {match.cat_a.rarity}
@@ -664,20 +799,26 @@ function MiniMatchPreview({
                 if (!canVote) return;
                 onVote(match.cat_b.id);
               }}
+              onPointerDown={(event) => {
+                setPressSide('b');
+                setTapFx({ x: event.clientX, y: event.clientY, id: Date.now() });
+                window.setTimeout(() => setPressSide((prev) => (prev === 'b' ? null : prev)), 110);
+                window.setTimeout(() => setTapFx((prev) => (prev && prev.id ? null : prev)), 460);
+              }}
               disabled={!canVote}
               aria-pressed={votedSide === 'b'}
-              className={`block w-full rounded-[1.45rem] p-2.5 text-left shadow-[0_14px_32px_rgba(0,0,0,0.18),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
+              className={`block w-full rounded-[1.25rem] p-2 text-left shadow-[0_12px_26px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
                 votedSide === 'b'
-                  ? 'scale-[1.015] bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(244,63,94,0.14),inset_0_0_0_1px_rgba(253,164,175,0.24)]'
+                  ? `scale-[1.05] ring-2 ${lockPulse ? 'ring-rose-300/95' : 'ring-rose-400/70'} bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(244,63,94,0.14),inset_0_0_0_1px_rgba(253,164,175,0.24)]`
                   : votedSide === 'a'
-                    ? 'bg-white/[0.03] opacity-65'
+                    ? 'bg-white/[0.03] opacity-60'
                     : 'bg-white/[0.04]'
-              } ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
+              } ${pressSide === 'b' ? 'scale-[0.95]' : ''} ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
             >
-              <div className="relative overflow-hidden rounded-[1.1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-                <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover object-center" />
+              <div className="relative overflow-hidden rounded-[1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+                <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" className="aspect-[4/5] max-h-[230px] w-full object-cover object-center sm:max-h-[250px]" />
               </div>
-              <div className="mt-2.5 text-center">
+              <div className="mt-2 text-center">
                 <p className="truncate text-sm font-bold text-white sm:text-[15px]">{catBName}</p>
                 <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getRarityColor(match.cat_b.rarity)}`}>
                   {match.cat_b.rarity}
@@ -699,21 +840,21 @@ function MiniMatchPreview({
               onClick={onOpenTournament}
               className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.06))] px-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.14),inset_0_0_0_1px_rgba(255,255,255,0.1)] transition-all hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.08))] active:scale-[0.96]"
             >
-              Follow the Tournament
+              Enter Full Tournament
             </button>
           </div>
         ) : null}
 
         {votedSide ? (
           <div className="mt-3 rounded-2xl bg-emerald-500/8 px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.14)]">
-            <p className="text-sm font-semibold text-emerald-50">Vote locked in.</p>
+            <p className={`text-sm font-semibold text-emerald-50 ${lockPulse ? 'animate-pulse' : ''}`}>Vote locked in.</p>
             <p className="mt-1 text-xs text-emerald-100/72">Want the full bracket now?</p>
             <button
               type="button"
               onClick={onOpenTournament}
               className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-400 via-sky-300 to-emerald-300 px-4 text-sm font-bold text-black shadow-[0_12px_28px_rgba(16,185,129,0.18),0_0_18px_rgba(34,211,238,0.12)] transition-all hover:shadow-[0_16px_32px_rgba(16,185,129,0.22),0_0_22px_rgba(34,211,238,0.14)] active:scale-[0.96]"
             >
-              Continue to Tournament
+              Enter Full Tournament
             </button>
           </div>
         ) : null}
@@ -896,6 +1037,107 @@ function rankLiveDuels(rows: DuelRow[] | null | undefined): DuelRow[] {
     .slice(0, 5);
 }
 
+type ArenaPulseItem = {
+  id: string;
+  type: 'live' | 'revenge' | 'record';
+  text: string;
+  cta: string;
+  href: string;
+  showMeta?: string | null;
+  highlights?: string[];
+};
+
+function ArenaPulseStrip({
+  items,
+  onNavigate,
+}: {
+  items: ArenaPulseItem[];
+  onNavigate: (href: string) => void;
+}) {
+  const [idx, setIdx] = useState(0);
+  const active = items[idx] || null;
+
+  useEffect(() => {
+    if (items.length <= 1) return;
+    const id = window.setInterval(() => {
+      setIdx((n) => (n + 1) % items.length);
+    }, 6000);
+    return () => window.clearInterval(id);
+  }, [items.length]);
+
+  useEffect(() => {
+    setIdx((n) => (items.length ? Math.min(n, items.length - 1) : 0));
+  }, [items.length]);
+
+  if (!active) return null;
+
+  const Icon = active.type === 'live' ? Swords : active.type === 'revenge' ? AlertTriangle : Trophy;
+  const iconTone = active.type === 'live' ? 'text-cyan-200/65' : active.type === 'revenge' ? 'text-amber-200/65' : 'text-violet-200/65';
+  const highlights = (active.highlights || []).filter(Boolean);
+  const urgencySource = `${active.text} ${active.showMeta || ''}`;
+  const urgencyMatch = urgencySource.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  const urgencySeconds = urgencyMatch
+    ? urgencyMatch[3]
+      ? (Number(urgencyMatch[1]) * 3600) + (Number(urgencyMatch[2]) * 60) + Number(urgencyMatch[3])
+      : (Number(urgencyMatch[1]) * 60) + Number(urgencyMatch[2])
+    : null;
+  const isUrgent = active.type === 'live' && urgencySeconds !== null && urgencySeconds <= 180;
+  const liveLabel = active.type === 'live' ? '🔥 Pulse Live Now' : null;
+
+  const renderText = (text: string) => {
+    if (highlights.length === 0) return text;
+    const escaped = highlights.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`(${escaped.join('|')})`, 'gi');
+    return text.split(pattern).map((part, i) => {
+      const isHighlight = highlights.some((token) => token.toLowerCase() === part.toLowerCase());
+      if (!isHighlight) return <span key={`pulse-part-${i}`}>{part}</span>;
+      return (
+        <span key={`pulse-part-${i}`} className="font-semibold text-slate-200">
+          {part}
+        </span>
+      );
+    });
+  };
+
+  return (
+    <section className="px-3.5 pb-2 sm:px-4">
+      <button
+        type="button"
+        onClick={() => onNavigate(active.href)}
+        className={`group relative w-full overflow-hidden rounded-xl border border-white/12 px-3 py-2 text-left backdrop-blur-md transition-transform duration-100 active:scale-95 ${isUrgent ? 'bg-[linear-gradient(180deg,rgba(82,45,12,0.44),rgba(16,10,8,0.9))] shadow-[0_0_28px_rgba(251,191,36,0.08)]' : 'bg-[linear-gradient(180deg,rgba(10,14,26,0.9),rgba(6,10,20,0.88))] shadow-[0_12px_26px_rgba(0,0,0,0.2)]'}`}
+        aria-label={`Arena pulse: ${active.text}`}
+      >
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/5 animate-[pulse-scanline_620ms_ease-out]" />
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+          <div className="inline-flex items-center gap-2">
+            <span className={`h-1.5 w-1.5 rounded-full ${isUrgent ? 'bg-amber-300 animate-pulse' : 'bg-emerald-500 animate-[live-duels-passive_2s_ease-in-out_infinite]'}`} />
+            <Icon className={`h-3.5 w-3.5 ${iconTone}`} />
+          </div>
+          <div className="min-w-0">
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={active.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -3, filter: 'blur(2px)' }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+                className={`truncate text-xs ${isUrgent ? 'text-amber-200' : 'text-slate-300'}`}
+              >
+                {liveLabel ? <span className={`mr-2 inline-block font-semibold ${isUrgent ? 'animate-pulse text-amber-300' : 'text-cyan-100/88'}`}>{liveLabel}</span> : null}
+                {renderText(active.text)}
+                {active.showMeta ? <span className="hidden sm:inline text-slate-500"> · {active.showMeta}</span> : null}
+              </motion.p>
+            </AnimatePresence>
+          </div>
+          <span className="inline-flex h-7 min-w-[46px] items-center justify-center rounded-full border border-white/12 bg-white/10 px-2 text-[10px] font-semibold text-slate-100 transition-colors group-hover:text-white">
+            {active.cta}
+          </span>
+        </div>
+      </button>
+    </section>
+  );
+}
+
 function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null | undefined }) {
   return (
     <div className="rounded-2xl border border-emerald-300/30 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(6,182,212,0.12),rgba(10,10,12,0.45))] p-6 text-center shadow-[0_14px_36px_rgba(16,185,129,0.2)]">
@@ -916,7 +1158,7 @@ const MatchCard = React.memo(function MatchCard({
   match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
   isRefilling = false, resetFlipSignal = '',
-  debugMode = false, voteSnapshot = null, voteSyncing = false,
+  debugMode = false, voteSnapshot = null, voteSyncing = false, voteAnimTick = 0,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
@@ -937,11 +1179,13 @@ const MatchCard = React.memo(function MatchCard({
   debugMode?: boolean;
   voteSnapshot?: VoteSnapshot | null;
   voteSyncing?: boolean;
+  voteAnimTick?: number;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
 }) {
   const [pctA, pctB] = getVotePercent(match, voteSnapshot);
+  const [, , resolvedTotalVotes] = getVoteCounts(match, voteSnapshot || null);
   const isComplete = String(match.status || '').toLowerCase() === "complete" || String(match.status || '').toLowerCase() === "completed";
   const hasVoted = !!voted;
   const [votePending, setVotePending] = useState(false);
@@ -976,6 +1220,10 @@ const MatchCard = React.memo(function MatchCard({
   const [voteFxSide, setVoteFxSide] = useState<"a" | "b" | null>(null);
   const [plusOneFxSide, setPlusOneFxSide] = useState<"a" | "b" | null>(null);
   const [impactSide, setImpactSide] = useState<"a" | "b" | null>(null);
+  const [lockPulse, setLockPulse] = useState(false);
+  const [justVoted, setJustVoted] = useState(false);
+  const [showUpdatingLabel, setShowUpdatingLabel] = useState(false);
+  const [tapReward, setTapReward] = useState<{ x: number; y: number; id: number } | null>(null);
   const [animTick, setAnimTick] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [predictOpen, setPredictOpen] = useState(false);
@@ -985,9 +1233,8 @@ const MatchCard = React.memo(function MatchCard({
   const [flipB, setFlipB] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [localFlameCount, setLocalFlameCount] = useState(Math.max(0, Number(voteStreak || 0)));
   const voteInFlightRef = useRef(false);
-  const cardClickTimerRef = useRef<number | null>(null);
-  const cardClickSideRef = useRef<"a" | "b" | null>(null);
   const flipTouchedRef = useRef(false);
   const allowFlip = flipTouchedRef.current;
   const forceFront = !allowFlip || isRefilling || exitingVisual || voteQueued || slotPhase !== "idle";
@@ -1150,9 +1397,9 @@ const MatchCard = React.memo(function MatchCard({
         setVoteFxSide(side);
         setPlusOneFxSide(side);
         if (!reduceMotion) setImpactSide(side);
-        window.setTimeout(() => setVoteFxSide(null), 210);
-        window.setTimeout(() => setPlusOneFxSide(null), 420);
-        window.setTimeout(() => setImpactSide(null), 160);
+        window.setTimeout(() => setVoteFxSide(null), 360);
+        window.setTimeout(() => setPlusOneFxSide(null), 720);
+        window.setTimeout(() => setImpactSide(null), 260);
         setVoteSubmitted(true);
         setVoteConfirm(true);
         onVoteAccepted?.(match.match_id, side);
@@ -1170,35 +1417,12 @@ const MatchCard = React.memo(function MatchCard({
   };
 
   const handleCatCardInteract = useCallback((side: "a" | "b", catId: string, catName: string) => {
-    const commitInstantVote = () => {
-      if (!canVote) {
-        openCatDetails(side);
-        return;
-      }
-      setPreviewToast(`Voted for ${catName}`);
-      void commitVote("other", catId);
-    };
-
-    if (cardClickTimerRef.current !== null && cardClickSideRef.current === side) {
-      window.clearTimeout(cardClickTimerRef.current);
-      cardClickTimerRef.current = null;
-      cardClickSideRef.current = null;
-      commitInstantVote();
+    if (!canVote) {
+      openCatDetails(side);
       return;
     }
-
-    if (cardClickTimerRef.current !== null) {
-      window.clearTimeout(cardClickTimerRef.current);
-      cardClickTimerRef.current = null;
-      cardClickSideRef.current = null;
-    }
-
-    cardClickSideRef.current = side;
-    cardClickTimerRef.current = window.setTimeout(() => {
-      cardClickTimerRef.current = null;
-      cardClickSideRef.current = null;
-      openCatDetails(side);
-    }, 240);
+    setPreviewToast(`Vote locked for ${catName}`);
+    void commitVote("other", catId);
   }, [canVote, openCatDetails, commitVote]);
 
   function isSwipeBlockedTarget(target: EventTarget | null): boolean {
@@ -1209,6 +1433,7 @@ const MatchCard = React.memo(function MatchCard({
   }
 
   const handlePointerDown: React.PointerEventHandler<HTMLDivElement> = (e) => {
+    setTapReward({ x: e.clientX, y: e.clientY, id: Date.now() });
     if (isSwipeBlockedTarget(e.target) || !canVote || voteInFlightRef.current || swipeCommitting) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     swipeRef.current = {
@@ -1349,6 +1574,59 @@ const MatchCard = React.memo(function MatchCard({
   }, [pctA, pctB]);
 
   useEffect(() => {
+    if (!voteSyncing) return;
+    setDisplayPct((prev) => {
+      const nudgedA = Math.max(0, Math.min(100, prev.a + (prev.a >= 50 ? -0.35 : 0.35)));
+      return { a: nudgedA, b: Math.max(0, Math.min(100, 100 - nudgedA)) };
+    });
+    const raf = window.requestAnimationFrame(() => {
+      setDisplayPct({ a: pctA, b: pctB });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [voteSyncing, pctA, pctB]);
+
+  useEffect(() => {
+    if (!voteAnimTick) return;
+    setLockPulse(true);
+    setJustVoted(true);
+    setLocalFlameCount((prev) => Math.max(0, prev + 1));
+    setDisplayPct((prev) => {
+      const nudgedA = Math.max(0, Math.min(100, prev.a + (prev.a >= 50 ? -5 : 5)));
+      return { a: nudgedA, b: Math.max(0, Math.min(100, 100 - nudgedA)) };
+    });
+    const raf = window.requestAnimationFrame(() => {
+      setDisplayPct({ a: pctA, b: pctB });
+    });
+    const timer = window.setTimeout(() => setLockPulse(false), 320);
+    const voteTimer = window.setTimeout(() => setJustVoted(false), 620);
+    const rewardTimer = window.setTimeout(() => setTapReward(null), 460);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+      window.clearTimeout(voteTimer);
+      window.clearTimeout(rewardTimer);
+    };
+  }, [voteAnimTick, pctA, pctB]);
+
+  useEffect(() => {
+    const next = Math.max(0, Number(voteStreak || 0));
+    setLocalFlameCount((prev) => {
+      if (next > prev) return next;
+      if (next === 0 && prev > 0) return 0;
+      return prev;
+    });
+  }, [voteStreak]);
+
+  useEffect(() => {
+    if (!voteSyncing) {
+      setShowUpdatingLabel(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowUpdatingLabel(true), 280);
+    return () => window.clearTimeout(timer);
+  }, [voteSyncing]);
+
+  useEffect(() => {
     if (!predictedCatId) return;
     setPredictOpen(false);
     setPredictConfirmed(true);
@@ -1391,11 +1669,6 @@ const MatchCard = React.memo(function MatchCard({
     setAnimTick(0);
     setFlipA(false);
     setFlipB(false);
-    if (cardClickTimerRef.current !== null) {
-      window.clearTimeout(cardClickTimerRef.current);
-      cardClickTimerRef.current = null;
-    }
-    cardClickSideRef.current = null;
     flipTouchedRef.current = false;
     voteInFlightRef.current = false;
   }, [match.match_id, resetFlipSignal]);
@@ -1425,10 +1698,6 @@ const MatchCard = React.memo(function MatchCard({
 
   useEffect(() => {
     return () => {
-      if (cardClickTimerRef.current !== null) {
-        window.clearTimeout(cardClickTimerRef.current);
-        cardClickTimerRef.current = null;
-      }
       if (rafRef.current !== null) {
         window.cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -1565,7 +1834,7 @@ const MatchCard = React.memo(function MatchCard({
 
   return (
     <div
-      className={`arena-match-card relative mx-auto w-full rounded-2xl p-2.5 transition-transform transition-opacity ${reduceMotion ? 'duration-150' : 'duration-300'} ease-out touch-pan-y ${dragging ? 'is-dragging' : ''} ${impactSide && !reduceMotion ? 'impact' : ''} ${match.is_close_match && !dragging && !exitingVisual && !reduceMotion ? 'close-glow' : ''} ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? (isRefilling ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'}`}
+      className={`arena-match-card relative mx-auto w-full rounded-[1.7rem] border border-white/12 bg-[linear-gradient(180deg,rgba(4,8,16,0.76),rgba(4,8,16,0.52))] p-2.5 shadow-[0_18px_40px_rgba(0,0,0,0.3),0_0_40px_rgba(99,102,241,0.08)] transition-transform transition-opacity ${reduceMotion ? 'duration-150' : 'duration-300'} ease-out touch-pan-y ${dragging ? 'is-dragging' : ''} ${impactSide && !reduceMotion ? 'impact' : ''} ${match.is_close_match && !dragging && !exitingVisual && !reduceMotion ? 'close-glow scale-[1.01]' : ''} ${!dragging && !exitingVisual ? 'scale-[1.01]' : ''} ${hasVoted || isComplete ? "opacity-65" : ""} ${exitingVisual ? (isRefilling ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'}`}
       data-testid="match-root"
       data-match-id={match.match_id}
       onPointerDown={handlePointerDown}
@@ -1578,7 +1847,7 @@ const MatchCard = React.memo(function MatchCard({
           DEBUG: voted{selectedSide ? ` ${selectedSide.toUpperCase()}` : ''}
         </div>
       )}
-      <div>
+      <div className="rounded-[1.45rem] bg-black/18 p-1">
         {voteFxSide && (
           <div key={`flash-${animTick}`} className={`vote-flash ${voteFxSide === 'a' ? 'vote-flash-a' : 'vote-flash-b'}`} />
         )}
@@ -1642,12 +1911,15 @@ const MatchCard = React.memo(function MatchCard({
           Next up
         </div>
       )}
+      <div className="absolute right-2 top-2 z-20">
+        <FlameStreak count={localFlameCount} reactionTick={justVoted ? voteAnimTick : 0} />
+      </div>
 
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] sm:gap-4">
+      <div className="grid grid-cols-1 items-start gap-2.5 sm:grid-cols-[minmax(0,1fr)_36px_minmax(0,1fr)] sm:gap-3.5">
         <div className="min-w-0">
           <div className="arena-flip-scene h-auto min-h-[332px] md:h-[300px] md:min-h-0">
             <div className={`arena-flip-card ${!isSmallScreen && flipA && !forceFront ? 'is-flipped-desktop' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/15 p-1.5 ${borderA} ${liveSide === 'a' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierA} rounded-2xl border border-white/20 p-1.5 transition-all duration-200 ${borderA} ${liveSide === 'a' ? `${lockPulse ? 'scale-[1.02] ring-2 ring-cyan-300/85 shadow-[0_0_24px_rgba(34,211,238,0.34)]' : 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]'}` : ''} ${(liveSide === 'b' && (hasVoted || voteConfirm)) ? 'opacity-60' : ''} ${dragIntent === 'a' ? 'scale-[1.01] shadow-[0_0_22px_rgba(59,130,246,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`rarity-badge rarity-badge--${tierA} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_a.rarity}
@@ -1660,7 +1932,7 @@ const MatchCard = React.memo(function MatchCard({
                       setFlipA(true);
                     }}
                     aria-label={`Open ${catAName} details`}
-                    className={`arena-tier-info-btn arena-tier-info-btn--${tierA} h-5 min-w-5 px-1.5 rounded-full border text-[9px]`}
+                    className={`arena-tier-info-btn arena-tier-info-btn--${tierA} h-5 min-w-5 px-1.5 rounded-full border text-[9px] opacity-70 hover:opacity-100`}
                   >
                     Flip
                   </button>
@@ -1685,9 +1957,8 @@ const MatchCard = React.memo(function MatchCard({
                     <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="arena-card-photo w-full h-full object-cover" />
                   </div>
                 </button>
-                <div className="mt-1">
+                <div className="mt-0.5">
                   <p className="text-[13px] leading-tight font-semibold truncate">{catAName}</p>
-                  <p className={`mt-0.5 arena-tier-role arena-tier-role--${tierA} min-w-0 truncate text-[9px]`}>Challenger</p>
                 </div>
               </div>
               {!isSmallScreen ? (
@@ -1728,14 +1999,14 @@ const MatchCard = React.memo(function MatchCard({
           ) : null}
         </div>
 
-        <div className="flex flex-row items-center justify-center gap-1.5 py-1 sm:pt-12 sm:flex-col">
-          <div className="arena-vs-separator text-[9px] text-white/65 font-bold tracking-[0.12em]">VS</div>
+        <div className="flex flex-row items-center justify-center gap-1 py-0.5 sm:pt-11 sm:flex-col">
+          <div className="arena-vs-separator text-[10px] text-white/85 font-bold tracking-[0.16em]">VS</div>
         </div>
 
         <div className="min-w-0">
           <div className="arena-flip-scene h-auto min-h-[332px] md:h-[300px] md:min-h-0">
             <div className={`arena-flip-card ${!isSmallScreen && flipB && !forceFront ? 'is-flipped-desktop' : ''}`}>
-              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/15 p-1.5 ${borderB} ${liveSide === 'b' ? 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
+              <div className={`arena-flip-face arena-flip-front arena-fighter-pane arena-duel-card tier-${tierB} rounded-2xl border border-white/20 p-1.5 transition-all duration-200 ${borderB} ${liveSide === 'b' ? `${lockPulse ? 'scale-[1.02] ring-2 ring-rose-300/85 shadow-[0_0_24px_rgba(251,113,133,0.34)]' : 'ring-1 ring-cyan-300/45 shadow-[0_0_18px_rgba(34,211,238,0.28)]'}` : ''} ${(liveSide === 'a' && (hasVoted || voteConfirm)) ? 'opacity-60' : ''} ${dragIntent === 'b' ? 'scale-[1.01] shadow-[0_0_22px_rgba(244,63,94,0.35)]' : ''}`}>
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className={`rarity-badge rarity-badge--${tierB} px-1.5 py-0.5 rounded-full border text-[8px] font-semibold`}>
                     {match.cat_b.rarity}
@@ -1748,7 +2019,7 @@ const MatchCard = React.memo(function MatchCard({
                       setFlipB(true);
                     }}
                     aria-label={`Open ${catBName} details`}
-                    className={`arena-tier-info-btn arena-tier-info-btn--${tierB} h-5 min-w-5 px-1.5 rounded-full border text-[9px]`}
+                    className={`arena-tier-info-btn arena-tier-info-btn--${tierB} h-5 min-w-5 px-1.5 rounded-full border text-[9px] opacity-70 hover:opacity-100`}
                   >
                     Flip
                   </button>
@@ -1773,9 +2044,8 @@ const MatchCard = React.memo(function MatchCard({
                     <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg'; }} className="arena-card-photo w-full h-full object-cover" />
                   </div>
                 </button>
-                <div className="mt-1">
+                <div className="mt-0.5">
                   <p className="text-[13px] leading-tight font-semibold truncate">{catBName}</p>
-                  <p className={`mt-0.5 arena-tier-role arena-tier-role--${tierB} min-w-0 truncate text-[9px]`}>Defender</p>
                 </div>
               </div>
               {!isSmallScreen ? (
@@ -1817,53 +2087,33 @@ const MatchCard = React.memo(function MatchCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[10px] text-white/52">
-        <span>Tap a fighter to flip the card.</span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2.5">
-        <button
-          onClick={() => void commitVote("tap", match.cat_a.id)}
-          aria-label={`Vote for ${catAName}`}
-          data-testid="vote-a"
-          disabled={!canVote}
-          className={`arena-vote-btn arena-vote-btn-a relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_a.id ? 'border-blue-300/60 bg-blue-500/20 text-blue-100' : 'border-white/20 text-white'} disabled:opacity-50`}
-        >
-          <span className="arena-vote-dot arena-vote-dot-a inline-block w-1.5 h-1.5 rounded-full bg-blue-300" />
-          {voteStage === 'pending' && liveSide === 'a' ? 'Submitting…' : voted === match.cat_a.id ? 'Voted A' : (isVoting ? "Voting..." : "Vote A")}
-        </button>
-        <button
-          onClick={() => void commitVote("tap", match.cat_b.id)}
-          aria-label={`Vote for ${catBName}`}
-          data-testid="vote-b"
-          disabled={!canVote}
-          className={`arena-vote-btn arena-vote-btn-b relative h-11 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5 touch-manipulation ${voted === match.cat_b.id ? 'border-rose-300/60 bg-rose-500/20 text-rose-100' : 'border-white/20 text-white'} disabled:opacity-50`}
-        >
-          <span className="arena-vote-dot arena-vote-dot-b inline-block w-1.5 h-1.5 rounded-full bg-rose-300" />
-          {voteStage === 'pending' && liveSide === 'b' ? 'Submitting…' : voted === match.cat_b.id ? 'Voted B' : (isVoting ? "Voting..." : "Vote B")}
-        </button>
-      </div>
-
-      <div className="mt-3 flex items-center justify-between text-[10px] text-white/78">
-        <span className="inline-flex px-2 py-0.5 rounded-full border border-white/12 bg-white/[0.04] text-white/78">
-          {voteSyncing ? 'Updating...' : match.is_close_match ? 'Tight matchup' : 'Current split'}
-        </span>
-        <span className="arena-vote-pct tabular-nums text-white/55">{displayPct.a}% · {displayPct.b}%</span>
-      </div>
-
-      <div className="arena-vote-split mt-1.5 relative h-2.5 rounded-full overflow-hidden bg-white/10 border border-white/16">
+      <VoteSplitBar
+        pctA={displayPct.a}
+        rarityA={match.cat_a.rarity}
+        rarityB={match.cat_b.rarity}
+        selectedSide={liveSide}
+        animTick={voteAnimTick + (voteSyncing || lockPulse ? 1 : 0)}
+        justVoted={justVoted}
+        className="arena-vote-split mt-1.5 h-2"
+        durationMs={reduceMotion ? 0 : 600}
+      />
+      <p className={`mt-1.5 text-center text-[14px] font-black tracking-[0.02em] tabular-nums ${(voteSyncing || lockPulse) ? 'animate-pulse text-white' : 'text-white/92'}`}>
+        {displayPct.a}% · {displayPct.b}% · {Math.max(0, resolvedTotalVotes)} votes
+      </p>
+      <p className={`mt-1 text-center text-[11px] font-semibold ${(voteSyncing || lockPulse) ? 'animate-pulse text-white/90' : 'text-white/65'}`}>
+        {showUpdatingLabel ? 'Updating...' : hasVoted ? 'Vote locked' : 'Tap a fighter to vote'}
+      </p>
+      {tapReward && justVoted ? (
         <div
-          className={`arena-vote-split-a absolute left-0 top-0 h-full bg-blue-400 ${liveSide === 'a' ? 'shadow-[0_0_8px_rgba(96,165,250,0.45)]' : ''}`}
-          style={{ width: `${Math.max(0, Math.min(100, displayPct.a))}%`, transition: `width ${reduceMotion ? 140 : 200}ms ease-out` }}
-        />
-        <div
-          className={`arena-vote-split-b absolute right-0 top-0 h-full bg-rose-400 ${liveSide === 'b' ? 'shadow-[0_0_8px_rgba(251,113,133,0.45)]' : ''}`}
-          style={{ width: `${Math.max(0, Math.min(100, displayPct.b))}%`, transition: `width ${reduceMotion ? 140 : 200}ms ease-out` }}
-        />
-        <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/30" />
-      </div>
+          key={tapReward.id}
+          className="pointer-events-none fixed z-[120] text-[11px] font-bold text-emerald-200 animate-[floatUp_420ms_ease-out_forwards]"
+          style={{ left: tapReward.x, top: tapReward.y, transform: 'translate(-50%, -120%)' }}
+        >
+          +1 Impact
+        </div>
+      ) : null}
 
-      <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] p-3">
+      <div className="mt-2.5 rounded-xl border border-white/10 bg-white/[0.04] p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/42">Prediction</p>
           {(predictedCatId || predictConfirmed) && (
@@ -1888,7 +2138,7 @@ const MatchCard = React.memo(function MatchCard({
           )}
           <button
             onClick={() => setDetailsOpen((v) => !v)}
-            className="h-9 px-3 rounded-lg border border-white/15 bg-white/6 text-white/80 text-xs font-semibold inline-flex items-center gap-1"
+            className="h-9 px-3 rounded-lg border border-white/12 bg-white/6 text-white/72 text-xs font-semibold inline-flex items-center gap-1"
             aria-label={detailsOpen ? 'Hide match intel' : 'Open match intel'}
             aria-expanded={detailsOpen}
             aria-controls={`match-analyze-panel-${match.match_id}`}
@@ -2206,6 +2456,7 @@ const MatchCard = React.memo(function MatchCard({
     prev.isVoting === next.isVoting &&
     prev.voteSnapshot === next.voteSnapshot &&
     prev.voteSyncing === next.voteSyncing &&
+    prev.voteAnimTick === next.voteAnimTick &&
     prev.predictBusy === next.predictBusy &&
     prev.calloutBusy === next.calloutBusy &&
     prev.socialEnabled === next.socialEnabled &&
@@ -2229,11 +2480,12 @@ const MatchCard = React.memo(function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, voteSnapshotByMatchId, voteSyncingByMatchId, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false, homepageSpotlight = false,
+  arena, votedMatches, voteSnapshotByMatchId, voteSyncingByMatchId, voteAnimTickByMatchId = {}, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false, homepageSpotlight = false,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   voteSnapshotByMatchId: Record<string, VoteSnapshot>;
   voteSyncingByMatchId: Record<string, boolean>;
+  voteAnimTickByMatchId?: Record<string, number>;
   votingMatch: string | null;
   predictBusyMatch: string | null;
   calloutBusyMatch: string | null;
@@ -3545,38 +3797,48 @@ function ArenaSection({
           )}
         </div>
       ) : (
-        <div className={`${homepageSpotlight ? 'space-y-0' : 'space-y-3'}`}>
+        <div className={`${homepageSpotlight ? 'space-y-0' : 'space-y-2.5'}`}>
           {segment === 'voting' ? (
             <>
               <div className={topVotingSlot?.match ? "min-h-[420px]" : "min-h-[140px]"}>
                 {topVotingSlot?.match ? (
+                  (() => {
+                    const resolvedTopMatch = getResolvedMatchView(
+                      topVotingSlot.match,
+                      voteSnapshotByMatchId[topVotingSlot.match.match_id] || null,
+                      votedMatches[topVotingSlot.match.match_id] || topVotingSlot.match.user_voted_cat_id || null
+                    );
+                    return (
                   <MatchCard
-                    key={topVotingSlot.match.match_id}
-                    match={topVotingSlot.match}
-                    voted={votedMatches[topVotingSlot.match.match_id] || null}
+                    key={resolvedTopMatch.match_id}
+                    match={resolvedTopMatch}
+                    voted={resolvedTopMatch.user_voted_cat_id || null}
                     debugMode={debugMode}
-                    isVoting={votingMatch === topVotingSlot.match.match_id}
-                    voteSyncing={!!voteSyncingByMatchId[topVotingSlot.match.match_id]}
-                    predictBusy={predictBusyMatch === topVotingSlot.match.match_id}
-                    calloutBusy={calloutBusyMatch === topVotingSlot.match.match_id}
+                    isVoting={votingMatch === resolvedTopMatch.match_id}
+                    voteSyncing={!!voteSyncingByMatchId[resolvedTopMatch.match_id]}
+                    predictBusy={predictBusyMatch === resolvedTopMatch.match_id}
+                    calloutBusy={calloutBusyMatch === resolvedTopMatch.match_id}
                     socialEnabled={socialEnabled}
                     availableSigils={availableSigils}
                     voteStreak={voteStreak}
-                    isExiting={slotUiByMatchId[topVotingSlot.match.match_id]?.phase === 'exiting'}
-                    slotPhase={slotUiByMatchId[topVotingSlot.match.match_id]?.phase || 'idle'}
-                    slotChosenSide={slotUiByMatchId[topVotingSlot.match.match_id]?.chosenSide || null}
+                    isExiting={slotUiByMatchId[resolvedTopMatch.match_id]?.phase === 'exiting'}
+                    slotPhase={slotUiByMatchId[resolvedTopMatch.match_id]?.phase || 'idle'}
+                    slotChosenSide={slotUiByMatchId[resolvedTopMatch.match_id]?.chosenSide || null}
                     enterPhase={deckEnterPhase}
                     isRefilling={isRefilling}
                     resetFlipSignal={flipResetSignal}
-                    voteQueued={!!queuedVotes[topVotingSlot.match.match_id]}
-                    showNextUp={nextUpId === topVotingSlot.match.match_id}
-                    voteSnapshot={voteSnapshotByMatchId[topVotingSlot.match.match_id] || null}
+                    voteQueued={!!queuedVotes[resolvedTopMatch.match_id]}
+                    showNextUp={nextUpId === resolvedTopMatch.match_id}
+                    voteSnapshot={voteSnapshotByMatchId[resolvedTopMatch.match_id] || null}
                     onRefreshQueued={handleRefreshQueued}
+                    voteAnimTick={voteAnimTickByMatchId[resolvedTopMatch.match_id] || 0}
                     onVote={stableVote}
                     onVoteAccepted={handleVoteAccepted}
                     onPredict={stablePredict}
                     onCreateCallout={stableCreateCallout}
                   />
+                    );
+                  })()
                 ) : shouldShowEmptyModule ? null : (
                   <LoadingNextFightsCard
                     text={
@@ -3598,29 +3860,37 @@ function ArenaSection({
               )}
             </>
           ) : (
-            activeList.map((match) => (
+            activeList.map((match) => {
+              const resolvedMatch = getResolvedMatchView(
+                match,
+                voteSnapshotByMatchId[match.match_id] || null,
+                votedMatches[match.match_id] || match.user_voted_cat_id || null
+              );
+              return (
               <MatchCard
-                key={match.match_id}
-                match={match}
-                voted={match.user_voted_cat_id || votedMatches[match.match_id] || null}
+                key={resolvedMatch.match_id}
+                match={resolvedMatch}
+                voted={resolvedMatch.user_voted_cat_id || null}
                 debugMode={debugMode}
-                isVoting={votingMatch === match.match_id}
-                voteSyncing={!!voteSyncingByMatchId[match.match_id]}
-                predictBusy={predictBusyMatch === match.match_id}
-                calloutBusy={calloutBusyMatch === match.match_id}
+                isVoting={votingMatch === resolvedMatch.match_id}
+                voteSyncing={!!voteSyncingByMatchId[resolvedMatch.match_id]}
+                predictBusy={predictBusyMatch === resolvedMatch.match_id}
+                calloutBusy={calloutBusyMatch === resolvedMatch.match_id}
                 socialEnabled={socialEnabled}
                 availableSigils={availableSigils}
                 voteStreak={voteStreak}
-                voteQueued={!!queuedVotes[match.match_id]}
-                showNextUp={nextUpId === match.match_id}
-                voteSnapshot={voteSnapshotByMatchId[match.match_id] || null}
+                voteQueued={!!queuedVotes[resolvedMatch.match_id]}
+                showNextUp={nextUpId === resolvedMatch.match_id}
+                voteSnapshot={voteSnapshotByMatchId[resolvedMatch.match_id] || null}
+                voteAnimTick={voteAnimTickByMatchId[match.match_id] || 0}
                 onRefreshQueued={handleRefreshQueued}
                 onVote={stableVote}
                 onVoteAccepted={handleVoteAccepted}
                 onPredict={stablePredict}
                 onCreateCallout={stableCreateCallout}
               />
-            ))
+              );
+            })
           )}
           {!homepageSpotlight && segment === 'voting' && visiblePageOrder.length > MAX_VISIBLE && (
             <div className="pt-1 flex items-center justify-center">
@@ -3780,7 +4050,9 @@ export default function Page() {
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [arenas, setArenas] = useState<Arena[]>([]);
   const [voteSnapshotByMatchId, setVoteSnapshotByMatchId] = useState<Record<string, VoteSnapshot>>({});
+  const [, setLocalTotals] = useState<Record<string, { votes_a: number; votes_b: number; total_votes: number }>>({});
   const [voteSyncingByMatchId, setVoteSyncingByMatchId] = useState<Record<string, boolean>>({});
+  const [voteAnimTickByMatchId, setVoteAnimTickByMatchId] = useState<Record<string, number>>({});
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
   const [votingMatch, setVotingMatch] = useState<string | null>(null);
   const [predictBusyMatch, setPredictBusyMatch] = useState<string | null>(null);
@@ -3940,6 +4212,12 @@ export default function Page() {
   const statusBurstUntilRef = useRef<number>(0);
   const duelSectionRef = useRef<HTMLAnchorElement | null>(null);
   const [duelSectionInView, setDuelSectionInView] = useState(false);
+  const [voteConfirmToast, setVoteConfirmToast] = useState<{ visible: boolean; rarity: string | null; pulseTick: number }>({
+    visible: false,
+    rarity: null,
+    pulseTick: 0,
+  });
+  const voteConfirmToastTimerRef = useRef<number | null>(null);
   const lowEgressMode = process.env.NEXT_PUBLIC_LOW_EGRESS === '1';
   const guestRewardsHintShownRef = useRef(false);
   const arenaRefillInFlightRef = useRef<Record<'main' | 'rookie', boolean>>({ main: false, rookie: false });
@@ -4103,6 +4381,52 @@ export default function Page() {
     }
     return lockedFallback;
   }, [displayedArenas]);
+  const resolvedHomepageMiniMatch = useMemo(() => {
+    if (!homepageMiniMatch) return null;
+    return getResolvedMatchView(
+      homepageMiniMatch,
+      voteSnapshotByMatchId[homepageMiniMatch.match_id] || null,
+      votedMatches[homepageMiniMatch.match_id] || homepageMiniMatch.user_voted_cat_id || null
+    );
+  }, [homepageMiniMatch, voteSnapshotByMatchId, votedMatches]);
+  const homepageHeartbeatMatchIdsSig = useMemo(() => {
+    const ids: string[] = [];
+    for (const arena of displayedArenas) {
+      for (const round of arena.rounds || []) {
+        for (const match of round.matches || []) {
+          const id = String(match?.match_id || '').trim();
+          if (!id) continue;
+          if (!ids.includes(id)) ids.push(id);
+          if (ids.length >= 10) return ids.join(',');
+        }
+      }
+    }
+    return ids.join(',');
+  }, [displayedArenas]);
+  useEffect(() => {
+    const ids = homepageHeartbeatMatchIdsSig.split(',').filter(Boolean);
+    if (!ids.length) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch('/api/matches/aggregates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchIds: ids }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (cancelled) return;
+        mergeTotals(Array.isArray(payload?.data) ? payload.data : []);
+      } catch {}
+    };
+    void tick();
+    const timer = window.setInterval(tick, 6000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [homepageHeartbeatMatchIdsSig]);
 
   useEffect(() => { loadAll(); }, []);
   useEffect(() => {
@@ -4760,6 +5084,63 @@ export default function Page() {
     }, 1800);
   }, [clearVoteSyncing]);
 
+  const bumpVoteAnimTick = useCallback((matchId: string) => {
+    setVoteAnimTickByMatchId((prev) => ({ ...prev, [matchId]: (prev[matchId] || 0) + 1 }));
+  }, []);
+
+  function mergeTotals(rows: Array<{ match_id: string; votes_a: number; votes_b: number; total_votes: number }> | null | undefined) {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    setLocalTotals((prev) => {
+      const next = { ...prev };
+      for (const row of rows) {
+        const matchId = String(row?.match_id || '').trim();
+        if (!matchId) continue;
+        const votesA = Math.max(0, Number(row?.votes_a || 0));
+        const votesB = Math.max(0, Number(row?.votes_b || 0));
+        const snapshot = normalizeVoteSnapshot({ votes_a: votesA, votes_b: votesB, total_votes: votesA + votesB });
+        if (snapshot) {
+          setVoteSnapshotByMatchId((current) => ({ ...current, [matchId]: snapshot }));
+          setArenas((current) => applyVoteSnapshotToArenaMatches(current, undefined, matchId, snapshot));
+        }
+        next[matchId] = {
+          votes_a: votesA,
+          votes_b: votesB,
+          total_votes: Math.max(0, Number(row?.total_votes ?? (votesA + votesB))),
+        };
+      }
+      return next;
+    });
+  }
+
+  async function refreshAggregates(matchIds: string[]) {
+    const ids = Array.from(new Set((matchIds || []).map((id) => String(id || '').trim()).filter(Boolean))).slice(0, 10);
+    if (!ids.length) return;
+    try {
+      const res = await fetch('/api/matches/aggregates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchIds: ids }),
+      });
+      const payload = await res.json().catch(() => null);
+      mergeTotals(Array.isArray(payload?.data) ? payload.data : []);
+    } catch {}
+  }
+
+  const triggerVoteConfirmToast = useCallback((rarity?: string | null) => {
+    setVoteConfirmToast((prev) => ({
+      visible: true,
+      rarity: rarity || prev.rarity || null,
+      pulseTick: prev.pulseTick + 1,
+    }));
+    if (voteConfirmToastTimerRef.current) window.clearTimeout(voteConfirmToastTimerRef.current);
+    voteConfirmToastTimerRef.current = window.setTimeout(() => {
+      setVoteConfirmToast((prev) => ({ ...prev, visible: false }));
+    }, 2000);
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(10);
+    }
+  }, []);
+
   const handleMiniPreviewVote = useCallback(async (catId: string) => {
     const match = homepageMiniMatch;
     if (!match) {
@@ -4772,6 +5153,7 @@ export default function Page() {
     }
     const existingVote = votedMatches[match.match_id];
     if (existingVote) {
+      bumpVoteAnimTick(match.match_id);
       showToast('Your preview vote is already in. Continue when you’re ready.');
       return;
     }
@@ -4780,7 +5162,7 @@ export default function Page() {
       showToast('Vote recorded. Continue into the full bracket when you want.');
       return;
     }
-  }, [handleVote, homepageMiniMatch, pulseCountdown, router, showToast, votedMatches]);
+  }, [bumpVoteAnimTick, handleVote, homepageMiniMatch, pulseCountdown, router, showToast, votedMatches]);
 
   async function handleVote(matchId: string, catId: string): Promise<boolean> {
     if (votingMatch) return false;
@@ -4817,10 +5199,10 @@ export default function Page() {
       }
       return next;
     });
+    markVoteSyncing(matchId);
     if (optimisticSnapshot) {
       setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: optimisticSnapshot }));
       setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, optimisticSnapshot));
-      markVoteSyncing(matchId);
     }
     try {
       const r = await fetch("/api/vote", {
@@ -4871,7 +5253,7 @@ export default function Page() {
         }
         return null;
       };
-      const applyServerVoteSnapshot = (payload: any) => {
+      const applyResolvedVoteState = (payload: any) => {
         if (!payload) {
           clearVoteSyncing(matchId);
           return;
@@ -4919,6 +5301,7 @@ export default function Page() {
         };
         setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: snapshot }));
         setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, snapshot));
+        bumpVoteAnimTick(matchId);
         clearVoteSyncing(matchId);
       };
       const restoreVoteSnapshot = () => {
@@ -4967,8 +5350,9 @@ export default function Page() {
           : incomingChoice === 'b' ? String(matchedMatch?.cat_b?.id || catId)
           : String(catId || incomingChoice || 'already');
         if (hasServerVoteSnapshot(data)) {
-          applyServerVoteSnapshot(data);
+          applyResolvedVoteState(data);
         } else {
+          bumpVoteAnimTick(matchId);
           await hydrateVisibleMatchSnapshot();
           clearVoteSyncing(matchId);
         }
@@ -4977,6 +5361,7 @@ export default function Page() {
           writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
+        void refreshAggregates([matchId]);
         showToast("Already voted ✅");
         return true;
       }
@@ -5008,11 +5393,17 @@ export default function Page() {
         });
         setLastVoteAtMs(nowMs);
         if (hasServerVoteSnapshot(data)) {
-          applyServerVoteSnapshot(data);
+          applyResolvedVoteState(data);
         } else {
+          bumpVoteAnimTick(matchId);
           await hydrateVisibleMatchSnapshot();
           clearVoteSyncing(matchId);
         }
+        const votedCatRarity =
+          matchedMatch?.cat_a?.id === catId ? matchedMatch?.cat_a?.rarity
+          : matchedMatch?.cat_b?.id === catId ? matchedMatch?.cat_b?.rarity
+          : null;
+        triggerVoteConfirmToast(votedCatRarity || null);
         if (hasCredentials && !hasProfileUsername) {
           try {
             const k = 'guest_vote_count';
@@ -5038,6 +5429,7 @@ export default function Page() {
           }
           return next;
         });
+        void refreshAggregates([matchId]);
         showToast("Vote registered ✅");
         if (!data?.rewards_locked) {
           setProgress((prev) => prev ? {
@@ -5067,14 +5459,26 @@ export default function Page() {
                 updates.forEach((update) => {
                   const updateMatchId = String(update.matchId || '');
                   if (!updateMatchId) return;
-                  const snapshot = normalizeVoteSnapshot({
+                  const incomingSnapshot = normalizeVoteSnapshot({
                     votes_a: Number(update.votesA || 0),
                     votes_b: Number(update.votesB || 0),
                     percent_a: Number(update.percentA || 0),
                     percent_b: Number(update.percentB || 0),
                   });
-                  if (!snapshot) return;
-                  next[updateMatchId] = snapshot;
+                  const mergedSnapshot = preferNonRegressingSnapshot(next[updateMatchId], incomingSnapshot);
+                  if (!mergedSnapshot) return;
+                  const prevSnapshot = next[updateMatchId];
+                  if (
+                    prevSnapshot &&
+                    prevSnapshot.votes_a === mergedSnapshot.votes_a &&
+                    prevSnapshot.votes_b === mergedSnapshot.votes_b &&
+                    prevSnapshot.percent_a === mergedSnapshot.percent_a &&
+                    prevSnapshot.percent_b === mergedSnapshot.percent_b &&
+                    prevSnapshot.total_votes === mergedSnapshot.total_votes
+                  ) {
+                    return;
+                  }
+                  next[updateMatchId] = mergedSnapshot;
                   changed = true;
                 });
                 return changed ? next : prev;
@@ -5088,14 +5492,7 @@ export default function Page() {
                     matches: (round.matches || []).map((m) => {
                       const u = updateMap.get(String(m.match_id || ''));
                       if (!u) return m;
-                      return {
-                        ...m,
-                        votes_a: Number(u.votesA || 0),
-                        votes_b: Number(u.votesB || 0),
-                        total_votes: Number(u.totalVotes || 0),
-                        percent_a: Number(u.percentA || 0),
-                        percent_b: Number(u.percentB || 0),
-                      };
+                      return preferNonRegressingMatchVotes(m, u);
                     }),
                   })),
                 };
@@ -5140,6 +5537,14 @@ export default function Page() {
 
   useEffect(() => {
     return () => {
+      if (voteConfirmToastTimerRef.current) {
+        window.clearTimeout(voteConfirmToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
       if (voteCooldownTimerRef.current !== null) {
         window.clearTimeout(voteCooldownTimerRef.current);
         voteCooldownTimerRef.current = null;
@@ -5181,6 +5586,36 @@ export default function Page() {
               const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number; totalVotes?: number; percentA?: number; percentB?: number }>;
               if (updates.length > 0) {
                 const updateMap = new Map(updates.map((u) => [u.matchId, u]));
+                setVoteSnapshotByMatchId((prev) => {
+                  let changed = false;
+                  const next = { ...prev };
+                  updates.forEach((update) => {
+                    const updateMatchId = String(update.matchId || '');
+                    if (!updateMatchId) return;
+                    const incomingSnapshot = normalizeVoteSnapshot({
+                      votes_a: Number(update.votesA || 0),
+                      votes_b: Number(update.votesB || 0),
+                      percent_a: Number(update.percentA || 0),
+                      percent_b: Number(update.percentB || 0),
+                    });
+                    const mergedSnapshot = preferNonRegressingSnapshot(next[updateMatchId], incomingSnapshot);
+                    if (!mergedSnapshot) return;
+                    const prevSnapshot = next[updateMatchId];
+                    if (
+                      prevSnapshot &&
+                      prevSnapshot.votes_a === mergedSnapshot.votes_a &&
+                      prevSnapshot.votes_b === mergedSnapshot.votes_b &&
+                      prevSnapshot.percent_a === mergedSnapshot.percent_a &&
+                      prevSnapshot.percent_b === mergedSnapshot.percent_b &&
+                      prevSnapshot.total_votes === mergedSnapshot.total_votes
+                    ) {
+                      return;
+                    }
+                    next[updateMatchId] = mergedSnapshot;
+                    changed = true;
+                  });
+                  return changed ? next : prev;
+                });
                 setArenas((prev) => prev.map((arena) => {
                   if (arena.type !== activeArena) return arena;
                   return {
@@ -5190,14 +5625,7 @@ export default function Page() {
                       matches: (round.matches || []).map((match) => {
                         const u = updateMap.get(match.match_id);
                         if (!u) return match;
-                        return {
-                          ...match,
-                          votes_a: Number(u.votesA || 0),
-                          votes_b: Number(u.votesB || 0),
-                          total_votes: Number(u.totalVotes || 0),
-                          percent_a: Number(u.percentA || 0),
-                          percent_b: Number(u.percentB || 0),
-                        };
+                        return preferNonRegressingMatchVotes(match, u);
                       }),
                     })),
                   };
@@ -5545,6 +5973,52 @@ export default function Page() {
 
   const isClaimedPlayer = hasCredentials && hasProfileUsername;
   const shouldShowSpotlights = isClaimedPlayer && Boolean(spotlights.hall_of_fame?.cat || spotlights.cat_of_week?.cat);
+  const arenaPulseItems = useMemo<ArenaPulseItem[]>(() => {
+    const items: ArenaPulseItem[] = [];
+    const msUntilReset = Math.max(0, new Date(nextRefreshAtUtc).getTime() - Date.now());
+    const hoursUntilReset = Math.max(1, Math.ceil(msUntilReset / (1000 * 60 * 60)));
+    const openMatchups = Math.max(
+      0,
+      displayedArenas.flatMap((arena) => {
+        const currentRound = (arena.rounds || []).find((round) => round.round === arena.current_round);
+        return (currentRound?.matches || []).filter((match) => isArenaVotingStatus(match.status) && !isByeMatch(match));
+      }).length
+    );
+    items.push({
+      id: 'tip-epic-xp',
+      type: 'record',
+      text: 'Tip: Epic cats gain 2x XP in Arena',
+      cta: 'View',
+      href: '/tournament',
+      highlights: ['Epic cats', '2x XP'],
+    });
+    items.push({
+      id: 'tournament-ends',
+      type: 'live',
+      text: `Tournament ends in ${hoursUntilReset}h`,
+      cta: 'View',
+      href: '/tournament',
+      highlights: [`${hoursUntilReset}h`],
+    });
+    items.push({
+      id: 'open-matchups',
+      type: 'live',
+      text: `${openMatchups} open matchups live now`,
+      cta: 'View',
+      href: '/tournament',
+      highlights: [String(openMatchups)],
+    });
+    if (items.length === 0) {
+      items.push({
+        id: 'quiet-fallback',
+        type: 'live',
+        text: 'Waiting for battles...',
+        cta: 'View',
+        href: '/duel',
+      });
+    }
+    return items.slice(0, 3);
+  }, [displayedArenas, nextRefreshAtUtc]);
 
   useEffect(() => {
     try {
@@ -5860,15 +6334,23 @@ export default function Page() {
           />
         </div>
       </section>
+      <ArenaPulseStrip
+        items={arenaPulseItems}
+        onNavigate={(href) => {
+          if (href.includes('/duel')) markStarterQuest('open_duels');
+          router.push(href);
+        }}
+      />
 
       <section id="home-arenas" className="px-3.5 pb-5 sm:px-4 sm:pb-6">
         <div className="mx-auto max-w-5xl">
           <MiniMatchPreview
-            match={homepageMiniMatch}
-            voted={homepageMiniMatch ? (votedMatches[homepageMiniMatch.match_id] || null) : null}
-            voting={homepageMiniMatch ? votingMatch === homepageMiniMatch.match_id : false}
-            voteSnapshot={homepageMiniMatch ? (voteSnapshotByMatchId[homepageMiniMatch.match_id] || null) : null}
-            voteSyncing={homepageMiniMatch ? !!voteSyncingByMatchId[homepageMiniMatch.match_id] : false}
+            match={resolvedHomepageMiniMatch}
+            voted={resolvedHomepageMiniMatch ? (resolvedHomepageMiniMatch.user_voted_cat_id || null) : null}
+            voting={resolvedHomepageMiniMatch ? votingMatch === resolvedHomepageMiniMatch.match_id : false}
+            voteSnapshot={resolvedHomepageMiniMatch ? (voteSnapshotByMatchId[resolvedHomepageMiniMatch.match_id] || null) : null}
+            voteSyncing={resolvedHomepageMiniMatch ? !!voteSyncingByMatchId[resolvedHomepageMiniMatch.match_id] : false}
+            voteAnimTick={resolvedHomepageMiniMatch ? (voteAnimTickByMatchId[resolvedHomepageMiniMatch.match_id] || 0) : 0}
             pulseCountdown={pulseCountdown}
             onVote={(catId) => void handleMiniPreviewVote(catId)}
             onOpenTournament={() => {
@@ -5878,6 +6360,11 @@ export default function Page() {
           />
         </div>
       </section>
+      <VoteConfirmToast
+        visible={voteConfirmToast.visible}
+        rarity={voteConfirmToast.rarity}
+        pulseTick={voteConfirmToast.pulseTick}
+      />
 
       {challengeIntro && (
         <section className="mb-8 px-4 sm:mb-10">
@@ -5899,17 +6386,6 @@ export default function Page() {
           <div className="max-w-md mx-auto p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm text-center">{error}</div>
         </section>
       )}
-
-      <section className="pb-10 px-3 sm:px-4">
-        <div className="mx-auto max-w-5xl">
-          <LiveDuelsModule
-            duels={liveDuels}
-            liveDuelCount={liveDuelCount}
-            liveDuelVotes2m={liveDuelVotes2m}
-            onOpenDuels={() => markStarterQuest('open_duels')}
-          />
-        </div>
-      </section>
 
       {/* Highlights */}
       {shouldShowSpotlights && isClaimedPlayer && (

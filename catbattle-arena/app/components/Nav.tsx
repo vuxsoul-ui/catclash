@@ -4,7 +4,7 @@ import type { MouseEvent } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag, Star, Flame } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
 import { countLiveDuels } from '../lib/duel-live';
 import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
@@ -13,11 +13,18 @@ import SigilIcon from './icons/SigilIcon';
 
 export default function Nav() {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   const [myProfileHref, setMyProfileHref] = useState('/login');
   const [liveDuelCount, setLiveDuelCount] = useState(0);
   const [rankSigils, setRankSigils] = useState(0);
   const [rankStreak, setRankStreak] = useState(0);
   const [isArenaNavCompact, setIsArenaNavCompact] = useState(false);
+  const topNavRef = useRef<HTMLElement | null>(null);
+  const onArenaPage = pathname === '/tournament' || pathname === '/arena';
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -100,8 +107,7 @@ export default function Nav() {
   }, [pathname]);
 
   useEffect(() => {
-    const onArenaPage = pathname === '/tournament' || pathname === '/arena';
-    if (!onArenaPage) {
+    if (!mounted || !onArenaPage) {
       setIsArenaNavCompact(false);
       return;
     }
@@ -111,11 +117,18 @@ export default function Nav() {
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [pathname]);
+  }, [mounted, onArenaPage]);
+
+  useEffect(() => {
+    const nav = topNavRef.current;
+    if (!nav || !mounted) return;
+    const arenaEnabled = onArenaPage;
+    nav.classList.toggle('top-nav-shell--arena', arenaEnabled);
+    nav.classList.toggle('top-nav-shell--compact', arenaEnabled && isArenaNavCompact);
+  }, [mounted, onArenaPage, isArenaNavCompact]);
 
   const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnly?: boolean; hideBelow360?: boolean; primary?: boolean }> = [
     { href: '/submit', label: 'Submit', icon: Plus, primary: true },
-    { href: '/duel', label: 'Duels', icon: Swords },
     { href: '/social', label: 'Social', icon: Users, hideBelow360: true },
     { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnly: true },
   ];
@@ -146,7 +159,7 @@ export default function Nav() {
 
   return (
     <>
-      <nav className={`main-nav top-nav-shell sticky top-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate ${isArenaNavCompact ? 'top-nav-shell--compact' : ''}`}>
+      <nav ref={topNavRef} className="main-nav top-nav-shell sticky top-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
         <div className="top-nav-backdrop absolute inset-0 pointer-events-none" />
         <div className="top-nav-inner relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
           <div className="top-nav-primary-row">

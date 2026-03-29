@@ -1,12 +1,11 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarClock, Filter, Loader2, Search, Sparkles, Trash2, Zap } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Loader2, Trash2, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LoadingState } from '../components/LoadingState';
 import { showGlobalToast } from '../lib/global-toast';
-import { buttonStyles } from '../components/ui/primitives';
 
 type GalleryCat = {
   id: string;
@@ -54,24 +53,67 @@ const RARITIES = ['All', 'Common', 'Rare', 'Epic', 'Legendary', 'Mythic', 'God-T
 
 function getRarityColor(rarity: string) {
   const c: Record<string, string> = {
-    Common: 'border-gray-500/50 text-gray-300',
-    Rare: 'border-blue-500/50 text-blue-300',
-    Epic: 'border-purple-500/50 text-purple-300',
-    Legendary: 'border-yellow-500/50 text-yellow-300',
-    Mythic: 'border-red-500/50 text-red-300',
-    'God-Tier': 'border-pink-500/50 text-pink-300',
+    Common: 'text-gray-300',
+    Rare: 'text-blue-300',
+    Epic: 'text-purple-300',
+    Legendary: 'text-yellow-300',
+    Mythic: 'text-red-300',
+    'God-Tier': 'text-pink-300',
   };
   return c[rarity] || c.Common;
 }
 
-function getRarityFrameClass(rarity: string) {
+function getRarityBadgeTone(rarity: string) {
   const c: Record<string, string> = {
-    Common: 'border-zinc-400/35 shadow-[0_0_0_1px_rgba(161,161,170,0.18)]',
-    Rare: 'border-sky-400/45 shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_0_22px_rgba(56,189,248,0.14)]',
-    Epic: 'border-violet-400/45 shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_0_24px_rgba(139,92,246,0.16)]',
-    Legendary: 'border-amber-300/50 shadow-[0_0_0_1px_rgba(251,191,36,0.24),0_0_28px_rgba(251,191,36,0.2)]',
-    Mythic: 'border-rose-400/50 shadow-[0_0_0_1px_rgba(244,63,94,0.24),0_0_30px_rgba(244,63,94,0.2)]',
-    'God-Tier': 'border-cyan-300/55 shadow-[0_0_0_1px_rgba(34,211,238,0.28),0_0_34px_rgba(34,211,238,0.24)]',
+    Common: 'bg-black/78 border-white/12 shadow-[0_8px_20px_rgba(0,0,0,0.24)]',
+    Rare: 'bg-sky-950/75 border-sky-200/25 shadow-[0_8px_22px_rgba(8,47,73,0.34)]',
+    Epic: 'bg-violet-950/78 border-violet-200/25 shadow-[0_8px_22px_rgba(76,29,149,0.34)]',
+    Legendary: 'bg-amber-950/78 border-amber-200/30 shadow-[0_10px_24px_rgba(120,53,15,0.34)]',
+    Mythic: 'bg-rose-950/78 border-rose-200/30 shadow-[0_10px_24px_rgba(127,29,29,0.34)]',
+    'God-Tier': 'bg-fuchsia-950/78 border-fuchsia-200/30 shadow-[0_10px_26px_rgba(112,26,117,0.34)]',
+  };
+  return c[rarity] || c.Common;
+}
+
+function getRarityCardAccent(rarity: string) {
+  const c: Record<string, string> = {
+    Legendary: 'shadow-[inset_0_1px_0_rgba(253,230,138,0.1),0_18px_38px_rgba(120,53,15,0.28)]',
+    Mythic: 'shadow-[inset_0_1px_0_rgba(254,205,211,0.1),0_18px_38px_rgba(127,29,29,0.28)]',
+    'God-Tier': 'shadow-[inset_0_1px_0_rgba(250,232,255,0.12),0_18px_40px_rgba(112,26,117,0.3)]',
+  };
+  return c[rarity] || 'shadow-[0_16px_34px_rgba(0,0,0,0.34)]';
+}
+
+function getRarityCardRing(rarity: string) {
+  const c: Record<string, string> = {
+    Legendary: 'ring-1 ring-inset ring-amber-200/10',
+    Mythic: 'ring-1 ring-inset ring-rose-200/10',
+    'God-Tier': 'ring-1 ring-inset ring-fuchsia-200/12',
+  };
+  return c[rarity] || '';
+}
+
+function getRarityFilterActiveClass(rarity: string) {
+  const c: Record<string, string> = {
+    All: 'text-white',
+    Common: 'text-gray-200',
+    Rare: 'text-blue-200',
+    Epic: 'text-purple-200',
+    Legendary: 'text-amber-200',
+    Mythic: 'text-rose-200',
+    'God-Tier': 'text-fuchsia-200',
+  };
+  return c[rarity] || c.All;
+}
+
+function getRarityStatFillClass(rarity: string) {
+  const c: Record<string, string> = {
+    Common: 'bg-gray-400',
+    Rare: 'bg-blue-400',
+    Epic: 'bg-purple-400',
+    Legendary: 'bg-yellow-400',
+    Mythic: 'bg-red-400',
+    'God-Tier': 'bg-pink-400',
   };
   return c[rarity] || c.Common;
 }
@@ -149,14 +191,14 @@ function CatDetailModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[220] bg-black/80 backdrop-blur-[3px] p-3 sm:p-4 flex items-end sm:items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[220] bg-black/85 backdrop-blur-xl p-3 sm:p-4 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div
-        className="w-full max-w-xl rounded-2xl border border-cyan-300/20 bg-[linear-gradient(170deg,#07162d_0%,#061022_45%,#040913_100%)] max-h-[90vh] overflow-y-auto pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.5rem)] sm:pb-3 shadow-[0_20px_60px_rgba(2,8,24,0.7)]"
+        className="w-full max-w-xl rounded-[1.75rem] border border-white/16 bg-[linear-gradient(180deg,rgba(18,24,38,0.98),rgba(8,10,18,0.99))] max-h-[90vh] overflow-y-auto pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.5rem)] sm:pb-3 shadow-[0_32px_80px_rgba(2,8,24,0.82)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-3 border-b border-white/10 flex items-center justify-between sticky top-0 bg-[#081022] z-10">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between sticky top-0 bg-[rgba(9,13,24,0.92)] backdrop-blur-xl z-10">
           <h3 className="text-sm font-semibold text-white">Cat Detail</h3>
-          <button onClick={onClose} className="h-8 px-3 rounded-lg bg-white/10 text-white/80 text-xs">Close</button>
+          <button onClick={onClose} className="h-8 px-3 rounded-lg text-white/50 hover:text-white text-xs">Close</button>
         </div>
 
         {loading && (
@@ -171,52 +213,60 @@ function CatDetailModal({
         {!loading && error && <div className="p-6 text-sm text-red-200">{error}</div>}
 
         {!loading && cat && (
-          <div className="p-3 space-y-3">
-            <img
-              src={cat.image_url || '/cat-placeholder.svg'}
-              alt={cat.name}
-              className="w-full h-64 sm:h-72 object-cover rounded-xl"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
-              }}
-            />
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h4 className="text-xl font-bold text-white">{cat.name}</h4>
-                <p className="text-sm text-white/60">{cat.owner_username ? `@${cat.owner_username}` : 'Unknown owner'} · {cat.rarity}</p>
+          <div className="p-4 space-y-4">
+            <div className={`relative overflow-hidden rounded-[1.4rem] border border-white/12 ${getRarityCardRing(cat.rarity)}`}>
+              <img
+                src={cat.image_url || '/cat-placeholder.svg'}
+                alt={cat.name}
+                className="w-full h-72 sm:h-80 object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
+                }}
+              />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+            </div>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <h4 className="text-[1.7rem] font-bold tracking-tight text-white leading-none">{cat.name}</h4>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] ${getRarityColor(cat.rarity)} ${getRarityBadgeTone(cat.rarity)}`}>
+                    {cat.rarity}
+                  </span>
+                  <p className="text-xs text-white/50">{cat.owner_username ? `@${cat.owner_username}` : 'Unknown owner'} · {relativeDate(cat.created_at)}</p>
+                </div>
               </div>
-              <Link href={`/cat/${cat.id}`} className="h-8 px-3 rounded-lg bg-cyan-400/20 border border-cyan-300/30 text-cyan-100 text-xs inline-flex items-center">
+              <Link href={`/cat/${cat.id}`} className="h-9 px-3.5 rounded-xl bg-cyan-400/16 border border-cyan-300/25 text-cyan-100 text-xs inline-flex items-center">
                 Open Profile
               </Link>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-lg bg-white/5 border border-white/10 p-2 text-white/80">LVL {cat.level}</div>
-              <div className="rounded-lg bg-white/5 border border-white/10 p-2 text-white/80">W {cat.wins} / L {cat.losses}</div>
-              <div className="rounded-lg bg-white/5 border border-white/10 p-2 text-white/80">{cat.battles_fought} battles</div>
+            <div className="grid grid-cols-3 gap-2.5 text-xs">
+              <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-white/80">LVL {cat.level}</div>
+              <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-white/80">W {cat.wins} / L {cat.losses}</div>
+              <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-white/80">{cat.battles_fought} battles</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 inline-flex items-center gap-2 text-white/60">
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 inline-flex items-center gap-2 text-white/60">
                 <Zap className="w-3.5 h-3.5 text-yellow-300/80" />
                 <span className="truncate">{cat.ability || cat.power || 'No ability set'}</span>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2 inline-flex items-center gap-2 text-white/60">
+              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 inline-flex items-center gap-2 text-white/60">
                 <CalendarClock className="w-3.5 h-3.5 text-cyan-300/80" />
                 <span>{relativeDate(cat.created_at)}</span>
               </div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 space-y-1.5">
-              <p className="text-xs text-white/50">Core Stats</p>
+            <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-3.5 space-y-3.5">
+              <p className="text-xs uppercase tracking-[0.2em] text-white/45">Core Stats</p>
               {[
-                ['ATK', cat.stats.attack, 'bg-red-400'],
-                ['DEF', cat.stats.defense, 'bg-blue-400'],
-                ['SPD', cat.stats.speed, 'bg-emerald-400'],
-                ['CHA', cat.stats.charisma, 'bg-pink-400'],
-                ['CHS', cat.stats.chaos, 'bg-orange-400'],
-              ].map(([label, value, cls]) => (
+                ['ATK', cat.stats.attack],
+                ['DEF', cat.stats.defense],
+                ['SPD', cat.stats.speed],
+                ['CHA', cat.stats.charisma],
+                ['CHS', cat.stats.chaos],
+              ].map(([label, value]) => (
                 <div key={String(label)} className="flex items-center gap-2">
                   <span className="text-[10px] text-white/50 w-7">{label}</span>
                   <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div className={`h-full ${cls}`} style={{ width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` }} />
+                    <div className={`h-full ${getRarityStatFillClass(cat.rarity)}`} style={{ width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` }} />
                   </div>
                   <span className="text-[10px] text-white/50 w-7 text-right">{Number(value || 0)}</span>
                 </div>
@@ -259,9 +309,9 @@ function GalleryCard({
           onOpen(cat.id);
         }
       }}
-      className={`focus-ring group card-lift relative w-full text-left rounded-2xl overflow-hidden border bg-[linear-gradient(160deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] transition-all duration-150 hover:border-cyan-300/40 active:translate-y-[1px] ${getRarityFrameClass(cat.rarity)} ${isPending ? 'opacity-75' : ''}`}
+      className={`focus-ring group card-lift relative w-full text-left rounded-[1.35rem] overflow-hidden border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015))] ${getRarityCardAccent(cat.rarity)} ${getRarityCardRing(cat.rarity)} transition-all duration-200 hover:border-white/20 hover:-translate-y-[2px] active:translate-y-[1px] ${isPending ? 'opacity-75' : ''}`}
     >
-      <div className="relative h-44 bg-white/5">
+      <div className="relative h-52 bg-white/5 sm:h-56">
         <img
           src={cat.thumb_url || '/cat-placeholder.svg'}
           alt={cat.name}
@@ -272,9 +322,9 @@ function GalleryCard({
             (e.currentTarget as HTMLImageElement).src = '/cat-placeholder.svg';
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/40 to-transparent" />
 
-        <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] border ${getRarityColor(cat.rarity)} bg-black/50`}>
+        <span className={`absolute left-3 top-3 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${getRarityColor(cat.rarity)} ${getRarityBadgeTone(cat.rarity)} backdrop-blur-sm`}>
           {cat.rarity}
         </span>
 
@@ -299,9 +349,11 @@ function GalleryCard({
           </button>
         ) : null}
 
-        <div className="absolute bottom-0 left-0 right-0 p-2.5">
-          <h3 className="text-sm font-semibold text-white truncate">{cat.name}</h3>
-          <p className="text-xs text-white/50 truncate">{subtitle}</p>
+        <div className="absolute inset-x-0 bottom-0 p-3.5">
+          <div className="rounded-[1rem] border border-white/10 bg-black/28 px-3 py-2.5 backdrop-blur-[2px]">
+            <h3 className="text-[1.1rem] font-bold text-white truncate leading-[1.05]">{cat.name}</h3>
+            <p className="mt-1 text-[11px] tracking-[0.01em] text-white/58 truncate">{subtitle}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -514,28 +566,29 @@ export default function GalleryPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-black text-white">
       <div className="mx-auto max-w-6xl px-3 py-6 sm:px-4 sm:py-8">
-        <div className="mb-6 rounded-2xl border border-cyan-300/15 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(34,211,238,0.12),rgba(2,8,24,0.75)_55%,rgba(0,0,0,0.9)_100%)] p-5 sm:mb-8 sm:p-6">
-          <div className="flex items-center gap-3 mb-1">
+        <div className="mb-7 border-b border-white/5 pb-5 sm:mb-9">
+          <div className="flex items-start gap-3 mb-1">
             <Link href="/" className="text-white/45 hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-white">Cat Gallery</h1>
-              <p className="text-sm leading-relaxed text-white/60">Thumb-first cards, full detail only on open.</p>
+              <h1 className="text-[2rem] font-semibold tracking-tight text-white">Cat Gallery</h1>
+              <p className="text-sm text-white/45">Thumb-first cards, full detail only on open.</p>
             </div>
           </div>
         </div>
 
         {error && <div className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm text-center">{error}</div>}
 
-        <div id="my-cats" className="mb-6 rounded-2xl border border-cyan-300/20 bg-[linear-gradient(170deg,rgba(8,72,88,0.28),rgba(2,18,28,0.72))] p-4 shadow-[0_14px_34px_rgba(0,0,0,0.35)] sm:mb-8 sm:p-5">
+        <div id="my-cats" className="mb-7 rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.28)] sm:mb-9 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-bold text-cyan-50">My Cats</h2>
-              <p className="text-sm leading-relaxed text-cyan-100/65">Apply your Cat XP bank to a specific cat.</p>
+              <h2 className="text-2xl font-bold text-white">My Cats</h2>
+              <p className="text-sm leading-relaxed text-white/50">Apply your Cat XP bank to a specific cat.</p>
             </div>
-            <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-cyan-300/20 border border-cyan-200/30 text-cyan-100">
-              <Sparkles className="w-3 h-3" /> XP Bank: {catXpPool}
+            <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-amber-200/25 bg-[linear-gradient(180deg,rgba(252,211,77,0.16),rgba(234,179,8,0.08))] text-amber-100 shadow-[0_10px_24px_rgba(120,53,15,0.18)]">
+              <Zap className="w-3 h-3 text-amber-300" />
+              XP Bank: {catXpPool}
             </span>
           </div>
 
@@ -543,7 +596,7 @@ export default function GalleryPage() {
             <select
               value={selectedCatForXp}
               onChange={(e) => setSelectedCatForXp(e.target.value)}
-              className="input-focus h-10 rounded-xl bg-black/30 border border-white/15 px-3 text-sm"
+              className="input-focus h-11 rounded-xl bg-black/45 border border-white/15 px-3 text-sm"
             >
               {myCats.length === 0 && <option value="">No cats yet</option>}
               {myCats.map((c) => (
@@ -557,13 +610,13 @@ export default function GalleryPage() {
                 max={catXpPool}
                 value={xpAmount}
                 onChange={(e) => setXpAmount(Math.min(Math.max(0, Math.floor(Number(e.target.value || 0))), catXpPool))}
-                className="input-focus h-10 rounded-xl bg-black/30 border border-white/15 px-3 text-sm"
+                className="input-focus h-11 rounded-xl bg-black/45 border border-white/15 px-3 text-sm"
                 placeholder="XP"
               />
               <button
                 onClick={allocateCatXp}
                 disabled={allocatingXp || !selectedCatForXp || catXpPool <= 0 || xpAmount <= 0}
-                className={buttonStyles({ variant: 'secondary', size: 'md', className: 'px-4' })}
+                className="h-11 rounded-xl bg-[linear-gradient(180deg,#4f8ed7,#2f6eb3)] hover:brightness-110 text-white text-sm font-semibold px-4 shadow-[0_14px_28px_rgba(37,99,235,0.22)] disabled:opacity-50"
               >
                 {allocatingXp ? 'Applying...' : `Apply ${Math.max(0, Math.floor(Number(xpAmount || 0)))} XP`}
               </button>
@@ -577,30 +630,29 @@ export default function GalleryPage() {
           )}
         </div>
 
-        <div className="mb-6 space-y-4 sm:mb-8">
-          <div className="flex items-center gap-2">
+        <div className="mb-7 space-y-4 sm:mb-9">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => setViewMode('all')}
-              className={`focus-ring h-9 px-3 rounded-lg text-sm font-semibold transition-all duration-150 ${viewMode === 'all' ? 'scale-[1.02] bg-white/15 text-white shadow-md' : 'bg-white/5 text-white/50 hover:bg-white/10'} active:translate-y-[1px]`}
+              className={`focus-ring h-9 px-2 text-sm font-semibold transition-all duration-150 border-b-2 ${viewMode === 'all' ? 'border-white text-white' : 'border-transparent text-white/50 hover:text-white/70'} active:translate-y-[1px]`}
             >
               All Cats ({viewMode === 'all' ? displayCats.length : cats.length})
             </button>
             <button
               onClick={() => setViewMode('mine')}
-              className={`focus-ring h-9 px-3 rounded-lg text-sm font-semibold transition-all duration-150 ${viewMode === 'mine' ? 'scale-[1.02] border border-cyan-300/30 bg-cyan-400/20 text-cyan-100 shadow-md' : 'bg-white/5 text-white/50 hover:bg-white/10'} active:translate-y-[1px]`}
+              className={`focus-ring h-9 px-2 text-sm font-semibold transition-all duration-150 border-b-2 ${viewMode === 'mine' ? 'border-white text-white' : 'border-transparent text-white/50 hover:text-white/70'} active:translate-y-[1px]`}
             >
               My Cats ({myCats.length})
             </button>
           </div>
 
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+          <div>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search cats..."
-            className="input-focus w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30"
+              className="input-focus w-full rounded-xl border border-white/10 bg-white/[0.04] py-3 px-4 text-sm text-white placeholder:text-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus:border-white/30"
             />
           </div>
 
@@ -609,8 +661,8 @@ export default function GalleryPage() {
               <button
                 key={r}
                 onClick={() => setRarityFilter(r)}
-                className={`focus-ring flex-shrink-0 rounded-lg px-2 py-1 text-xs font-medium transition-all duration-150 sm:px-3 sm:py-1.5 sm:text-sm ${
-                  rarityFilter === r ? 'scale-[1.02] bg-white/15 text-white shadow-md' : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70'
+                className={`focus-ring flex-shrink-0 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-wide transition-all duration-150 sm:px-3 sm:py-1.5 ${
+                  rarityFilter === r ? `${getRarityFilterActiveClass(r)} border-white/20 bg-white/[0.08] shadow-[0_8px_18px_rgba(0,0,0,0.18)]` : 'border-white/5 text-white/45 hover:text-white/70'
                 }`}
               >
                 {r} {rarityCounts[r] ? `(${rarityCounts[r]})` : ''}
@@ -618,19 +670,16 @@ export default function GalleryPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Filter className="w-3 h-3 text-white/20" />
-            <div className="flex gap-1">
-              {(['newest', 'name', 'rarity'] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSortBy(s)}
-                  className={`focus-ring rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 ${sortBy === s ? 'scale-[1.02] bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white/60'}`}
-                >
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
-            </div>
+          <div className="flex gap-1">
+            {(['newest', 'name', 'rarity'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSortBy(s)}
+                className={`focus-ring rounded px-2.5 py-1 text-xs font-medium transition-all duration-150 ${sortBy === s ? 'text-white underline underline-offset-4' : 'text-white/40 hover:text-white/60 hover:underline hover:underline-offset-4'}`}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -647,7 +696,7 @@ export default function GalleryPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 pb-32 sm:grid-cols-3 lg:grid-cols-4">
               {filtered.map((cat) => (
                 <GalleryCard
                   key={cat.id}
