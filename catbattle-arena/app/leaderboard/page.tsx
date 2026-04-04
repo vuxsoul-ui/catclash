@@ -29,7 +29,7 @@ type LeaderPlayer = {
   total_wins: number;
 };
 
-type PlayerBoardMode = 'richest' | 'predictor' | 'streak' | 'active' | 'chaos';
+type PlayerBoardMode = 'richest' | 'streak' | 'wins';
 
 export default function LeaderboardPage() {
   const [cats, setCats] = useState<LeaderCat[]>([]);
@@ -122,22 +122,8 @@ export default function LeaderboardPage() {
 
   function playerTitle(mode: PlayerBoardMode): string {
     if (mode === 'richest') return 'Sigil Tycoon';
-    if (mode === 'predictor') return 'Oracle';
     if (mode === 'streak') return 'Flame Keeper';
-    if (mode === 'active') return 'Arena Grinder';
-    return 'King of Chaos';
-  }
-
-  function predictorScore(player: LeaderPlayer): number {
-    const streakPressure = Math.min(45, player.current_streak * 5.5);
-    const experienceBias = Math.min(35, (player.level - 1) * 1.6 + player.total_wins * 0.15);
-    return Math.max(40, Math.min(97, Math.round(46 + streakPressure + experienceBias * 0.25)));
-  }
-
-  function underdogWinsScore(player: LeaderPlayer): number {
-    const volatility = Math.max(0, player.total_wins - player.current_streak);
-    const efficiency = Math.max(1, player.level);
-    return Math.max(0, Math.round(volatility / efficiency));
+    return 'Arena Warlord';
   }
 
   const rankedPlayers = React.useMemo(() => {
@@ -146,19 +132,11 @@ export default function LeaderboardPage() {
       list.sort((a, b) => b.sigils - a.sigils || b.total_wins - a.total_wins || b.level - a.level);
       return list;
     }
-    if (playerMode === 'predictor') {
-      list.sort((a, b) => predictorScore(b) - predictorScore(a) || b.current_streak - a.current_streak || b.total_wins - a.total_wins);
-      return list;
-    }
     if (playerMode === 'streak') {
       list.sort((a, b) => b.current_streak - a.current_streak || b.total_wins - a.total_wins || b.level - a.level);
       return list;
     }
-    if (playerMode === 'active') {
-      list.sort((a, b) => b.total_wins - a.total_wins || b.xp - a.xp || b.level - a.level);
-      return list;
-    }
-    list.sort((a, b) => underdogWinsScore(b) - underdogWinsScore(a) || b.total_wins - a.total_wins || b.current_streak - a.current_streak);
+    list.sort((a, b) => b.total_wins - a.total_wins || b.xp - a.xp || b.level - a.level);
     return list;
   }, [playerMode, players]);
 
@@ -220,10 +198,8 @@ export default function LeaderboardPage() {
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {([
                 ['richest', 'Richest'],
-                ['predictor', 'Best Predictor'],
                 ['streak', 'Hottest Streak'],
-                ['active', 'Most Active'],
-                ['chaos', 'Underdog Wins'],
+                ['wins', 'Most Wins'],
               ] as Array<[PlayerBoardMode, string]>).map(([mode, label]) => (
                 <button
                   key={mode}
@@ -265,16 +241,13 @@ export default function LeaderboardPage() {
                   <div className="text-right">
                     <div className="font-bold text-yellow-400">
                       {playerMode === 'richest' ? player.sigils :
-                        playerMode === 'predictor' ? `${predictorScore(player)}%` :
                         playerMode === 'streak' ? player.current_streak :
-                        playerMode === 'active' ? player.total_wins :
-                        underdogWinsScore(player)}
+                        player.total_wins}
                     </div>
                     <div className="text-xs text-white/40">
                       {playerMode === 'richest' ? 'sigils' :
-                        playerMode === 'predictor' ? 'win rate' :
                         playerMode === 'streak' ? 'streak' :
-                        playerMode === 'active' ? 'votes' : 'upsets'}
+                        'wins'}
                     </div>
                     {playerMoves[player.id] === 'up' && (
                       <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-green-400">
@@ -339,7 +312,7 @@ export default function LeaderboardPage() {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold truncate">{cat.name}</span>
+                    <span className="block min-w-0 flex-1 truncate font-black text-white">{cat.name}</span>
                     <span className={`text-xs ${getRarityColor(cat.rarity)}`}>{cat.rarity}</span>
                   </div>
                   <div className="text-xs text-white/40">

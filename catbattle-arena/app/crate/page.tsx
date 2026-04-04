@@ -95,6 +95,7 @@ export default function CratePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [sigils, setSigils] = useState(0);
   const [canClaim, setCanClaim] = useState(false);
+  const [dailyCanClaim, setDailyCanClaim] = useState(false);
   const [shakeScreen, setShakeScreen] = useState(false);
   const [sparkBursts, setSparkBursts] = useState<{ id: number; x: number; y: number; d: number }[]>([]);
   const [pledgedGuild, setPledgedGuild] = useState<'sun' | 'moon' | null>(null);
@@ -150,9 +151,23 @@ export default function CratePage() {
     }
   }, []);
 
+  const refreshDailyStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/crates/status?crate_type=daily', { cache: 'no-store' });
+      const data = await res.json().catch(() => null);
+      if (!data?.ok) return;
+      setDailyCanClaim(!!data.can_claim);
+      setNextResetAt(String(data.next_reset_at || '') || null);
+      if (typeof data.sigils === 'number') setSigils(Number(data.sigils || 0));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     refreshSigils();
     refreshEpicStatus();
+    refreshDailyStatus();
     fetch('/api/me', { cache: 'no-store' })
       .then((r) => r.json().catch(() => ({})))
       .then((d) => {
@@ -160,7 +175,7 @@ export default function CratePage() {
         setViewerId(String(d?.guest_id || '').trim() || null);
       })
       .catch(() => {});
-  }, [refreshEpicStatus, refreshSigils]);
+  }, [refreshDailyStatus, refreshEpicStatus, refreshSigils]);
 
   const [resetCountdown, setResetCountdown] = useState('00:00:00');
 
@@ -312,12 +327,20 @@ export default function CratePage() {
       mode === 'paid' ? { mode: 'paid', crate_type: 'premium' } :
       mode === 'epic' ? { mode: 'epic', crate_type: 'epic' } :
       undefined;
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.debug('[DEV][crate-open-click]', { mode, payload: payload || { mode: 'daily', crate_type: 'daily' } });
+    }
     const res = await fetch('/api/crates/open', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payload ? JSON.stringify(payload) : undefined,
     });
     const data = await res.json().catch(() => ({}));
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.debug('[DEV][crate-open-response]', { mode, status: res.status, ok: data?.ok, success: data?.success, error: data?.error || null });
+    }
     return { status: res.status, data };
   }
 
@@ -385,7 +408,11 @@ export default function CratePage() {
       } else if (data?.cat_drop_converted) {
         setNotice('Duplicate ability -> converted to Chaos Bonus.');
       }
-      refreshEpicStatus();
+      if (mode === 'daily') {
+        refreshDailyStatus();
+      } else {
+        refreshEpicStatus();
+      }
     } catch {
       if (mode === 'paid' || mode === 'epic') {
         setSigils((prev) => prev + currentCost);
@@ -480,81 +507,132 @@ export default function CratePage() {
 
   return (
     <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
-      <div className="mx-auto max-w-lg px-3 py-6 sm:px-4 sm:py-8">
-        <div className="mb-6 flex items-center justify-between sm:mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm">
-            <ArrowLeft className="w-4 h-4" /> Back
-          </Link>
-          <SigilBalanceChip balance={sigils} size="sm" />
+      <div className="mx-auto max-w-2xl px-4 pt-4 sm:pt-6">
+        {/* Subtle background vignette behind main card */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-yellow-500/5 to-transparent" />
         </div>
 
-        <h1 className="text-2xl font-bold text-center mb-2">Daily Crate</h1>
-        <p className="mb-8 text-center text-base leading-relaxed text-white/60">Open once per day. Cosmetics, XP, and Sigils await.</p>
-
-        <div className="relative flex items-center justify-center" style={{ minHeight: 320 }}>
-          <div className="flex flex-col items-center gap-4">
-            <button
-              onClick={() => openCrate('daily')}
-              disabled={isOpening || overlayActive}
-              className="focus-ring group relative flex w-full max-w-[15rem] min-h-[13rem] flex-col items-center justify-center gap-4 rounded-[1.6rem] border border-cyan-300/30 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),rgba(6,8,16,0.96)_58%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-[0_18px_50px_rgba(16,185,129,0.16)] transition-all duration-150 hover:scale-[1.02] hover:shadow-[0_24px_56px_rgba(16,185,129,0.24)] active:translate-y-[1px] disabled:opacity-50 disabled:active:translate-y-0"
-            >
-              <Gift className="w-16 h-16 text-cyan-200 group-hover:scale-110 transition-transform" />
-              <span className={buttonStyles({ variant: 'primary', size: 'xl', className: 'pointer-events-none min-w-[13rem] gap-2' })}>
-                {isOpening ? 'Opening...' : 'Open Daily Crate'}
-              </span>
-            </button>
-            <div className="grid w-full max-w-[260px] gap-4">
-              <button
-                onClick={() => openCrate('paid')}
-                disabled={paidDisabled}
-                className={`rounded-2xl border p-4 text-left transition-all disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${sigils < PAID_CRATE_COST ? 'border-amber-700/30 bg-amber-950/40 text-amber-300/60' : 'border-cyan-300/25 bg-cyan-500/10 hover:bg-cyan-500/16 text-cyan-100'}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-200/60">90 Sigils</p>
-                    <p className="mt-1 text-sm font-bold">Sigil Crate</p>
-                    <p className="mt-1 text-xs leading-relaxed text-white/50">Balanced extra crate with XP, sigils, and cosmetic drops.</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl border border-cyan-200/20 bg-cyan-400/10 shadow-[inset_0_0_18px_rgba(34,211,238,0.12)]" />
-                </div>
-              </button>
-              <button
-                onClick={() => openCrate('epic')}
-                disabled={epicDisabled}
-                className={`rounded-2xl border p-4 text-left transition-all disabled:opacity-40 ${isOpening ? 'animate-pulse' : ''} ${epicOpensToday >= epicDailyCap ? 'border-purple-900/50 bg-purple-950/50 text-purple-200/55' : sigils < epicCrateCost ? 'border-amber-700/30 bg-amber-900/40 text-amber-300/60' : 'border-purple-300/35 bg-purple-500/12 hover:bg-purple-500/18 text-purple-100'}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-purple-200/65">280 Sigils</p>
-                    <p className="mt-1 text-sm font-bold">Chaos Crate</p>
-                    <p className="mt-1 text-xs leading-relaxed text-white/50">Higher-voltage cosmetic crate with stronger rare-to-god odds.</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl border border-purple-200/20 bg-purple-400/10 shadow-[inset_0_0_18px_rgba(168,85,247,0.14)]" />
-                </div>
-              </button>
+        {/* Quiet header - reduced visual weight */}
+        <div className="relative mb-4 flex items-center justify-between">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-white/30 hover:text-white/60 text-[10px] font-medium uppercase tracking-[0.12em]">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </Link>
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${dailyCanClaim ? 'bg-yellow-500/10 text-yellow-300' : 'bg-zinc-500/10 text-zinc-500'}`}>
+              {dailyCanClaim ? 'Ready' : 'Cooling'}
+            </span>
+            <div className="sigil-balance-mini">
+              <span className="text-[10px] font-bold text-white/70">{sigils}</span>
             </div>
-            <p className="text-xs text-white/40">Daily resets in {resetCountdown} · Epic opens left today: {epicOpensLeft}</p>
-            <button
-              type="button"
-              onClick={() => setOddsPanelOpen(true)}
-              className="focus-ring view-odds-btn mt-1 inline-flex w-52 items-center justify-center gap-1.5 rounded-[10px] border border-[rgba(185,118,8,0.22)] bg-white/[0.02] px-3 py-2 text-[0.75rem] font-bold tracking-[0.07em] text-[rgba(218,165,28,0.68)] transition-all hover:border-[rgba(218,165,28,0.35)] hover:bg-[rgba(185,118,8,0.08)] hover:text-[rgba(238,185,28,0.85)] active:translate-y-[1px]"
-            >
-              <LayoutGrid className="h-[13px] w-[13px] opacity-70" />
-              View Rewards &amp; Odds
-            </button>
           </div>
         </div>
 
-        {error && (
-          <div className="mt-4 p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm text-center">{error}</div>
-        )}
+        {/* Main Daily Crate Card - tighter, top-anchored */}
+        <div className="relative group rounded-2xl overflow-hidden mb-4">
+          <div className="absolute -inset-0.5 bg-gradient-to-br from-yellow-500/15 to-amber-500/10 rounded-2xl blur-md opacity-0 group-hover:opacity-100 transition-all duration-500" />
+          <div className="relative bg-gradient-to-br from-yellow-600/25 via-yellow-900/60 to-yellow-950/85 border border-yellow-500/30 rounded-2xl p-6 backdrop-blur-md shadow-xl shadow-yellow-500/10">
+            {/* Icon + Title row - compact */}
+            <div className="flex items-center gap-4 mb-4">
+              <div className="relative shrink-0">
+                <div className="absolute inset-0 bg-yellow-500/15 rounded-full blur-xl" />
+                <div className="relative text-5xl">🎁</div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-black text-white mb-0.5">Daily Crate</h2>
+                <p className="text-xs text-yellow-300/60 truncate">Open to claim today's rewards</p>
+              </div>
+            </div>
 
-        <div className="mt-8 text-center space-y-1">
-          <p className="text-xs text-white/40">Daily resets in {resetCountdown}</p>
-          <p className={`text-xs ${epicOpensLeft === 0 ? 'text-rose-200/75' : 'text-white/60'}`}>
-            Epic opens left today: {epicOpensLeft} · Legendary boost in {epicLegendaryBoostIn == null ? '…' : epicLegendaryBoostIn}
-          </p>
+            {/* CTA button - enhanced priority */}
+            <div className="relative group/btn mb-3">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-400/30 to-amber-500/30 rounded-xl blur-md opacity-50 group-hover/btn:opacity-90 transition-all" />
+              <button
+                onClick={() => openCrate('daily')}
+                disabled={isOpening || overlayActive || !dailyCanClaim}
+                className="relative w-full px-6 py-3.5 rounded-xl bg-gradient-to-b from-yellow-400 to-yellow-500 text-black font-black text-base shadow-xl shadow-yellow-500/40 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+              >
+                🎁 Open Crate
+              </button>
+            </div>
+
+            {/* Reset timer */}
+            <p className="text-center text-[10px] text-yellow-400/50">
+              Next crate in {resetCountdown}
+            </p>
+          </div>
         </div>
+
+        {/* Secondary crates - softer language */}
+        <div className="space-y-2.5 mb-6">
+          <h3 className="text-[9px] font-bold text-white/40 uppercase tracking-widest px-1">Other Crates</h3>
+
+          {/* Sigil Crate */}
+          <button
+            onClick={() => openCrate('paid')}
+            disabled={paidDisabled}
+            className={`w-full group relative rounded-xl overflow-hidden transition-all disabled:opacity-50 ${isOpening ? 'animate-pulse' : ''}`}
+          >
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500/15 to-violet-500/15 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-all" />
+            <div className={`relative bg-gradient-to-br from-purple-600/10 via-slate-900/40 to-slate-950/70 border border-purple-500/15 rounded-xl p-3.5 backdrop-blur-sm ${sigils < PAID_CRATE_COST ? '' : 'hover:border-purple-500/25'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-md border border-purple-500/15 bg-purple-500/8 flex items-center justify-center">
+                    <span className="text-lg">💜</span>
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-sm font-bold text-white">Sigil Crate</h4>
+                    <p className="text-[10px] text-gray-500">{sigils < PAID_CRATE_COST ? 'Unlock at 90 sigils' : '90 Sigils'}</p>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-1 rounded ${sigils < PAID_CRATE_COST ? 'text-zinc-500' : 'text-purple-300 bg-purple-500/15'}`}>
+                  {sigils < PAID_CRATE_COST ? 'Soon' : 'Unlock'}
+                </span>
+              </div>
+            </div>
+          </button>
+
+          {/* Chaos Crate */}
+          <button
+            onClick={() => openCrate('epic')}
+            disabled={epicDisabled}
+            className={`w-full group relative rounded-xl overflow-hidden transition-all disabled:opacity-50 ${isOpening ? 'animate-pulse' : ''}`}
+          >
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500/15 to-red-500/15 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-all" />
+            <div className={`relative bg-gradient-to-br from-pink-600/10 via-slate-900/40 to-slate-950/70 border border-pink-500/15 rounded-xl p-3.5 backdrop-blur-sm ${epicOpensToday >= epicDailyCap || sigils < epicCrateCost ? '' : 'hover:border-pink-500/25'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-md border border-pink-500/15 bg-pink-500/8 flex items-center justify-center">
+                    <span className="text-lg">🎲</span>
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-sm font-bold text-white">Chaos Crate</h4>
+                    <p className="text-[10px] text-gray-500">{sigils < epicCrateCost ? 'Unlock at 280 sigils' : epicOpensToday >= epicDailyCap ? 'Daily cap reached' : `280 Sigils • ${epicOpensLeft} left`}</p>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-1 rounded ${epicOpensToday >= epicDailyCap || sigils < epicCrateCost ? 'text-zinc-500' : 'text-pink-300 bg-pink-500/15'}`}>
+                  {epicOpensToday >= epicDailyCap ? 'Cap' : sigils < epicCrateCost ? 'Soon' : 'Unlock'}
+                </span>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {/* View odds button */}
+        <div className="flex justify-center mb-4">
+          <button
+            type="button"
+            onClick={() => setOddsPanelOpen(true)}
+            className="inline-flex items-center justify-center gap-1 rounded-md bg-white/[0.04] ring-1 ring-white/10 px-4 py-2 text-[10px] font-medium tracking-[0.1em] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white/80 active:translate-y-[1px]"
+          >
+            <LayoutGrid className="h-3 w-3 opacity-50" />
+            View Rewards & Odds
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-200/80 text-xs text-center">{error}</div>
+        )}
       </div>
 
       <CrateOddsSheet
@@ -635,7 +713,7 @@ export default function CratePage() {
                           <div className="loot-sheet-shimmer" style={{ ['--ray-color' as string]: rarityStyle.rays }} />
                           <div className="loot-preview-shell">
                             {reward.cat_drop ? (
-                              <img src={reward.cat_drop.image_url || '/cat-placeholder.svg'} alt={reward.cat_drop.name} className="h-20 w-20 rounded-2xl border border-white/15 object-cover shadow-[0_0_26px_rgba(0,0,0,0.3)]" />
+                              <img src={reward.cat_drop.image_url || '/cat-placeholder.svg'} alt={reward.cat_drop.name} className="h-20 w-20 rounded-2xl border border-white/10 object-cover shadow-[0_0_26px_rgba(0,0,0,0.3)]" />
                             ) : reward.cosmetic ? (
                               <div className="loot-preview-text">
                                 <Sparkles className="h-7 w-7 text-amber-200" />

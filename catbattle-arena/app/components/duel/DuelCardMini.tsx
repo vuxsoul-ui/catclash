@@ -90,8 +90,8 @@ export default function DuelCardMini({ duel }: { duel: DuelRowData }) {
             {badge.label}
           </span>
         </div>
-        <p className="mt-2 text-[11px] font-semibold text-white truncate">{catA?.name || 'Unknown'} vs {catB?.name || 'Unknown'}</p>
-        <p className="mt-0.5 text-[10px] text-white/65 truncate">
+        <p className="mt-2 text-[11px] font-semibold text-white leading-tight line-clamp-2">{catA?.name || 'Unknown'} vs {catB?.name || 'Unknown'}</p>
+        <p className="mt-0.5 text-[10px] text-white/65 leading-tight line-clamp-1">
           {duel.status === 'pending' ? 'New duel' : `${votes} votes`}
         </p>
         <div className="mt-2 flex items-center justify-between text-[9px] font-semibold text-white/60">

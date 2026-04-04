@@ -294,7 +294,7 @@ test('launch smoke workflow covers main CatClash user journey', async ({ page, r
     pushIssue(issues, 'nav', 'shop nav link was not found');
   }
 
-  const navProfile = page.getByTestId('nav-profile').first();
+  const navProfile = page.getByTestId('nav-profile-mobile').first();
   if (await navProfile.count()) {
     await navProfile.click().catch(() => pushIssue(issues, 'nav', 'Profile nav link click failed'));
     await page.waitForURL(/\/(profile\/|login)/, { timeout: 10_000 }).catch(() => {

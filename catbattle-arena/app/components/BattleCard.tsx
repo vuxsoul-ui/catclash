@@ -81,11 +81,11 @@ export default function BattleCard({
         )}
       </div>
       
-      {/* Name */}
-      <p className="mt-2 font-bold text-center">{cat.name}</p>
-      
+      {/* Name - bold identity anchor */}
+      <p className="mt-2 text-lg sm:text-xl font-black text-center text-white drop-shadow-md leading-tight">{cat.name}</p>
+
       {/* Votes */}
-      <p className="text-sm text-white/50 text-center">{cat.votes || 0} votes</p>
+      <p className="text-xs text-white/50 text-center mt-0.5">{cat.votes || 0} votes</p>
       
       {/* Vote Percentage Bar */}
       <div className="mt-2 h-2 bg-white/10 rounded-full overflow-hidden">

@@ -63,8 +63,8 @@ export default function FighterCard({ card, id = 'fighter-card' }: { card: Fight
           </div>
           <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-black/60 text-xs font-bold text-white">LVL {card.level}</div>
           <div className="absolute bottom-3 left-3 right-3">
-            <p className="text-2xl font-black text-white truncate">{card.name}</p>
-            <p className="text-[11px] text-white/70">{card.ownerName}</p>
+            <p className="text-2xl font-black text-white leading-tight line-clamp-2">{card.name}</p>
+            <p className="text-[11px] text-white/70 leading-tight">{card.ownerName}</p>
           </div>
         </div>
 

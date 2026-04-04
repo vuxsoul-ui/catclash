@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     let emailSent = false;
+    let emailError: string | null = null;
     const pref = await getApprovalNotificationPreference(supabase, before.user_id);
     if (pref?.cat_photo_approved_enabled && pref.email) {
       const { data: existingNotice } = await supabase
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
           to: pref.email,
           catName: before.name || 'Your cat',
           catId,
-          siteUrl: process.env.NEXT_PUBLIC_SITE_URL || null,
+          siteUrl: process.env.APP_URL || process.env.NEXT_PUBLIC_SITE_URL || null,
         });
         if (sent.ok) {
           emailSent = !sent.skipped;
@@ -122,11 +123,25 @@ export async function POST(request: NextRequest) {
             user_id: before.user_id,
             approved_at: new Date().toISOString(),
           });
+        } else {
+          emailError = String(sent.error || 'send_failed');
+          console.error('[CAT_APPROVAL_EMAIL] send failed', {
+            catId,
+            userId: before.user_id,
+            to: pref.email,
+            error: emailError,
+          });
         }
       }
     }
 
-    return NextResponse.json({ ok: true, message: 'Cat photo approved', catId, email_sent: emailSent });
+    return NextResponse.json({
+      ok: true,
+      message: 'Cat photo approved',
+      catId,
+      email_sent: emailSent,
+      ...(process.env.NODE_ENV !== 'production' ? { email_error: emailError } : {}),
+    });
   } catch (e) {
     console.error('[APPROVE] Exception:', e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

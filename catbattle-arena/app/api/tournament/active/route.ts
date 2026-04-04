@@ -14,7 +14,7 @@ import { isFeatureTesterId } from "../../_lib/tester";
 import { computeVoteStats } from "../../_lib/vote-stats";
 import { computePulseWindow } from "../../_lib/pulse";
 import { loadCurrentStreakMap, loadEquippedSkillsForCats, resolveMatchup } from "../../_lib/skill-resolution";
-import { deriveTournamentMatchState } from "../../../lib/tournament-state";
+import { deriveTournamentMatchState, summarizeTournamentPlayable, type TournamentMatchStateOutput } from "../../../lib/tournament-state";
 import { createServerSupabaseClient, logInvalidSupabaseKey } from "../../_lib/server-supabase";
 
 export const dynamic = "force-dynamic";
@@ -595,6 +595,27 @@ export async function GET(request: NextRequest) {
         const sorted = [...rows].sort((a, b) => (Date.parse(String(b?.created_at || '')) || 0) - (Date.parse(String(a?.created_at || '')) || 0));
         return sorted[0]?.created_at ? String(sorted[0].created_at) : '';
       };
+      const primaryArena = normalizedArenas.find((arena) => String(arena?.type || '') === 'main') || normalizedArenas[0] || null;
+      const debugCurrentRound = Math.max(1, Number(primaryArena?.current_round || 1));
+      const debugRoundMatches = (primaryArena?.rounds || [])
+        .find((round: any) => Number(round?.round || 0) === debugCurrentRound)
+        ?.matches || [];
+      const debugStates = debugRoundMatches.map((match: any) => {
+        const matchId = String(match?.match_id || '');
+        return deriveTournamentMatchState({
+          matchId,
+          status: String(match?.status || ''),
+          round: debugCurrentRound,
+          currentRound: debugCurrentRound,
+          voted: !!votedMatches[matchId],
+          pulseLocked: false,
+          spotlightMatchId: null,
+        });
+      });
+      const debugSummary = summarizeTournamentPlayable(debugStates);
+      const debugResolvedCount = debugStates.filter((state: TournamentMatchStateOutput) => state.isResolved).length;
+      const debugCountFormulaValid =
+        debugSummary.playableCount === (debugSummary.votedCount + debugSummary.openCount + debugSummary.lockedRemainingCount);
       payload.debug = {
         ...healedArenaState,
         mainCandidateCount: mainCandidates.length,
@@ -611,6 +632,16 @@ export async function GET(request: NextRequest) {
         rookieNewestMatchCreatedAt: '',
         includedMatchStatuses: [...VISIBLE_MATCH_STATUSES],
         debugImageViolations,
+        currentRound: debugCurrentRound,
+        currentRoundTotal: debugSummary.playableCount,
+        votedCount: debugSummary.votedCount,
+        openCount: debugSummary.openCount,
+        lockedRemainingCount: debugSummary.lockedRemainingCount,
+        resolvedCount: debugResolvedCount,
+        countFormulaValid: debugCountFormulaValid,
+        countdownTarget: pulse.next_pulse_at?.toISOString?.() || null,
+        countdownMsRemaining: Math.max(0, Number(pulse.time_until_resolution || 0)),
+        countdownEndsAt: pulse.next_pulse_at?.toISOString?.() || null,
       };
     }
     return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
@@ -620,10 +651,15 @@ export async function GET(request: NextRequest) {
     try {
       console.error('[api/tournament/active] GET failed JSON', JSON.stringify(e, null, 2));
     } catch {}
-    if (isFailSoftBackendError(e)) {
-      const guestId = await getGuestId().catch(() => '');
-      return NextResponse.json(buildTournamentActiveFallback(isFeatureTesterId(guestId)), { status: 200, headers: NO_STORE_HEADERS });
+    const guestId = await getGuestId().catch(() => '');
+    const fallback = buildTournamentActiveFallback(isFeatureTesterId(guestId)) as Record<string, unknown>;
+    if (process.env.NODE_ENV !== 'production') {
+      fallback.debug = {
+        failSoft: true,
+        softErrorType: isFailSoftBackendError(e) ? 'known_backend' : 'unexpected_exception',
+        reason: String((e as any)?.message || e || 'unknown_error'),
+      };
     }
-    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500, headers: NO_STORE_HEADERS });
+    return NextResponse.json(fallback, { status: 200, headers: NO_STORE_HEADERS });
   }
 }

@@ -218,6 +218,7 @@ export async function GET(
       const mustKeepCurrentOpen = round === Number(tournament.round || 1)
         ? bucket.filter((m) => isOpenLikeStatus(m.status))
         : [];
+      // Strict deduplication by pair signature - never allow duplicate pairs
       for (const m of bucket) {
         const a = String(m.cat_a?.id || '');
         const b = String(m.cat_b?.id || '');
@@ -230,17 +231,16 @@ export async function GET(
           continue;
         }
         const pairKey = [a, b].sort().join(':');
-        const keepDuplicateIfCurrentOpen =
-          round === Number(tournament.round || 1) &&
-          statusPriority(m.status, true) <= 1;
-        if (!keepDuplicateIfCurrentOpen && seenPair.has(pairKey)) {
+        // Always skip duplicates - no exceptions for current round
+        if (seenPair.has(pairKey)) {
           dropDebug.duplicate_pair += 1;
           continue;
         }
         seenPair.add(pairKey);
         picked.push(m);
-        const isMustKeep = mustKeepCurrentOpen.some((openMatch) => openMatch.match_id === m.match_id);
-        if (!isMustKeep && picked.length >= wanted) {
+        // Only limit count for non-current rounds
+        const isCurrentRound = round === Number(tournament.round || 1);
+        if (!isCurrentRound && picked.length >= wanted) {
           break;
         }
       }

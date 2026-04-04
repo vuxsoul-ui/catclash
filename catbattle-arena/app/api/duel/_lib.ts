@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from '../_lib/server-supabase';
 
-export const duelSb = createServerSupabaseClient();
+export const duelSb = createServerSupabaseClient(2500);
 
 type CatStats = {
   id: string;

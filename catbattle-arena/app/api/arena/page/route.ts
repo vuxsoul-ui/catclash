@@ -72,6 +72,12 @@ function assertNoSupabaseError(error: SchemaishError): asserts error is null | u
   if (error) throw error;
 }
 
+function isArenaQueuePositionCollision(error: SchemaishError): boolean {
+  const msg = String((error as any)?.message || '').toLowerCase();
+  const code = String((error as any)?.code || '').trim();
+  return code === '23505' && (msg.includes('uq_arena_match_queue_position') || msg.includes('arena_match_queue') && msg.includes('position'));
+}
+
 function pairKey(catAId: string, catBId: string): string {
   const a = String(catAId || '');
   const b = String(catBId || '');
@@ -106,12 +112,23 @@ export async function GET(request: NextRequest) {
     }
 
     const sb = supabaseAdmin();
-    const { data: pageData, error: pageErr } = await sb.rpc('get_or_create_arena_page', {
-      p_identity_key: identityKey,
-      p_arena_type: arenaType,
-      p_page_size: pageSize,
-      p_total_size: totalSize,
-    });
+    let pageData: unknown = null;
+    let pageErr: SchemaishError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await sb.rpc('get_or_create_arena_page', {
+        p_identity_key: identityKey,
+        p_arena_type: arenaType,
+        p_page_size: pageSize,
+        p_total_size: totalSize,
+      });
+      pageData = result.data;
+      pageErr = result.error;
+      if (!pageErr) break;
+      if (!isArenaQueuePositionCollision(pageErr) || attempt > 0) break;
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[api/arena/page] retrying get_or_create_arena_page after queue position collision');
+      }
+    }
     assertNoSupabaseError(pageErr);
 
     const page = (pageData || {}) as Record<string, unknown>;

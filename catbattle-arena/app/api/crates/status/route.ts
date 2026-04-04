@@ -56,6 +56,22 @@ async function getPaidOpenCountToday(sb: ReturnType<typeof getServiceClient>, us
   return Math.max(0, Number(count || 0));
 }
 
+async function getCrateOpenCountToday(sb: ReturnType<typeof getServiceClient>, userId: string, crateType: CrateType) {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const prefix = `crate_open_v2:${crateType}:`;
+  const { count } = await sb
+    .from("user_reward_claims")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .like("reward_key", `${prefix}%`)
+    .gte("created_at", start.toISOString())
+    .lt("created_at", end.toISOString());
+  return Math.max(0, Number(count || 0));
+}
+
 async function getPityStatus(sb: ReturnType<typeof getServiceClient>, userId: string, crateType: CrateType) {
   const prefix = `crate_open_v2:${crateType}:`;
   const { data } = await sb
@@ -110,6 +126,9 @@ export async function GET(request: NextRequest) {
     const opensToday = crateType === "epic" || crateType === "premium"
       ? await getPaidOpenCountToday(sb, userId, crateType, todayKey)
       : 0;
+    const crateOpensToday = crateType === "daily"
+      ? await getCrateOpenCountToday(sb, userId, crateType)
+      : opensToday;
     const pity = await getPityStatus(sb, userId, crateType);
 
     return NextResponse.json({
@@ -117,7 +136,8 @@ export async function GET(request: NextRequest) {
       crate_type: crateType,
       sigils: Number(progress?.sigils || 0),
       paid_crate_cost: crateType === "epic" ? epicPaidCostForOpenCount(opensToday) : crateType === "premium" ? PAID_CRATE_COST : 0,
-      opens_today: opensToday,
+      opens_today: crateOpensToday,
+      can_claim: crateType === "daily" ? crateOpensToday < 1 : true,
       daily_cap: crateType === "epic" ? EPIC_DAILY_CAP : null,
       next_reset_at: nextUtcMidnightIso(),
       pity_status: pity,

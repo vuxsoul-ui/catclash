@@ -17,6 +17,11 @@ const PLACEHOLDER_USERNAME_PATTERNS = [
   /^user[_\-\s]?[0-9a-z]+$/i,
   /^anon(ymous)?[_\-\s]?[0-9a-z]*$/i,
 ];
+const EXCLUDED_LEADERBOARD_USERNAMES = new Set([
+  'admin',
+  'admins',
+  'qa_feature_teser',
+]);
 const LOOKUP_BATCH_SIZE = 150;
 
 type ApprovedCatRow = {
@@ -39,6 +44,11 @@ function isPlaceholderUsername(value: string | null | undefined): boolean {
   const v = String(value || '').trim();
   if (!v) return true;
   return PLACEHOLDER_USERNAME_PATTERNS.some((re) => re.test(v));
+}
+
+function isExcludedLeaderboardUsername(value: string | null | undefined): boolean {
+  const v = normalizeUsername(value || '');
+  return !!v && EXCLUDED_LEADERBOARD_USERNAMES.has(v);
 }
 
 function pickDisplayUsername(userId: string, username: string | null | undefined, used: Set<string>): string {
@@ -185,6 +195,7 @@ export async function GET() {
           total_wins: Number(winsMap[id] || 0),
         };
       })
+      .filter((player) => !isExcludedLeaderboardUsername(player.username))
       .sort((a, b) => {
         if (b.total_wins !== a.total_wins) return b.total_wins - a.total_wins;
         if (b.xp !== a.xp) return b.xp - a.xp;

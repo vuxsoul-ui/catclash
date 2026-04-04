@@ -174,10 +174,10 @@ export default function DuelCardFull({
                 loading="lazy"
                 decoding="async"
               />
-              <div className="min-w-0">
-                <p className="text-[12px] font-bold text-white truncate">{cat?.name || 'Unknown'}</p>
-                <p className="text-xs text-white/50 truncate">{user}</p>
-                <p className="text-[9px] text-white/45 truncate">{cat?.rarity || 'Common'}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-bold text-white leading-tight line-clamp-2">{cat?.name || 'Unknown'}</p>
+                <p className="text-xs text-white/50 leading-tight line-clamp-1">{user}</p>
+                <p className="text-[9px] text-white/45 leading-tight line-clamp-1">{cat?.rarity || 'Common'}</p>
               </div>
             </div>
           </div>

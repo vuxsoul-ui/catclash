@@ -693,11 +693,11 @@ export default function TournamentBracket() {
 
                             <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
                               <div className={`min-w-0 ${match.winner_id && !winnerA ? 'opacity-60 grayscale-[20%]' : ''}`}>
-                                <p className={`truncate text-sm font-semibold ${winnerA ? 'text-white' : 'text-white/84'}`}>{match.cat_a.name}</p>
+                                <p className={`text-sm font-semibold leading-tight line-clamp-2 ${winnerA ? 'text-white' : 'text-white/84'}`}>{match.cat_a.name}</p>
                               </div>
                               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">VS</div>
                               <div className={`min-w-0 text-right ${match.winner_id && !winnerB ? 'opacity-60 grayscale-[20%]' : ''}`}>
-                                <p className={`truncate text-sm font-semibold ${winnerB ? 'text-white' : 'text-white/84'}`}>{match.cat_b.name}</p>
+                                <p className={`text-sm font-semibold leading-tight line-clamp-2 ${winnerB ? 'text-white' : 'text-white/84'}`}>{match.cat_b.name}</p>
                               </div>
                             </div>
 
@@ -870,7 +870,7 @@ export default function TournamentBracket() {
                             />
                           </div>
                           <div className="mt-3">
-                            <p className="text-sm font-semibold text-white">{entry.cat.name}</p>
+                            <p className="text-base font-black text-white">{entry.cat.name}</p>
                             <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/42">{entry.cat.rarity}</p>
                           </div>
                           <div className="mt-3 flex items-center justify-between text-xs text-white/52">

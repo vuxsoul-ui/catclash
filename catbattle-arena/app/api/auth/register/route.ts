@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireGuestId } from '../../_lib/guest';
 import { hashPassword, normalizeUsername, validatePassword } from '../../_lib/password';
+import { generateRecoveryCodes, hashSecret, normalizeRecoveryCode } from '../../_lib/password-reset';
 import { markReferralSignedUp } from '../../_lib/referrals';
 import { checkRateLimitMany, getClientIp, hashValue } from '../../_lib/rateLimit';
 import { trackAppEvent } from '../../_lib/telemetry';
@@ -21,6 +22,10 @@ function validateUsername(raw: string): { ok: boolean; value?: string; error?: s
   if (clean.length < 3 || clean.length > 20) return { ok: false, error: 'Username must be 3-20 characters' };
   if (!/^[a-zA-Z0-9_]+$/.test(clean)) return { ok: false, error: 'Username can contain only letters, numbers, underscore' };
   return { ok: true, value: clean };
+}
+
+function isValidEmail(input: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(input || '').trim().toLowerCase());
 }
 
 function isUuid(v: string): boolean {
@@ -90,8 +95,14 @@ export async function POST(req: NextRequest) {
     const username = usernameCheck.value;
     const usernameLower = normalizeUsername(username);
     const password = String(body.password || '');
+    const email = String(body.email || '').trim().toLowerCase();
+    const includeRecoveryCodes = body?.generate_recovery_codes !== false;
     const referrerUserId = String(body.referrer_user_id || '').trim();
     const duelId = String(body.duel_id || '').trim();
+
+    if (email && !isValidEmail(email)) {
+      return NextResponse.json({ ok: false, error: 'Invalid email format' }, { status: 400 });
+    }
 
     await supabase.rpc('bootstrap_user', { p_user_id: guestId });
 
@@ -143,6 +154,30 @@ export async function POST(req: NextRequest) {
     if (credErr) {
       if (credErr.code === '23505') return NextResponse.json({ ok: false, error: 'Username already taken' }, { status: 409 });
       return NextResponse.json({ ok: false, error: credErr.message }, { status: 500 });
+    }
+
+    if (email) {
+      await supabase
+        .from('notification_preferences')
+        .upsert(
+          {
+            user_id: guestId,
+            email,
+            cat_photo_approved_enabled: false,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+    }
+
+    let recoveryCodes: string[] = [];
+    if (includeRecoveryCodes) {
+      recoveryCodes = generateRecoveryCodes(8);
+      const rows = recoveryCodes.map((code) => ({
+        user_id: guestId,
+        code_hash: hashSecret(normalizeRecoveryCode(code)),
+      }));
+      await supabase.from('password_recovery_codes').insert(rows);
     }
 
     let referrerNotified = false;
@@ -279,6 +314,7 @@ export async function POST(req: NextRequest) {
       loyalty_bonus_xp_awarded: loyaltyBonusXpAwarded,
       saboteur_bonus_sigils_awarded: saboteurBonusSigilsAwarded,
       referrer_username: referrerUsername,
+      ...(recoveryCodes.length ? { recovery_codes: recoveryCodes } : {}),
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SigilIcon from "./components/icons/SigilIcon";
 import OnboardingModal from "./components/OnboardingModal";
-import ArenaFlameCard, { type ArenaFlame } from "./components/ArenaFlameCard";
+import { type ArenaFlame } from "./components/ArenaFlameCard";
 import DuelCardMini from "./components/duel/DuelCardMini";
 import type { DuelRowData } from "./components/duel/types";
 import { showGlobalToast } from "./lib/global-toast";
@@ -41,6 +41,8 @@ import { useHeaderExtension } from "./components/HeaderSystem";
 import { VoteSplitBar } from "./components/VoteSplitBar";
 import FlameStreak from "./components/FlameStreak";
 import VoteConfirmToast from "./components/VoteConfirmToast";
+import MatchResultReveal from "./components/MatchResultReveal";
+import DailyProgression from "./components/DailyProgression";
 
 // Types
 interface UserProgress {
@@ -95,8 +97,12 @@ type VoteSnapshot = {
   votes_a: number;
   votes_b: number;
   total_votes: number;
-  percent_a: number;
-  percent_b: number;
+};
+
+type VoteTotals = {
+  votes_a: number;
+  votes_b: number;
+  total_votes: number;
 };
 
 type QuestTabKey = 'starter' | 'daily' | 'weekly';
@@ -220,6 +226,7 @@ const ARENA_CONFIG: Record<string, { label: string; icon: React.ReactNode; color
 
 const HOMEPAGE_STARTER_QUESTS_KEY = 'homepage_starter_quests_v1';
 const HOMEPAGE_ONBOARDING_KEY = 'catclash_onboarding_complete_v1';
+const HOMEPAGE_VOTE_HINT_COMPLETE_KEY = 'catclash_homepage_vote_hint_complete_v1';
 const STARTER_SIGIL_REWARDS = {
   vote_match: 10,
   open_tournament: 5,
@@ -284,25 +291,14 @@ function getCatDisplayName(cat: Partial<ArenaCat> | null | undefined): string {
 }
 
 function getVotePercent(
-  match: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'>,
-  snapshot?: VoteSnapshot | null
+  match: Pick<ArenaMatch, 'votes_a' | 'votes_b'>,
+  snapshot?: Pick<VoteSnapshot, 'votes_a' | 'votes_b'> | null
 ): [number, number] {
   const source = snapshot || match;
   const totalVotes = Number(source.votes_a || 0) + Number(source.votes_b || 0);
   if (totalVotes > 0) {
     const aPct = Math.round((Number(source.votes_a || 0) / totalVotes) * 100);
     return [aPct, Math.max(0, 100 - aPct)];
-  }
-  const pA = Number(source.percent_a);
-  const pB = Number(source.percent_b);
-  const hasUsablePercentPair =
-    Number.isFinite(pA) &&
-    Number.isFinite(pB) &&
-    pA >= 0 &&
-    pB >= 0 &&
-    (pA + pB) > 0;
-  if (hasUsablePercentPair) {
-    return [Math.max(0, Math.min(100, Math.round(pA))), Math.max(0, Math.min(100, Math.round(pB)))];
   }
   return [50, 50];
 }
@@ -317,76 +313,129 @@ function getVoteCounts(
   return [votesA, votesB, votesA + votesB];
 }
 
-function preferNonRegressingSnapshot(
-  current: VoteSnapshot | undefined,
-  incoming: VoteSnapshot | null | undefined
+function mergeVoteSnapshot(
+  current: VoteSnapshot | null | undefined,
+  incoming: VoteSnapshot | null | undefined,
+  matchId?: string
 ): VoteSnapshot | null {
   if (!incoming) return current || null;
   if (!current) return incoming;
-  const currentTotal = Math.max(0, Number(current.total_votes || (current.votes_a + current.votes_b)));
-  const incomingTotal = Math.max(0, Number(incoming.total_votes || (incoming.votes_a + incoming.votes_b)));
-  if (incomingTotal < currentTotal) return current;
-  return incoming;
+
+  const curA = Math.max(0, Number(current.votes_a || 0));
+  const curB = Math.max(0, Number(current.votes_b || 0));
+  const curTotal = Math.max(0, Number(current.total_votes || (curA + curB)));
+
+  const inA = Math.max(0, Number(incoming.votes_a ?? curA));
+  const inB = Math.max(0, Number(incoming.votes_b ?? curB));
+  const inTotal = Math.max(0, Number(incoming.total_votes ?? (inA + inB)));
+  if (inTotal < curTotal) {
+    if (process.env.NODE_ENV !== 'production' && matchId) {
+      // eslint-disable-next-line no-console
+      console.debug('[DEV][vote-merge-ignore-stale]', { matchId, current: { a: curA, b: curB, total: curTotal }, incoming: { a: inA, b: inB, total: inTotal } });
+    }
+    return current;
+  }
+
+  const nextA = Math.max(curA, inA);
+  const nextB = Math.max(curB, inB);
+  const nextTotal = Math.max(nextA + nextB, curTotal, inTotal);
+
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    matchId &&
+    (inA < curA || inB < curB || inTotal < curTotal)
+  ) {
+    // eslint-disable-next-line no-console
+    console.debug('[DEV][vote-merge-clamp]', { matchId, current: { a: curA, b: curB, total: curTotal }, incoming: { a: inA, b: inB, total: inTotal }, merged: { a: nextA, b: nextB, total: nextTotal } });
+  }
+
+  return {
+    votes_a: nextA,
+    votes_b: nextB,
+    total_votes: nextTotal,
+  };
 }
 
 function preferNonRegressingMatchVotes(
   match: ArenaMatch,
-  incoming: { votesA?: number; votesB?: number; totalVotes?: number; percentA?: number; percentB?: number }
+  incoming: { votesA?: number; votesB?: number; totalVotes?: number }
 ): ArenaMatch {
-  const currentTotal = Math.max(0, Number(match.total_votes ?? (match.votes_a + match.votes_b)));
-  const nextVotesA = Math.max(0, Number(incoming.votesA || 0));
-  const nextVotesB = Math.max(0, Number(incoming.votesB || 0));
-  const incomingTotal = Math.max(0, Number(incoming.totalVotes ?? (nextVotesA + nextVotesB)));
-  if (incomingTotal < currentTotal) return match;
+  const merged = mergeVoteSnapshot(
+    normalizeVoteSnapshot(match),
+    normalizeVoteSnapshot({
+      votes_a: Number(incoming.votesA || 0),
+      votes_b: Number(incoming.votesB || 0),
+      total_votes: Number(incoming.totalVotes || 0),
+    }),
+    String(match.match_id || '')
+  );
+  if (!merged) return match;
+  if (
+    merged.votes_a === Number(match.votes_a || 0) &&
+    merged.votes_b === Number(match.votes_b || 0) &&
+    merged.total_votes === Number(match.total_votes || (match.votes_a + match.votes_b))
+  ) return match;
+  const [pctA, pctB] = getVotePercent({
+    votes_a: merged.votes_a,
+    votes_b: merged.votes_b,
+  });
   return {
     ...match,
-    votes_a: nextVotesA,
-    votes_b: nextVotesB,
-    total_votes: incomingTotal,
-    percent_a: Number(incoming.percentA || 0),
-    percent_b: Number(incoming.percentB || 0),
+    votes_a: merged.votes_a,
+    votes_b: merged.votes_b,
+    total_votes: merged.total_votes,
+    percent_a: pctA,
+    percent_b: pctB,
   };
 }
 
 function normalizeVoteSnapshot(
-  source?: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'> | VoteSnapshot | null
+  source?: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'total_votes'> | VoteSnapshot | null
 ): VoteSnapshot | null {
   if (!source) return null;
   const votesA = Math.max(0, Number(source.votes_a || 0));
   const votesB = Math.max(0, Number(source.votes_b || 0));
-  const [percentA, percentB] = getVotePercent({
-    votes_a: votesA,
-    votes_b: votesB,
-    percent_a: Number(source.percent_a),
-    percent_b: Number(source.percent_b),
-  });
+  const totalVotes = Math.max(0, Number((source as any).total_votes ?? (votesA + votesB)));
   return {
     votes_a: votesA,
     votes_b: votesB,
-    total_votes: votesA + votesB,
-    percent_a: percentA,
-    percent_b: percentB,
+    total_votes: totalVotes,
+  };
+}
+
+function mergeVoteTotals(
+  current: VoteTotals | null | undefined,
+  incoming: VoteTotals | null | undefined
+): VoteTotals | null {
+  if (!incoming) return current || null;
+  if (!current) return incoming;
+  const curA = Math.max(0, Number(current.votes_a || 0));
+  const curB = Math.max(0, Number(current.votes_b || 0));
+  const curTotal = Math.max(0, Number(current.total_votes || (curA + curB)));
+  const inA = Math.max(0, Number(incoming.votes_a || 0));
+  const inB = Math.max(0, Number(incoming.votes_b || 0));
+  const inTotal = Math.max(0, Number(incoming.total_votes || (inA + inB)));
+  if (inTotal < curTotal) return current;
+  const nextA = Math.max(curA, inA);
+  const nextB = Math.max(curB, inB);
+  return {
+    votes_a: nextA,
+    votes_b: nextB,
+    total_votes: Math.max(nextA + nextB, curTotal, inTotal),
   };
 }
 
 function getResolvedMatchView(
   match: ArenaMatch,
-  snapshot?: VoteSnapshot | null,
+  renderTotals?: VoteTotals | null,
   votedCatId?: string | null
 ): ArenaMatch {
-  const merged = snapshot || normalizeVoteSnapshot(match) || null;
-  const votesA = Math.max(0, Number(merged?.votes_a ?? match.votes_a ?? 0));
-  const votesB = Math.max(0, Number(merged?.votes_b ?? match.votes_b ?? 0));
-  const totalVotes = Math.max(0, Number(merged?.total_votes ?? (votesA + votesB)));
-  const [pctA, pctB] = getVotePercent(
-    {
-      votes_a: votesA,
-      votes_b: votesB,
-      percent_a: Number(merged?.percent_a ?? match.percent_a ?? 0),
-      percent_b: Number(merged?.percent_b ?? match.percent_b ?? 0),
-    },
-    null
-  );
+  const baseVotesA = Math.max(0, Number(match.votes_a || 0));
+  const baseVotesB = Math.max(0, Number(match.votes_b || 0));
+  const votesA = Math.max(0, Number(renderTotals?.votes_a ?? baseVotesA));
+  const votesB = Math.max(0, Number(renderTotals?.votes_b ?? baseVotesB));
+  const totalVotes = Math.max(0, Number(renderTotals?.total_votes ?? (votesA + votesB)));
+  const [pctA, pctB] = getVotePercent({ votes_a: votesA, votes_b: votesB }, null);
   return {
     ...match,
     votes_a: votesA,
@@ -397,22 +446,6 @@ function getResolvedMatchView(
     is_close_match: Math.abs(votesA - votesB) <= 2,
     user_voted_cat_id: votedCatId ?? match.user_voted_cat_id ?? null,
   };
-}
-
-function buildOptimisticVoteSnapshot(
-  source: Pick<ArenaMatch, 'votes_a' | 'votes_b' | 'percent_a' | 'percent_b'> | VoteSnapshot | null | undefined,
-  side: 'a' | 'b'
-): VoteSnapshot | null {
-  const normalized = normalizeVoteSnapshot(source);
-  if (!normalized) return null;
-  const votesA = normalized.votes_a + (side === 'a' ? 1 : 0);
-  const votesB = normalized.votes_b + (side === 'b' ? 1 : 0);
-  return normalizeVoteSnapshot({
-    votes_a: votesA,
-    votes_b: votesB,
-    percent_a: normalized.percent_a,
-    percent_b: normalized.percent_b,
-  });
 }
 
 function applyVoteSnapshotToArenaMatches(
@@ -435,8 +468,10 @@ function applyVoteSnapshotToArenaMatches(
             votes_a: snapshot.votes_a,
             votes_b: snapshot.votes_b,
             total_votes: snapshot.total_votes,
-            percent_a: snapshot.percent_a,
-            percent_b: snapshot.percent_b,
+            ...(() => {
+              const [pctA, pctB] = getVotePercent({ votes_a: snapshot.votes_a, votes_b: snapshot.votes_b });
+              return { percent_a: pctA, percent_b: pctB };
+            })(),
           };
         }),
       })),
@@ -611,7 +646,11 @@ function MiniMatchPreview({
   match,
   voted,
   voting,
+  showVoteHint = false,
+  dailyVoteCount = 0,
   voteSnapshot,
+  voteSource = 'match',
+  hasLocalTotals = false,
   voteSyncing = false,
   voteAnimTick = 0,
   pulseCountdown,
@@ -621,28 +660,36 @@ function MiniMatchPreview({
   match: ArenaMatch | null;
   voted: string | null;
   voting: boolean;
+  showVoteHint?: boolean;
+  dailyVoteCount?: number;
   voteSnapshot?: VoteSnapshot | null;
+  voteSource?: 'localTotals' | 'match' | 'snapshot';
+  hasLocalTotals?: boolean;
   voteSyncing?: boolean;
   voteAnimTick?: number;
   pulseCountdown?: string | null;
   onVote: (catId: string) => void;
   onOpenTournament: () => void;
 }) {
+  const safeDailyVoteCount = Math.min(5, Math.max(0, Number(dailyVoteCount || 0)));
   if (!match) {
     return (
-      <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(160deg,rgba(4,12,24,0.96),rgba(8,14,28,0.92))] p-4 shadow-[0_22px_48px_rgba(0,0,0,0.34),0_0_22px_rgba(34,211,238,0.06),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200/54">Starter Vote</p>
-            <h2 className="mt-1 text-xl font-black tracking-[-0.03em] text-white">Pick today&apos;s winner.</h2>
-            <p className="mt-1 text-sm text-white/58">No live matchup is loaded right now, but the bracket is ready for you.</p>
+      <div className="overflow-hidden rounded-[1.6rem] border border-white/[0.05] bg-gradient-to-br from-slate-800/30 via-slate-900/50 to-slate-950/70 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm sm:p-3.5">
+        <div className="space-y-4 text-center">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/70">Starter Vote</p>
+            <h2 className="text-lg font-black tracking-[-0.02em] text-white">Next battle loading...</h2>
           </div>
+          <div className="mx-auto h-2 w-40 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full w-1/3 rounded-full bg-cyan-400 animate-pulse" />
+          </div>
+          <p className="text-xs text-cyan-300/60">Preparing matchup</p>
           <button
             type="button"
             onClick={onOpenTournament}
-            className="rounded-xl bg-[linear-gradient(180deg,rgba(34,211,238,0.14),rgba(14,116,144,0.08))] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(103,232,249,0.16)] transition-all hover:bg-[linear-gradient(180deg,rgba(34,211,238,0.18),rgba(14,116,144,0.1))] active:scale-[0.96]"
+            className="text-[11px] font-semibold text-cyan-200/75 underline-offset-2 hover:text-cyan-100 hover:underline"
           >
-            Open Tournament
+            View schedule
           </button>
         </div>
       </div>
@@ -650,7 +697,7 @@ function MiniMatchPreview({
   }
 
   const [pctA, pctB] = getVotePercent(match, voteSnapshot);
-  const [, , totalVotes] = getVoteCounts(match, voteSnapshot || null);
+  const [votesA, votesB, totalVotes] = getVoteCounts(match, voteSnapshot || null);
   const catAName = getCatDisplayName(match.cat_a);
   const catBName = getCatDisplayName(match.cat_b);
   const votedSide = voted === match.cat_a.id ? 'a' : voted === match.cat_b.id ? 'b' : null;
@@ -671,8 +718,8 @@ function MiniMatchPreview({
     setLockPulse(true);
     setJustVoted(true);
     setLocalFlameCount((prev) => prev + 1);
-    const timer = window.setTimeout(() => setLockPulse(false), 320);
-    const voteTimer = window.setTimeout(() => setJustVoted(false), 620);
+    const timer = window.setTimeout(() => setLockPulse(false), 430);
+    const voteTimer = window.setTimeout(() => setJustVoted(false), 760);
     return () => {
       window.clearTimeout(timer);
       window.clearTimeout(voteTimer);
@@ -693,27 +740,55 @@ function MiniMatchPreview({
     return () => window.clearTimeout(timer);
   }, [voteSyncing]);
 
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (hasLocalTotals && voteSource !== 'localTotals') {
+      // eslint-disable-next-line no-console
+      console.error('[DEV][vote-render-fallback-bug]', { matchId: match.match_id, sourceUsed: voteSource });
+    }
+    // eslint-disable-next-line no-console
+    console.debug('[DEV][vote-render-source]', {
+      matchId: match.match_id,
+      sourceUsed: voteSource,
+      votes_a: votesA,
+      votes_b: votesB,
+      total_votes: totalVotes,
+      pctA,
+      pctB,
+    });
+  }, [hasLocalTotals, match.match_id, pctA, pctB, totalVotes, voteSource, votesA, votesB]);
+
   return (
-    <div className="relative overflow-hidden rounded-[1.6rem] bg-[linear-gradient(155deg,rgba(4,11,23,0.95),rgba(6,14,26,0.9),rgba(11,20,33,0.88))] p-3.5 shadow-[0_20px_46px_rgba(0,0,0,0.3),0_0_18px_rgba(34,211,238,0.05),inset_0_0_0_1px_rgba(103,232,249,0.08)] sm:p-4">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(250,204,21,0.12),transparent_34%)]" />
+    <div className="relative overflow-hidden rounded-[1.6rem] border border-white/[0.05] bg-gradient-to-br from-slate-800/30 via-slate-900/50 to-slate-950/70 p-3.5 shadow-[0_8px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm sm:p-4">
       <div className="relative">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100/72 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.1)]">
+            <div className="inline-flex items-center gap-2 rounded-full bg-cyan-400/6 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200/78 ring-1 ring-white/[0.05]">
               <span>Starter Vote</span>
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/60" />
             </div>
-            <h2 className="mt-1.5 text-[1.2rem] font-black tracking-[-0.035em] text-white sm:text-[1.4rem]">Pick today&apos;s winner.</h2>
-            <p className="mt-1 text-sm text-white/58">
-              {votingLocked ? `${lockLabel}` : 'One vote here. Full bracket in Tournament.'}
+            <div className="flex items-center gap-2">
+              <h2 className="mt-1.5 text-[1.2rem] font-black tracking-[-0.035em] text-white sm:text-[1.4rem]">Pick today&apos;s winner.</h2>
+              {!votingLocked && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/8 px-2 py-0.5 text-[9px] font-semibold text-emerald-300/70 ring-1 ring-white/[0.05]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/50 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+              <span className="inline-flex items-center rounded-full bg-white/[0.05] px-2 py-0.5 text-[9px] font-semibold text-white/75 ring-1 ring-white/[0.05]">
+                {safeDailyVoteCount}/5
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-white/50">
+              {votingLocked ? `${lockLabel}` : 'One vote. Full bracket in Tournament.'}
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <FlameStreak count={localFlameCount} reactionTick={voteAnimTick} />
+            <FlameStreak count={localFlameCount} reactionTick={voteAnimTick} showProgress />
             <button
               type="button"
               onClick={onOpenTournament}
-              className="rounded-xl border border-cyan-200/35 bg-gradient-to-r from-cyan-500 to-sky-400 px-3 py-2 text-xs font-bold text-white shadow-[0_10px_22px_rgba(16,185,129,0.2),0_0_14px_rgba(34,211,238,0.1)] transition-all hover:shadow-[0_12px_24px_rgba(16,185,129,0.24),0_0_16px_rgba(34,211,238,0.14)] active:scale-[0.96]"
+              className="rounded-xl bg-cyan-500/80 px-3 py-2 text-xs font-bold text-white shadow-[0_4px_12px_rgba(0,0,0,0.15)] transition-all hover:bg-cyan-500/90 active:scale-[0.96]"
             >
               Enter Full Tournament
             </button>
@@ -728,14 +803,22 @@ function MiniMatchPreview({
           animTick={voteAnimTick + (voteSyncing || lockPulse ? 1 : 0)}
           justVoted={justVoted}
           className="mt-1 h-2"
-          durationMs={600}
+          durationMs={760}
         />
         <p className={`mt-1 text-center text-[12px] font-black tracking-[0.02em] tabular-nums ${(voteSyncing || lockPulse) ? 'animate-pulse text-white' : 'text-white/92'}`}>
           {pctA}% · {pctB}% · {Math.max(0, totalVotes)} votes
         </p>
         <p className={`mt-1 text-center text-[11px] font-semibold ${lockPulse && votedSide ? 'text-emerald-100 animate-pulse' : 'text-white/68'}`}>
-          {votingLocked ? `Pulse ${pulseCountdown || 'locked'}` : showUpdatingLabel ? 'Updating...' : votedSide ? 'Vote locked' : 'Tap a fighter to vote'}
+          {votingLocked ? `Pulse ${pulseCountdown || 'locked'}` : showUpdatingLabel ? 'Updating...' : votedSide ? 'Vote locked' : ''}
         </p>
+        {showVoteHint && canVote ? (
+          <div
+            data-testid="homepage-vote-hint"
+            className="mt-2 rounded-xl bg-cyan-400/[0.06] px-3 py-2 text-center text-[11px] font-medium text-cyan-100/78 shadow-[inset_0_0_0_1px_rgba(103,232,249,0.08)]"
+          >
+            Tap a cat to cast your first homepage vote.
+          </div>
+        ) : null}
         {tapFx ? (
           <div
             key={tapFx.id}
@@ -750,6 +833,7 @@ function MiniMatchPreview({
           <div className="min-w-0">
             <button
               type="button"
+              data-testid="vote-a"
               onClick={() => {
                 if (!canVote) return;
                 onVote(match.cat_a.id);
@@ -762,13 +846,13 @@ function MiniMatchPreview({
               }}
               disabled={!canVote}
               aria-pressed={votedSide === 'a'}
-              className={`block w-full rounded-[1.25rem] p-2 text-left shadow-[0_12px_26px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
+              className={`block w-full rounded-[1.25rem] p-2 text-left shadow-[0_12px_26px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(255,255,255,0.04)] transition-all duration-200 ${
                 votedSide === 'a'
-                  ? `scale-[1.05] ring-2 ${lockPulse ? 'ring-cyan-300/95' : 'ring-blue-400/70'} bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(59,130,246,0.14),inset_0_0_0_1px_rgba(147,197,253,0.24)]`
+                  ? `scale-[1.035] ring-2 ${lockPulse ? 'ring-cyan-300/80 shadow-[0_18px_38px_rgba(0,0,0,0.22),0_0_28px_rgba(34,211,238,0.18),inset_0_0_0_1px_rgba(147,197,253,0.24)]' : 'ring-blue-400/55 shadow-[0_16px_30px_rgba(0,0,0,0.2),0_0_18px_rgba(59,130,246,0.12),inset_0_0_0_1px_rgba(147,197,253,0.18)]'} bg-white/[0.1]`
                   : votedSide === 'b'
                     ? 'bg-white/[0.03] opacity-60'
                     : 'bg-white/[0.04]'
-              } ${pressSide === 'a' ? 'scale-[0.95]' : ''} ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
+              } ${pressSide === 'a' ? 'scale-[0.98] brightness-[1.06]' : ''} ${canVote ? 'active:scale-[0.98]' : 'cursor-default'}`}
             >
               <div className="relative overflow-hidden rounded-[1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
                 <img src={getCatImage(match.cat_a)} alt={catAName} loading="lazy" decoding="async" className="aspect-[4/5] max-h-[230px] w-full object-cover object-center sm:max-h-[250px]" />
@@ -795,6 +879,7 @@ function MiniMatchPreview({
           <div className="min-w-0">
             <button
               type="button"
+              data-testid="vote-b"
               onClick={() => {
                 if (!canVote) return;
                 onVote(match.cat_b.id);
@@ -807,13 +892,13 @@ function MiniMatchPreview({
               }}
               disabled={!canVote}
               aria-pressed={votedSide === 'b'}
-              className={`block w-full rounded-[1.25rem] p-2 text-left shadow-[0_12px_26px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(255,255,255,0.05)] transition-all ${
+              className={`block w-full rounded-[1.25rem] p-2 text-left shadow-[0_12px_26px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(255,255,255,0.04)] transition-all duration-200 ${
                 votedSide === 'b'
-                  ? `scale-[1.05] ring-2 ${lockPulse ? 'ring-rose-300/95' : 'ring-rose-400/70'} bg-white/[0.1] shadow-[0_18px_36px_rgba(0,0,0,0.22),0_0_22px_rgba(244,63,94,0.14),inset_0_0_0_1px_rgba(253,164,175,0.24)]`
+                  ? `scale-[1.035] ring-2 ${lockPulse ? 'ring-rose-300/80 shadow-[0_18px_38px_rgba(0,0,0,0.22),0_0_28px_rgba(251,113,133,0.18),inset_0_0_0_1px_rgba(253,164,175,0.24)]' : 'ring-rose-400/55 shadow-[0_16px_30px_rgba(0,0,0,0.2),0_0_18px_rgba(244,63,94,0.12),inset_0_0_0_1px_rgba(253,164,175,0.18)]'} bg-white/[0.1]`
                   : votedSide === 'a'
                     ? 'bg-white/[0.03] opacity-60'
                     : 'bg-white/[0.04]'
-              } ${pressSide === 'b' ? 'scale-[0.95]' : ''} ${canVote ? 'active:scale-[0.985]' : 'cursor-default'}`}
+              } ${pressSide === 'b' ? 'scale-[0.98] brightness-[1.06]' : ''} ${canVote ? 'active:scale-[0.98]' : 'cursor-default'}`}
             >
               <div className="relative overflow-hidden rounded-[1rem] bg-black/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
                 <img src={getCatImage(match.cat_b)} alt={catBName} loading="lazy" decoding="async" className="aspect-[4/5] max-h-[230px] w-full object-cover object-center sm:max-h-[250px]" />
@@ -948,6 +1033,7 @@ function StarterQuestsModule({
               <button
                 type="button"
                 onClick={() => onQuestAction(nextQuest.key)}
+                data-testid={`starter-quest-cta-${nextQuest.key}`}
                 className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] px-3 text-[11px] font-semibold text-white/86 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-colors hover:bg-white/[0.09] active:scale-[0.97]"
               >
                 {nextQuest.cta}
@@ -998,6 +1084,7 @@ function StarterQuestsModule({
                   <button
                     type="button"
                     onClick={() => onQuestAction(quest.key)}
+                    data-testid={`starter-quest-cta-${quest.key}`}
                     className="mt-2 inline-flex h-8 items-center justify-center rounded-full bg-white/[0.06] px-3 text-[11px] font-semibold text-white/84 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] transition-colors hover:bg-white/[0.09] active:scale-[0.97]"
                   >
                     {quest.cta}
@@ -1155,13 +1242,14 @@ function AllMatchesVotedCard({ pulseCountdown }: { pulseCountdown: string | null
 
 // ── Match Card ── Images link to profile, vote buttons below
 const MatchCard = React.memo(function MatchCard({
-  match, voted, isVoting, predictBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onCreateCallout,
+  match, voted, isVoting, predictBusy, boostBusy, calloutBusy, socialEnabled, availableSigils, voteStreak, isExiting, onVote, onPredict, onBoost, onCreateCallout,
   voteQueued, onRefreshQueued, onVoteAccepted, showNextUp, slotPhase = "idle", slotChosenSide = null, enterPhase = "idle",
   isRefilling = false, resetFlipSignal = '',
-  debugMode = false, voteSnapshot = null, voteSyncing = false, voteAnimTick = 0,
+  debugMode = false, voteSnapshot = null, voteSource = 'match', hasLocalTotals = false, voteSyncing = false, voteAnimTick = 0,
 }: {
   match: ArenaMatch; voted: string | null; isVoting: boolean;
   predictBusy: boolean;
+  boostBusy: boolean;
   calloutBusy: boolean;
   socialEnabled: boolean;
   availableSigils: number;
@@ -1176,18 +1264,23 @@ const MatchCard = React.memo(function MatchCard({
   enterPhase?: "idle" | "entering";
   isRefilling?: boolean;
   resetFlipSignal?: string;
+  votingLocked?: boolean;
   debugMode?: boolean;
   voteSnapshot?: VoteSnapshot | null;
+  voteSource?: 'localTotals' | 'match' | 'snapshot';
+  hasLocalTotals?: boolean;
   voteSyncing?: boolean;
   voteAnimTick?: number;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
+  onBoost: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
 }) {
   const [pctA, pctB] = getVotePercent(match, voteSnapshot);
-  const [, , resolvedTotalVotes] = getVoteCounts(match, voteSnapshot || null);
+  const [resolvedVotesA, resolvedVotesB, resolvedTotalVotes] = getVoteCounts(match, voteSnapshot || null);
   const isComplete = String(match.status || '').toLowerCase() === "complete" || String(match.status || '').toLowerCase() === "completed";
   const hasVoted = !!voted;
+  const votingLocked = !!match.voting_locked;
   const [votePending, setVotePending] = useState(false);
   const [chosenSide, setChosenSide] = useState<"a" | "b" | null>(null);
   const [voteSubmitted, setVoteSubmitted] = useState(false);
@@ -1306,6 +1399,24 @@ const MatchCard = React.memo(function MatchCard({
   const SWIPE_Y_CANCEL = 44;
   const SWIPE_MIN_VELOCITY = 0.24; // px/ms
   const SWIPE_EXIT_MS = reduceMotion ? 80 : 180;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (hasLocalTotals && voteSource !== 'localTotals') {
+      // eslint-disable-next-line no-console
+      console.error('[DEV][vote-render-fallback-bug]', { matchId: match.match_id, sourceUsed: voteSource });
+    }
+    // eslint-disable-next-line no-console
+    console.debug('[DEV][vote-render-source]', {
+      matchId: match.match_id,
+      sourceUsed: voteSource,
+      votes_a: resolvedVotesA,
+      votes_b: resolvedVotesB,
+      total_votes: resolvedTotalVotes,
+      pctA,
+      pctB,
+    });
+  }, [hasLocalTotals, match.match_id, pctA, pctB, resolvedTotalVotes, resolvedVotesA, resolvedVotesB, voteSource]);
 
   const applyMotionTransform = useCallback((rawDx: number, opts?: { released?: boolean }) => {
     const el = motionRef.current;
@@ -1912,7 +2023,7 @@ const MatchCard = React.memo(function MatchCard({
         </div>
       )}
       <div className="absolute right-2 top-2 z-20">
-        <FlameStreak count={localFlameCount} reactionTick={justVoted ? voteAnimTick : 0} />
+        <FlameStreak count={localFlameCount} reactionTick={justVoted ? voteAnimTick : 0} showProgress />
       </div>
 
       <div className="grid grid-cols-1 items-start gap-2.5 sm:grid-cols-[minmax(0,1fr)_36px_minmax(0,1fr)] sm:gap-3.5">
@@ -2103,6 +2214,55 @@ const MatchCard = React.memo(function MatchCard({
       <p className={`mt-1 text-center text-[11px] font-semibold ${(voteSyncing || lockPulse) ? 'animate-pulse text-white/90' : 'text-white/65'}`}>
         {showUpdatingLabel ? 'Updating...' : hasVoted ? 'Vote locked' : 'Tap a fighter to vote'}
       </p>
+
+      {/* Social proof chips */}
+      {!hasVoted && !votingLocked && (
+        <div className="mt-2 flex items-center justify-center gap-2">
+          <span className="inline-flex items-center rounded-full border border-blue-400/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-200/80">
+            {displayPct.a}% picked {catAName}
+          </span>
+          <span className="inline-flex items-center rounded-full border border-rose-400/20 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-200/80">
+            {displayPct.b}% picked {catBName}
+          </span>
+        </div>
+      )}
+
+      {/* Boost This Pick - appears after voting, before prediction is placed */}
+      {hasVoted && !predictedCatId && !isComplete && (
+        <div data-testid="boost-panel" className="mt-2.5 rounded-lg border border-amber-400/15 bg-gradient-to-r from-amber-500/8 to-orange-500/8 p-2.5">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-100/80">🔥 Boost this pick</span>
+            <span className="text-[9px] text-amber-100/60">
+              {underdogA || underdogB ? 'Underdog pays more' : 'High risk, higher reward'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {[5, 10, 20].map((chip) => {
+              const isMax = chip === 20;
+              const higherPayout = voted === match.cat_a.id ? Number(payoutA) > 2 : Number(payoutB) > 2;
+              return (
+                <button
+                  key={`boost-${match.match_id}-${chip}`}
+                  data-testid={`boost-chip-${chip}`}
+                  disabled={chip > availableSigils || boostBusy}
+                  onClick={(e) => {
+                    e.currentTarget.style.transform = 'scale(0.94)';
+                    setTimeout(() => { e.currentTarget.style.transform = ''; }, 120);
+                    onBoost(match.match_id, voted!, chip);
+                  }}
+                  className={`flex-1 h-8 rounded-md border text-[10px] font-semibold transition-all active:scale-95 disabled:opacity-40 ${
+                    isMax && higherPayout
+                      ? 'border-amber-300/50 bg-amber-500/25 text-white shadow-[0_0_12px_rgba(251,191,36,0.3)] animate-pulse'
+                      : 'border-amber-300/30 bg-amber-500/15 text-amber-100 hover:bg-amber-500/20'
+                  }`}
+                >
+                  +{chip}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {tapReward && justVoted ? (
         <div
           key={tapReward.id}
@@ -2455,6 +2615,8 @@ const MatchCard = React.memo(function MatchCard({
     prev.voted === next.voted &&
     prev.isVoting === next.isVoting &&
     prev.voteSnapshot === next.voteSnapshot &&
+    prev.voteSource === next.voteSource &&
+    prev.hasLocalTotals === next.hasLocalTotals &&
     prev.voteSyncing === next.voteSyncing &&
     prev.voteAnimTick === next.voteAnimTick &&
     prev.predictBusy === next.predictBusy &&
@@ -2480,14 +2642,16 @@ const MatchCard = React.memo(function MatchCard({
 
 // ── Arena Section ──
 function ArenaSection({
-  arena, votedMatches, voteSnapshotByMatchId, voteSyncingByMatchId, voteAnimTickByMatchId = {}, votingMatch, predictBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false, homepageSpotlight = false,
+  arena, votedMatches, voteSnapshotByMatchId, localTotalsByMatchId, voteSyncingByMatchId, voteAnimTickByMatchId = {}, votingMatch, predictBusyMatch, boostBusyMatch, calloutBusyMatch, socialEnabled, availableSigils, voteStreak, hotMatchBiasEnabled, testerMode = false, onVote, onPredict, onBoost, onCreateCallout, onRequestMore, globalPageInfo, pulseCountdown, onSwitchArena, debugInfo, queueInfo, debugMode = false, homepageSpotlight = false,
 }: {
   arena: Arena; votedMatches: Record<string, string>;
   voteSnapshotByMatchId: Record<string, VoteSnapshot>;
+  localTotalsByMatchId: Record<string, VoteTotals>;
   voteSyncingByMatchId: Record<string, boolean>;
   voteAnimTickByMatchId?: Record<string, number>;
   votingMatch: string | null;
   predictBusyMatch: string | null;
+  boostBusyMatch: string | null;
   calloutBusyMatch: string | null;
   socialEnabled: boolean;
   availableSigils: number;
@@ -2503,6 +2667,7 @@ function ArenaSection({
   homepageSpotlight?: boolean;
   onVote: (matchId: string, catId: string) => Promise<boolean>;
   onPredict: (matchId: string, catId: string, bet: number) => Promise<boolean>;
+  onBoost: (matchId: string, catId: string, bet: number) => Promise<boolean>;
   onCreateCallout: (matchId: string, catId: string) => void;
   onRequestMore?: () => Promise<ArenaRefreshResult>;
 }) {
@@ -2536,6 +2701,7 @@ function ArenaSection({
   const keepUntilByMatchIdRef = useRef<Record<string, number>>({});
   const onVoteRef = useRef(onVote);
   const onPredictRef = useRef(onPredict);
+  const onBoostRef = useRef(onBoost);
   const onCreateCalloutRef = useRef(onCreateCallout);
   const refillRequestSeqRef = useRef(0);
   const preserveSnapshotOnEmptyRef = useRef(false);
@@ -2558,6 +2724,11 @@ function ArenaSection({
   const [showHotStreakBanner, setShowHotStreakBanner] = useState(false);
   const [hotStreakTick, setHotStreakTick] = useState(0);
   const [keepUntilByMatchId, setKeepUntilByMatchId] = useState<Record<string, number>>({});
+  const getLocalRenderTotals = useCallback((matchId: string): VoteTotals | null => {
+    const local = localTotalsByMatchId[matchId];
+    if (!local) return null;
+    return local;
+  }, [localTotalsByMatchId]);
   const MAX_VISIBLE = 6;
   const EXIT_MS = 180;
   const SWAP_DELAY_MS = 80;
@@ -3479,6 +3650,10 @@ function ArenaSection({
     return onPredictRef.current(matchId, catId, bet);
   }, []);
 
+  const stableBoost = useCallback((matchId: string, catId: string, bet: number) => {
+    return onBoostRef.current(matchId, catId, bet);
+  }, []);
+
   const stableCreateCallout = useCallback((matchId: string, catId: string) => {
     onCreateCalloutRef.current(matchId, catId);
   }, []);
@@ -3520,7 +3695,7 @@ function ArenaSection({
       });
     }
     // Give vote FX enough time to render before card exits the deck.
-    const CONFIRMED_HOLD_MS = reduceMotion ? 920 : 1150;
+    const CONFIRMED_HOLD_MS = reduceMotion ? 1200 : 2800;
     const EXIT_ANIMATION_MS = reduceMotion ? 150 : Math.max(EXIT_MS, 220);
     const SWAP_PAUSE_MS = reduceMotion ? 0 : Math.max(SWAP_DELAY_MS, 110);
     clearTransitionTimeoutsFor(matchId);
@@ -3803,9 +3978,11 @@ function ArenaSection({
               <div className={topVotingSlot?.match ? "min-h-[420px]" : "min-h-[140px]"}>
                 {topVotingSlot?.match ? (
                   (() => {
+                    const topRenderTotals = getLocalRenderTotals(topVotingSlot.match.match_id);
+                    const topVoteSource: 'localTotals' | 'match' = topRenderTotals ? 'localTotals' : 'match';
                     const resolvedTopMatch = getResolvedMatchView(
                       topVotingSlot.match,
-                      voteSnapshotByMatchId[topVotingSlot.match.match_id] || null,
+                      topRenderTotals,
                       votedMatches[topVotingSlot.match.match_id] || topVotingSlot.match.user_voted_cat_id || null
                     );
                     return (
@@ -3817,6 +3994,7 @@ function ArenaSection({
                     isVoting={votingMatch === resolvedTopMatch.match_id}
                     voteSyncing={!!voteSyncingByMatchId[resolvedTopMatch.match_id]}
                     predictBusy={predictBusyMatch === resolvedTopMatch.match_id}
+                    boostBusy={boostBusyMatch === resolvedTopMatch.match_id}
                     calloutBusy={calloutBusyMatch === resolvedTopMatch.match_id}
                     socialEnabled={socialEnabled}
                     availableSigils={availableSigils}
@@ -3829,12 +4007,15 @@ function ArenaSection({
                     resetFlipSignal={flipResetSignal}
                     voteQueued={!!queuedVotes[resolvedTopMatch.match_id]}
                     showNextUp={nextUpId === resolvedTopMatch.match_id}
-                    voteSnapshot={voteSnapshotByMatchId[resolvedTopMatch.match_id] || null}
+                    voteSnapshot={topRenderTotals ? normalizeVoteSnapshot(topRenderTotals) : null}
+                    voteSource={topVoteSource}
+                    hasLocalTotals={!!topRenderTotals}
                     onRefreshQueued={handleRefreshQueued}
                     voteAnimTick={voteAnimTickByMatchId[resolvedTopMatch.match_id] || 0}
                     onVote={stableVote}
                     onVoteAccepted={handleVoteAccepted}
                     onPredict={stablePredict}
+                    onBoost={stableBoost}
                     onCreateCallout={stableCreateCallout}
                   />
                     );
@@ -3861,9 +4042,11 @@ function ArenaSection({
             </>
           ) : (
             activeList.map((match) => {
+              const renderTotals = getLocalRenderTotals(match.match_id);
+              const voteSource: 'localTotals' | 'match' = renderTotals ? 'localTotals' : 'match';
               const resolvedMatch = getResolvedMatchView(
                 match,
-                voteSnapshotByMatchId[match.match_id] || null,
+                renderTotals,
                 votedMatches[match.match_id] || match.user_voted_cat_id || null
               );
               return (
@@ -3875,18 +4058,22 @@ function ArenaSection({
                 isVoting={votingMatch === resolvedMatch.match_id}
                 voteSyncing={!!voteSyncingByMatchId[resolvedMatch.match_id]}
                 predictBusy={predictBusyMatch === resolvedMatch.match_id}
+                boostBusy={boostBusyMatch === resolvedMatch.match_id}
                 calloutBusy={calloutBusyMatch === resolvedMatch.match_id}
                 socialEnabled={socialEnabled}
                 availableSigils={availableSigils}
                 voteStreak={voteStreak}
                 voteQueued={!!queuedVotes[resolvedMatch.match_id]}
                 showNextUp={nextUpId === resolvedMatch.match_id}
-                voteSnapshot={voteSnapshotByMatchId[resolvedMatch.match_id] || null}
+                voteSnapshot={renderTotals ? normalizeVoteSnapshot(renderTotals) : null}
+                voteSource={voteSource}
+                hasLocalTotals={!!renderTotals}
                 voteAnimTick={voteAnimTickByMatchId[match.match_id] || 0}
                 onRefreshQueued={handleRefreshQueued}
                 onVote={stableVote}
                 onVoteAccepted={handleVoteAccepted}
                 onPredict={stablePredict}
+                onBoost={stableBoost}
                 onCreateCallout={stableCreateCallout}
               />
               );
@@ -4050,7 +4237,7 @@ export default function Page() {
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [arenas, setArenas] = useState<Arena[]>([]);
   const [voteSnapshotByMatchId, setVoteSnapshotByMatchId] = useState<Record<string, VoteSnapshot>>({});
-  const [, setLocalTotals] = useState<Record<string, { votes_a: number; votes_b: number; total_votes: number }>>({});
+  const [localTotals, setLocalTotals] = useState<Record<string, VoteTotals>>({});
   const [voteSyncingByMatchId, setVoteSyncingByMatchId] = useState<Record<string, boolean>>({});
   const [voteAnimTickByMatchId, setVoteAnimTickByMatchId] = useState<Record<string, number>>({});
   const [votedMatches, setVotedMatches] = useState<Record<string, string>>({});
@@ -4063,6 +4250,12 @@ export default function Page() {
   const [testerMode, setTesterMode] = useState(false);
   const [hasProfileUsername, setHasProfileUsername] = useState(false);
   const [showClaimNamePrompt, setShowClaimNamePrompt] = useState(false);
+  const [voteAuthGate, setVoteAuthGate] = useState<{
+    matchId: string;
+    catId: string;
+    source: 'mini' | 'arena';
+  } | null>(null);
+  const resumeVoteHandledRef = useRef(false);
   const [guestId, setGuestId] = useState<string>("");
   const [flame, setFlame] = useState<ArenaFlame | null>(null);
   const [socialLoopEnabled, setSocialLoopEnabled] = useState(false);
@@ -4100,11 +4293,14 @@ export default function Page() {
   const missionNudgeKeyRef = useRef<string>('');
   const [missionNudge, setMissionNudge] = useState<null | { key: string; title: string; cta: string; href: string }>(null);
   const [crateCountdown, setCrateCountdown] = useState('00:00:00');
+  const [crateCanClaim, setCrateCanClaim] = useState(false);
+  const [crateNextResetAt, setCrateNextResetAt] = useState<string | null>(null);
+  const [homeSigils, setHomeSigils] = useState(0);
+  const [homeEpicCrateCost, setHomeEpicCrateCost] = useState(280);
+  const [homeEpicOpensToday, setHomeEpicOpensToday] = useState(0);
+  const [homeEpicDailyCap, setHomeEpicDailyCap] = useState(8);
   const [showHighlightsSection, setShowHighlightsSection] = useState(false);
-  const [showDailyCoreSection, setShowDailyCoreSection] = useState(false);
   const [starterQuestFlags, setStarterQuestFlags] = useState<Record<string, boolean>>({});
-  const [questTab, setQuestTab] = useState<QuestTabKey>('starter');
-  const [questsExpanded, setQuestsExpanded] = useState(false);
   const [homeQuestBuckets, setHomeQuestBuckets] = useState<{ daily: DashboardQuest[]; weekly: DashboardQuest[] }>({ daily: [], weekly: [] });
   const [hudPulseKey, setHudPulseKey] = useState('');
   const [displayStats, setDisplayStats] = useState({ streak: 0, xp: 0, sigils: 0, pred: 0 });
@@ -4119,6 +4315,63 @@ export default function Page() {
   }>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [homepageVoteHintComplete, setHomepageVoteHintComplete] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setDebugMode(new URLSearchParams(window.location.search).get('debug') === '1');
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      setHomepageVoteHintComplete(window.localStorage.getItem(HOMEPAGE_VOTE_HINT_COMPLETE_KEY) === 'true');
+    } catch {
+      setHomepageVoteHintComplete(false);
+    }
+  }, []);
+
+  const refreshCrateStatus = useCallback(async () => {
+    try {
+      const [dailyRes, epicRes] = await Promise.all([
+        fetch('/api/crates/status?crate_type=daily', { cache: 'no-store' }),
+        fetch('/api/crates/status?crate_type=epic', { cache: 'no-store' }),
+      ]);
+      const daily = await dailyRes.json().catch(() => null);
+      const epic = await epicRes.json().catch(() => null);
+      if (dailyRes.ok && daily?.ok) {
+        const opensToday = Math.max(0, Number(daily?.opens_today || 0));
+        const canClaim = typeof daily?.can_claim === 'boolean' ? daily.can_claim : opensToday < 1;
+        setCrateCanClaim(canClaim);
+        setCrateNextResetAt(String(daily?.next_reset_at || '') || null);
+        setHomeSigils(Number(daily?.sigils || 0));
+      }
+      if (epicRes.ok && epic?.ok) {
+        setHomeSigils(Number(epic?.sigils || daily?.sigils || 0));
+        setHomeEpicCrateCost(Number(epic?.paid_crate_cost || 280));
+        setHomeEpicOpensToday(Number(epic?.opens_today || 0));
+        setHomeEpicDailyCap(Number(epic?.daily_cap || 8));
+      }
+    } catch {
+      // keep existing UI state
+    }
+  }, []);
+
+  const bumpFlameVoteProgress = useCallback(() => {
+    setFlame((prev) => {
+      if (!prev) return prev;
+      const currentVotes = Math.max(0, Number(prev.todayProgress?.votesToday || 0));
+      const nextVotes = Math.min(5, currentVotes + 1);
+      if (nextVotes === currentVotes) return prev;
+      return {
+        ...prev,
+        todayProgress: {
+          ...prev.todayProgress,
+          votesToday: nextVotes,
+        },
+      };
+    });
+  }, []);
 
   const statsStrip = useMemo(() => (
     <div className="stats-strip-shell hidden sm:block">
@@ -4212,18 +4465,34 @@ export default function Page() {
   const statusBurstUntilRef = useRef<number>(0);
   const duelSectionRef = useRef<HTMLAnchorElement | null>(null);
   const [duelSectionInView, setDuelSectionInView] = useState(false);
-  const [voteConfirmToast, setVoteConfirmToast] = useState<{ visible: boolean; rarity: string | null; pulseTick: number }>({
+  const [voteConfirmToast, setVoteConfirmToast] = useState<{ visible: boolean; rarity: string | null; pulseTick: number; boostAmount: number | null; streakBonus: number | null; extraLine: string | null }>({
     visible: false,
     rarity: null,
     pulseTick: 0,
+    boostAmount: null,
+    streakBonus: null,
+    extraLine: null,
   });
   const voteConfirmToastTimerRef = useRef<number | null>(null);
+  const voteConfirmToastMetaRef = useRef<{ lastMatchId: string | null; lastVoteAt: number }>({ lastMatchId: null, lastVoteAt: 0 });
+  const [matchResultReveal, setMatchResultReveal] = useState<{ visible: boolean; matchId: string | null; outcome: 'WIN' | 'LOSS'; sigilsEarned: number; streakChange: number; boosted: boolean }>({
+    visible: false,
+    matchId: null,
+    outcome: 'WIN',
+    sigilsEarned: 0,
+    streakChange: 0,
+    boosted: false,
+  });
   const lowEgressMode = process.env.NEXT_PUBLIC_LOW_EGRESS === '1';
   const guestRewardsHintShownRef = useRef(false);
   const arenaRefillInFlightRef = useRef<Record<'main' | 'rookie', boolean>>({ main: false, rookie: false });
   const arenaRefillLastAtRef = useRef<Record<'main' | 'rookie', number>>({ main: 0, rookie: 0 });
+  const shownResultForMatchRef = useRef<Set<string>>(new Set());
   const voteStateScope = useMemo(() => voteScopeFromArenas(arenas), [arenas]);
   const showToast = useCallback((msg: string) => showGlobalToast(msg, 5000), []);
+  const openVoteAuthGate = useCallback((matchId: string, catId: string, source: 'mini' | 'arena') => {
+    setVoteAuthGate({ matchId, catId, source });
+  }, []);
   const handleResetMatches = useCallback(() => {
     setVotedMatches({});
     writeVotedMatchesToStorage({}, voteStateScope);
@@ -4369,26 +4638,153 @@ export default function Page() {
   const hasMatchesForActiveTab = displayedArenas.some((arena) =>
     (arena.rounds || []).some((round) => (round.matches || []).length > 0)
   );
-  const homepageMiniMatch = useMemo(() => {
-    let lockedFallback: ArenaMatch | null = null;
-    for (const arena of displayedArenas) {
-      const currentRound = (arena.rounds || []).find((round) => round.round === arena.current_round);
-      const candidates = (currentRound?.matches || arena.rounds.flatMap((round) => round.matches || []))
-        .filter((match) => !!match?.match_id && !isByeMatch(match) && isArenaVotingStatus(match.status));
-      const unlocked = candidates.find((match) => !match.voting_locked);
-      if (unlocked) return unlocked;
-      if (!lockedFallback && candidates[0]) lockedFallback = candidates[0];
+  const homepageStarterVoteDiagnostics = useMemo(() => {
+    const byPool = [...(arenaPoolsByType.main || []), ...(arenaPoolsByType.rookie || [])];
+    const seen = new Set<string>();
+    const baseCandidates: ArenaMatch[] = [];
+    for (const match of byPool) {
+      const matchId = String(match?.match_id || '').trim();
+      if (!matchId || seen.has(matchId)) continue;
+      seen.add(matchId);
+      baseCandidates.push(match);
     }
-    return lockedFallback;
-  }, [displayedArenas]);
+    const reasonCounts = {
+      bye: 0,
+      notActive: 0,
+      alreadyVoted: 0,
+      locked: 0,
+    };
+    const activeCandidates: ArenaMatch[] = [];
+    const unlockedCandidates: ArenaMatch[] = [];
+    const votableCandidates: ArenaMatch[] = [];
+    for (const match of baseCandidates) {
+      const matchId = String(match?.match_id || '');
+      if (isByeMatch(match)) {
+        reasonCounts.bye += 1;
+        continue;
+      }
+      if (!isArenaVotingStatus(match.status)) {
+        reasonCounts.notActive += 1;
+        continue;
+      }
+      activeCandidates.push(match);
+      if (!match.voting_locked) unlockedCandidates.push(match);
+      const alreadyVoted = !!votedMatches[matchId] || !!match.user_voted_cat_id;
+      if (alreadyVoted) {
+        reasonCounts.alreadyVoted += 1;
+      }
+      if (match.voting_locked) {
+        reasonCounts.locked += 1;
+      }
+      if (!alreadyVoted && !match.voting_locked) {
+        votableCandidates.push(match);
+      }
+    }
+    const selected =
+      votableCandidates[0]
+      || unlockedCandidates[0]
+      || activeCandidates[0]
+      || null;
+    const userExhaustedAllCandidates =
+      baseCandidates.length > 0 &&
+      activeCandidates.length > 0 &&
+      votableCandidates.length === 0 &&
+      unlockedCandidates.length > 0 &&
+      reasonCounts.alreadyVoted >= unlockedCandidates.length;
+    return {
+      activePoolCount: activeCandidates.length,
+      votableCount: votableCandidates.length,
+      unlockedCount: unlockedCandidates.length,
+      selected,
+      selectedSource:
+        votableCandidates[0] ? 'active_pool_votable'
+        : unlockedCandidates[0] ? 'active_pool_unlocked_fallback'
+        : activeCandidates[0] ? 'active_pool_active_fallback'
+        : 'empty',
+      countsExcluded: reasonCounts,
+      sourcePoolCount: byPool.length,
+      sourceArenasCount: 0,
+      displayedArenasCount: displayedArenas.length,
+      userExhaustedAllCandidates,
+      finalEmptyReason: selected
+        ? null
+        : (baseCandidates.length === 0
+          ? 'no_tournament_active_candidates'
+          : activeCandidates.length === 0
+            ? 'no_active_status_candidates'
+            : 'no_renderable_match_after_filters'),
+    };
+  }, [arenaPoolsByType.main, arenaPoolsByType.rookie, displayedArenas.length, votedMatches]);
+  const homepageMiniMatch = homepageStarterVoteDiagnostics.selected;
+  const homepageMiniMatchRecheckInFlightRef = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (homepageMiniMatch) return;
+    if (homepageMiniMatchRecheckInFlightRef.current) return;
+    homepageMiniMatchRecheckInFlightRef.current = true;
+    void (async () => {
+      try {
+        const refreshed = await fetchArenas({ refresh: true });
+        const refreshedPoolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
+          main: Array.isArray(refreshed.mainPool) ? refreshed.mainPool : [],
+          rookie: Array.isArray(refreshed.rookiePool) ? refreshed.rookiePool : [],
+        };
+        const refreshedArenasWithPools = (refreshed.arenas || []).map((arena) => {
+          const arenaType = arena.type === 'main' || arena.type === 'rookie' ? arena.type : null;
+          if (!arenaType) return arena;
+          const currentRound = Number(arena.current_round || 1);
+          const poolMatches = refreshedPoolMap[arenaType];
+          if (!poolMatches.length) return arena;
+          return { ...arena, rounds: [{ round: currentRound, matches: poolMatches }] };
+        });
+        const hasCandidates =
+          refreshedPoolMap.main.length > 0 ||
+          refreshedPoolMap.rookie.length > 0;
+        if (hasCandidates) {
+          setArenaPoolsByType((prev) => ({
+            main: refreshedPoolMap.main.length > 0 ? refreshedPoolMap.main : prev.main,
+            rookie: refreshedPoolMap.rookie.length > 0 ? refreshedPoolMap.rookie : prev.rookie,
+          }));
+          setArenas((prev) => (refreshedArenasWithPools.length > 0 ? refreshedArenasWithPools : prev));
+        }
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.debug('[DEV][homepage-starter-match-recheck]', {
+            hadCandidatesAfterRefresh: hasCandidates,
+            refreshedMainPool: refreshedPoolMap.main.length,
+            refreshedRookiePool: refreshedPoolMap.rookie.length,
+            refreshedArenas: refreshedArenasWithPools.length,
+          });
+        }
+      } finally {
+        homepageMiniMatchRecheckInFlightRef.current = false;
+      }
+    })();
+  }, [homepageMiniMatch, loading]);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    // eslint-disable-next-line no-console
+    console.debug('[DEV][homepage-live-match]', {
+      active: homepageStarterVoteDiagnostics.activePoolCount,
+      votable: homepageStarterVoteDiagnostics.votableCount,
+      unlocked: homepageStarterVoteDiagnostics.unlockedCount,
+      selectedMatchId: homepageStarterVoteDiagnostics.selected?.match_id || null,
+    });
+  }, [homepageStarterVoteDiagnostics]);
   const resolvedHomepageMiniMatch = useMemo(() => {
     if (!homepageMiniMatch) return null;
+    const renderTotals = localTotals[homepageMiniMatch.match_id] || null;
     return getResolvedMatchView(
       homepageMiniMatch,
-      voteSnapshotByMatchId[homepageMiniMatch.match_id] || null,
+      renderTotals,
       votedMatches[homepageMiniMatch.match_id] || homepageMiniMatch.user_voted_cat_id || null
     );
-  }, [homepageMiniMatch, voteSnapshotByMatchId, votedMatches]);
+  }, [homepageMiniMatch, localTotals, votedMatches]);
+  const hasScopedHomepageVote = useMemo(
+    () => !!resolvedHomepageMiniMatch?.user_voted_cat_id || Object.keys(votedMatches || {}).length > 0,
+    [resolvedHomepageMiniMatch?.user_voted_cat_id, votedMatches]
+  );
+  const showHomepageVoteHint = !!resolvedHomepageMiniMatch && !homepageVoteHintComplete && !hasScopedHomepageVote;
   const homepageHeartbeatMatchIdsSig = useMemo(() => {
     const ids: string[] = [];
     for (const arena of displayedArenas) {
@@ -4634,7 +5030,7 @@ export default function Page() {
     setOnboardingChecked(true);
   }, [dailyRewardSplash, loading, onboardingChecked, progress?.currentStreak, progress?.level, progress?.predictionStreak, progress?.xp]);
   useEffect(() => {
-    const targetMs = new Date(nextRefreshAtUtc).getTime();
+    const targetMs = new Date(crateNextResetAt || nextRefreshAtUtc).getTime();
     const tick = () => {
       const ms = Math.max(0, targetMs - Date.now());
       const total = Math.floor(ms / 1000);
@@ -4647,7 +5043,7 @@ export default function Page() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [nextRefreshAtUtc]);
+  }, [crateNextResetAt, nextRefreshAtUtc]);
   useEffect(() => {
     const tick = () => {
       const now = new Date();
@@ -4896,7 +5292,7 @@ export default function Page() {
     }
     const poolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
       main: Array.isArray(arenaData.mainPool) ? arenaData.mainPool : [],
-      rookie: [],
+      rookie: Array.isArray(arenaData.rookiePool) ? arenaData.rookiePool : [],
     };
     const arenasWithPools = (arenaData.arenas || []).map((a) => {
       const t = a.type === 'main' || a.type === 'rookie' ? a.type : null;
@@ -4912,12 +5308,13 @@ export default function Page() {
     setArenaPoolsByType(poolMap);
     setArenas(arenasWithPools);
     await Promise.all([
-      loadArenaQueuePage('main').catch(() => ({ ok: false, count: 0 })),
+      loadArenaQueuePage('main', { preserveExistingOnEmpty: true }).catch(() => ({ ok: false, count: 0 })),
     ]);
     const nextVoteScope = voteScopeFromArenas(arenasWithPools as Arena[]);
     const mergedVotes = mergeVotedMaps(arenaData.votedMatches, readVotedMatchesFromStorage(nextVoteScope));
     setVotedMatches(mergedVotes);
     writeVotedMatchesToStorage(mergedVotes, nextVoteScope);
+    await refreshCrateStatus();
     setLoading(false);
     const gs = await fetch("/api/rewards/getting-started", { cache: "no-store" }).then((r) => r.json().catch(() => null)).catch(() => null);
     if (gs?.ok) {
@@ -5099,10 +5496,23 @@ export default function Page() {
         const votesB = Math.max(0, Number(row?.votes_b || 0));
         const snapshot = normalizeVoteSnapshot({ votes_a: votesA, votes_b: votesB, total_votes: votesA + votesB });
         if (snapshot) {
-          setVoteSnapshotByMatchId((current) => ({ ...current, [matchId]: snapshot }));
-          setArenas((current) => applyVoteSnapshotToArenaMatches(current, undefined, matchId, snapshot));
+          setVoteSnapshotByMatchId((current) => {
+            const merged = mergeVoteSnapshot(current[matchId], snapshot, matchId) || snapshot;
+            const prevSnapshot = current[matchId];
+            if (
+              prevSnapshot &&
+              prevSnapshot.votes_a === merged.votes_a &&
+              prevSnapshot.votes_b === merged.votes_b &&
+              prevSnapshot.total_votes === merged.total_votes
+            ) return current;
+            return { ...current, [matchId]: merged };
+          });
         }
-        next[matchId] = {
+        next[matchId] = mergeVoteTotals(next[matchId], {
+          votes_a: votesA,
+          votes_b: votesB,
+          total_votes: Math.max(0, Number(row?.total_votes ?? (votesA + votesB))),
+        }) || {
           votes_a: votesA,
           votes_b: votesB,
           total_votes: Math.max(0, Number(row?.total_votes ?? (votesA + votesB))),
@@ -5126,12 +5536,52 @@ export default function Page() {
     } catch {}
   }
 
-  const triggerVoteConfirmToast = useCallback((rarity?: string | null) => {
+  const visibleMatchIdsForTotals = useMemo(() => {
+    const ids: string[] = [];
+    for (const arena of displayedArenas) {
+      for (const round of arena.rounds || []) {
+        for (const match of round.matches || []) {
+          const id = String(match?.match_id || '').trim();
+          if (!id || ids.includes(id)) continue;
+          ids.push(id);
+          if (ids.length >= 20) return ids;
+        }
+      }
+    }
+    return ids;
+  }, [displayedArenas]);
+
+  useEffect(() => {
+    if (!visibleMatchIdsForTotals.length) return;
+    void refreshAggregates(visibleMatchIdsForTotals);
+  }, [visibleMatchIdsForTotals]);
+
+  const triggerVoteConfirmToast = useCallback((
+    rarity?: string | null,
+    boostAmount?: number | null,
+    streakBonus?: number | null,
+    opts?: { matchId?: string | null; mergeWithRecentVote?: boolean; extraLine?: string | null }
+  ) => {
+    const now = Date.now();
+    const currentMatchId = String(opts?.matchId || '').trim() || null;
+    const canMergeWithRecentVote = !!(
+      opts?.mergeWithRecentVote &&
+      currentMatchId &&
+      voteConfirmToastMetaRef.current.lastMatchId === currentMatchId &&
+      (now - voteConfirmToastMetaRef.current.lastVoteAt) <= 3000
+    );
     setVoteConfirmToast((prev) => ({
       visible: true,
-      rarity: rarity || prev.rarity || null,
+      rarity: rarity || (canMergeWithRecentVote ? prev.rarity : null) || null,
+      boostAmount: boostAmount ?? (canMergeWithRecentVote ? prev.boostAmount : null) ?? null,
+      streakBonus: streakBonus ?? (canMergeWithRecentVote ? prev.streakBonus : null) ?? null,
+      extraLine: opts?.extraLine ?? (canMergeWithRecentVote ? prev.extraLine : null) ?? null,
       pulseTick: prev.pulseTick + 1,
     }));
+    if (currentMatchId) {
+      voteConfirmToastMetaRef.current.lastMatchId = currentMatchId;
+      if (!opts?.mergeWithRecentVote) voteConfirmToastMetaRef.current.lastVoteAt = now;
+    }
     if (voteConfirmToastTimerRef.current) window.clearTimeout(voteConfirmToastTimerRef.current);
     voteConfirmToastTimerRef.current = window.setTimeout(() => {
       setVoteConfirmToast((prev) => ({ ...prev, visible: false }));
@@ -5147,6 +5597,10 @@ export default function Page() {
       router.push('/tournament');
       return;
     }
+    if (!hasCredentials) {
+      openVoteAuthGate(String(match.match_id || ''), String(catId || ''), 'mini');
+      return;
+    }
     if (match.voting_locked) {
       showToast(`Preview voting is paused. ${pulseCountdown ? `Next pulse in ${pulseCountdown}.` : 'Open the bracket to follow the next round.'}`);
       return;
@@ -5154,18 +5608,22 @@ export default function Page() {
     const existingVote = votedMatches[match.match_id];
     if (existingVote) {
       bumpVoteAnimTick(match.match_id);
-      showToast('Your preview vote is already in. Continue when you’re ready.');
+      showToast("Your preview vote is already in. Continue when you're ready.");
       return;
     }
-    const ok = await handleVote(match.match_id, catId);
+    const ok = await handleVote(match.match_id, catId, { source: 'mini' });
     if (ok) {
       showToast('Vote recorded. Continue into the full bracket when you want.');
       return;
     }
-  }, [bumpVoteAnimTick, handleVote, homepageMiniMatch, pulseCountdown, router, showToast, votedMatches]);
+  }, [bumpVoteAnimTick, handleVote, hasCredentials, homepageMiniMatch, openVoteAuthGate, pulseCountdown, router, showToast, votedMatches]);
 
-  async function handleVote(matchId: string, catId: string): Promise<boolean> {
+  async function handleVote(matchId: string, catId: string, opts?: { source?: 'mini' | 'arena' }): Promise<boolean> {
     if (votingMatch) return false;
+    if (!hasCredentials) {
+      openVoteAuthGate(String(matchId || ''), String(catId || ''), 'arena');
+      return false;
+    }
     if (Date.now() < Number(voteCooldownUntilRef.current || 0)) {
       showToast("Too fast — take a breath 😼");
       return false;
@@ -5177,15 +5635,8 @@ export default function Page() {
     const matchedArenaType = arenaSearchPool.find((a) =>
       (a.rounds || []).some((r) => (r.matches || []).some((m) => m.match_id === matchId))
     )?.type as 'main' | 'rookie' | undefined;
+    const hadScopedVoteBefore = Object.keys(votedMatches || {}).length > 0;
     const baselineSnapshot = normalizeVoteSnapshot(voteSnapshotByMatchId[matchId] || matchedMatch || null);
-    const voteSide: 'a' | 'b' | null =
-      matchedMatch?.cat_a?.id === catId ? 'a' :
-      matchedMatch?.cat_b?.id === catId ? 'b' :
-      null;
-    const optimisticSnapshot =
-      voteSide && matchedMatch
-        ? buildOptimisticVoteSnapshot(voteSnapshotByMatchId[matchId] || matchedMatch, voteSide)
-        : null;
     setVotingMatch(matchId);
     setError(null);
     setVotedMatches((prev) => {
@@ -5200,10 +5651,6 @@ export default function Page() {
       return next;
     });
     markVoteSyncing(matchId);
-    if (optimisticSnapshot) {
-      setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: optimisticSnapshot }));
-      setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, optimisticSnapshot));
-    }
     try {
       const r = await fetch("/api/vote", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -5215,8 +5662,6 @@ export default function Page() {
         const candidates = [
           payload?.votes_a, payload?.votesA,
           payload?.votes_b, payload?.votesB,
-          payload?.percent_a, payload?.percentA,
-          payload?.percent_b, payload?.percentB,
           payload?.total_votes, payload?.totalVotes,
         ];
         return candidates.some((value) => Number.isFinite(Number(value)));
@@ -5237,9 +5682,27 @@ export default function Page() {
             if (!found) continue;
             const snapshot = normalizeVoteSnapshot(found);
             if (snapshot) {
-              setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: snapshot }));
-              setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, snapshot));
-              return snapshot;
+              const merged = mergeVoteSnapshot(
+                normalizeVoteSnapshot(voteSnapshotByMatchId[matchId] || baselineSnapshot || null),
+                snapshot,
+                matchId
+              );
+              if (merged) {
+                setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: merged }));
+                setLocalTotals((prev) => ({
+                  ...prev,
+                  [matchId]: mergeVoteTotals(prev[matchId], {
+                    votes_a: merged.votes_a,
+                    votes_b: merged.votes_b,
+                    total_votes: merged.total_votes,
+                  }) || {
+                    votes_a: merged.votes_a,
+                    votes_b: merged.votes_b,
+                    total_votes: merged.total_votes,
+                  },
+                }));
+                return merged;
+              }
             }
           }
         }
@@ -5253,13 +5716,14 @@ export default function Page() {
         }
         return null;
       };
-      const applyResolvedVoteState = (payload: any) => {
+      const applyResolvedVoteState = (payload: any, opts?: { alreadyVotedSync?: boolean; animate?: boolean }) => {
         if (!payload) {
           clearVoteSyncing(matchId);
           return;
         }
+        const alreadyVotedSync = !!opts?.alreadyVotedSync;
+        const shouldAnimate = opts?.animate ?? !alreadyVotedSync;
         const currentSnapshot = normalizeVoteSnapshot(
-          optimisticSnapshot ||
           voteSnapshotByMatchId[matchId] ||
           baselineSnapshot ||
           matchedMatch ||
@@ -5279,43 +5743,53 @@ export default function Page() {
           payload?.total_votes,
           payload?.totalVotes
         ) ?? (votesA + votesB);
-        const percentA = asFiniteNumber(
-          payload?.percent_a,
-          payload?.percentA
-        ) ?? (totalVotes > 0 ? Math.round((votesA / totalVotes) * 100) : 50);
-        const percentB = asFiniteNumber(
-          payload?.percent_b,
-          payload?.percentB
-        ) ?? (totalVotes > 0 ? Math.max(0, 100 - percentA) : 50);
         const snapshot = normalizeVoteSnapshot({
           votes_a: votesA,
           votes_b: votesB,
-          percent_a: percentA,
-          percent_b: percentB,
+          total_votes: totalVotes,
         }) || {
           votes_a: votesA,
           votes_b: votesB,
           total_votes: totalVotes,
-          percent_a: percentA,
-          percent_b: percentB,
         };
-        setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: snapshot }));
-        setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, snapshot));
-        bumpVoteAnimTick(matchId);
-        clearVoteSyncing(matchId);
-      };
-      const restoreVoteSnapshot = () => {
-        if (baselineSnapshot) {
-          setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: baselineSnapshot }));
-          setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, baselineSnapshot));
-        } else {
-          setVoteSnapshotByMatchId((prev) => {
-            if (!prev[matchId]) return prev;
-            const next = { ...prev };
-            delete next[matchId];
-            return next;
+        const nextSnapshot = alreadyVotedSync
+          ? snapshot
+          : (mergeVoteSnapshot(currentSnapshot, snapshot, matchId) || snapshot);
+        if (alreadyVotedSync && process.env.NODE_ENV !== 'production') {
+          const prevTotals = localTotals[matchId] || currentSnapshot || baselineSnapshot || null;
+          // eslint-disable-next-line no-console
+          console.debug('[DEV][already-voted-sync]', {
+            matchId,
+            previous: prevTotals ? { votes_a: prevTotals.votes_a, votes_b: prevTotals.votes_b, total_votes: prevTotals.total_votes } : null,
+            server: { votes_a: nextSnapshot.votes_a, votes_b: nextSnapshot.votes_b, total_votes: nextSnapshot.total_votes },
+            animationSkipped: !shouldAnimate,
           });
         }
+        setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: nextSnapshot }));
+        if (alreadyVotedSync) {
+          setLocalTotals((prev) => ({
+            ...prev,
+            [matchId]: {
+              votes_a: nextSnapshot.votes_a,
+              votes_b: nextSnapshot.votes_b,
+              total_votes: nextSnapshot.total_votes,
+            },
+          }));
+        } else {
+          setLocalTotals((prev) => ({
+            ...prev,
+            [matchId]: mergeVoteTotals(prev[matchId], {
+              votes_a: nextSnapshot.votes_a,
+              votes_b: nextSnapshot.votes_b,
+              total_votes: nextSnapshot.total_votes,
+            }) || {
+              votes_a: nextSnapshot.votes_a,
+              votes_b: nextSnapshot.votes_b,
+              total_votes: nextSnapshot.total_votes,
+            },
+          }));
+        }
+        if (shouldAnimate) bumpVoteAnimTick(matchId);
         clearVoteSyncing(matchId);
       };
       if (r.status === 429) {
@@ -5332,8 +5806,8 @@ export default function Page() {
           writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
-        restoreVoteSnapshot();
         showToast("Too fast — take a breath 😼");
+        clearVoteSyncing(matchId);
         return false;
       }
       const msg = String(data?.error || "");
@@ -5350,9 +5824,9 @@ export default function Page() {
           : incomingChoice === 'b' ? String(matchedMatch?.cat_b?.id || catId)
           : String(catId || incomingChoice || 'already');
         if (hasServerVoteSnapshot(data)) {
-          applyResolvedVoteState(data);
+          // Show animation even for already-voted matches (e.g., after arena refresh)
+          applyResolvedVoteState(data, { alreadyVotedSync: true, animate: true });
         } else {
-          bumpVoteAnimTick(matchId);
           await hydrateVisibleMatchSnapshot();
           clearVoteSyncing(matchId);
         }
@@ -5372,8 +5846,8 @@ export default function Page() {
           writeVotedMatchesToStorage(next, voteStateScope);
           return next;
         });
-        restoreVoteSnapshot();
         showToast("Vote failed — try again");
+        clearVoteSyncing(matchId);
         return false;
       } else {
         const nowMs = Date.now();
@@ -5403,7 +5877,19 @@ export default function Page() {
           matchedMatch?.cat_a?.id === catId ? matchedMatch?.cat_a?.rarity
           : matchedMatch?.cat_b?.id === catId ? matchedMatch?.cat_b?.rarity
           : null;
-        triggerVoteConfirmToast(votedCatRarity || null);
+        const firstHomepageVoteSuccess = opts?.source === 'mini' && !hadScopedVoteBefore && !homepageVoteHintComplete;
+        if (firstHomepageVoteSuccess) {
+          try {
+            window.localStorage.setItem(HOMEPAGE_VOTE_HINT_COMPLETE_KEY, 'true');
+          } catch {}
+          setHomepageVoteHintComplete(true);
+        }
+        triggerVoteConfirmToast(votedCatRarity || null, null, null, {
+          matchId,
+          extraLine: firstHomepageVoteSuccess ? '+1 vote • streak started 🔥' : null,
+        });
+        bumpFlameVoteProgress();
+        markStarterQuest('vote_match');
         if (hasCredentials && !hasProfileUsername) {
           try {
             const k = 'guest_vote_count';
@@ -5437,6 +5923,9 @@ export default function Page() {
             xp: prev.xp + Number(data?.xp_earned || 5),
             catXpPool: prev.catXpPool + Number(data?.cat_xp_banked || 0),
           } : null);
+          if (Number(data?.sigils_earned || 0) > 0) {
+            showToast(`+${Number(data?.sigils_earned || 0)} sigils earned · Visit Shop`);
+          }
         } else if (!guestRewardsHintShownRef.current) {
           guestRewardsHintShownRef.current = true;
           showToast("Create account to earn streak/XP/rewards");
@@ -5449,7 +5938,7 @@ export default function Page() {
             .then((r) => r.json().catch(() => null))
             .then((payload) => {
               const updates = Array.isArray(payload?.updates)
-                ? (payload.updates as Array<{ matchId: string; votesA?: number; votesB?: number; totalVotes?: number; percentA?: number; percentB?: number }>)
+                ? (payload.updates as Array<{ matchId: string; votesA?: number; votesB?: number; totalVotes?: number }>)
                 : [];
               if (!updates.length) return;
               const updateMap = new Map(updates.map((u: any) => [String(u.matchId || ''), u]));
@@ -5462,23 +5951,46 @@ export default function Page() {
                   const incomingSnapshot = normalizeVoteSnapshot({
                     votes_a: Number(update.votesA || 0),
                     votes_b: Number(update.votesB || 0),
-                    percent_a: Number(update.percentA || 0),
-                    percent_b: Number(update.percentB || 0),
+                    total_votes: Number(update.totalVotes || 0),
                   });
-                  const mergedSnapshot = preferNonRegressingSnapshot(next[updateMatchId], incomingSnapshot);
+                  const mergedSnapshot = mergeVoteSnapshot(next[updateMatchId], incomingSnapshot, updateMatchId);
                   if (!mergedSnapshot) return;
                   const prevSnapshot = next[updateMatchId];
                   if (
                     prevSnapshot &&
                     prevSnapshot.votes_a === mergedSnapshot.votes_a &&
                     prevSnapshot.votes_b === mergedSnapshot.votes_b &&
-                    prevSnapshot.percent_a === mergedSnapshot.percent_a &&
-                    prevSnapshot.percent_b === mergedSnapshot.percent_b &&
                     prevSnapshot.total_votes === mergedSnapshot.total_votes
                   ) {
                     return;
                   }
                   next[updateMatchId] = mergedSnapshot;
+                  changed = true;
+                });
+                return changed ? next : prev;
+              });
+              setLocalTotals((prev) => {
+                let changed = false;
+                const next = { ...prev };
+                updates.forEach((update) => {
+                  const updateMatchId = String(update.matchId || '');
+                  if (!updateMatchId) return;
+                  const merged = mergeVoteTotals(next[updateMatchId], {
+                    votes_a: Math.max(0, Number(update.votesA || 0)),
+                    votes_b: Math.max(0, Number(update.votesB || 0)),
+                    total_votes: Math.max(0, Number(update.totalVotes ?? (Number(update.votesA || 0) + Number(update.votesB || 0)))),
+                  });
+                  if (!merged) return;
+                  const prevRow = next[updateMatchId];
+                  if (
+                    prevRow &&
+                    prevRow.votes_a === merged.votes_a &&
+                    prevRow.votes_b === merged.votes_b &&
+                    prevRow.total_votes === merged.total_votes
+                  ) {
+                    return;
+                  }
+                  next[updateMatchId] = merged;
                   changed = true;
                 });
                 return changed ? next : prev;
@@ -5516,17 +6028,6 @@ export default function Page() {
         writeVotedMatchesToStorage(next, voteStateScope);
         return next;
       });
-      if (baselineSnapshot) {
-        setVoteSnapshotByMatchId((prev) => ({ ...prev, [matchId]: baselineSnapshot }));
-        setArenas((prev) => applyVoteSnapshotToArenaMatches(prev, matchedArenaType, matchId, baselineSnapshot));
-      } else {
-        setVoteSnapshotByMatchId((prev) => {
-          if (!prev[matchId]) return prev;
-          const next = { ...prev };
-          delete next[matchId];
-          return next;
-        });
-      }
       clearVoteSyncing(matchId);
       showToast("Vote failed — try again");
       return false;
@@ -5542,6 +6043,37 @@ export default function Page() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (resumeVoteHandledRef.current) return;
+    if (loading || !hasCredentials) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const resumeMatchId = String(params.get('resume_vote_match') || '').trim();
+    const resumeCatId = String(params.get('resume_vote_cat') || '').trim();
+    if (!resumeMatchId || !resumeCatId) return;
+    const allMatches = [...displayedArenas, ...arenas]
+      .flatMap((arena) => (arena.rounds || []).flatMap((round) => round.matches || []));
+    const resumeMatch = allMatches.find((m) => String(m?.match_id || '') === resumeMatchId);
+    const resumeCatValid =
+      !!resumeMatch &&
+      (String(resumeMatch?.cat_a?.id || '') === resumeCatId || String(resumeMatch?.cat_b?.id || '') === resumeCatId);
+    resumeVoteHandledRef.current = true;
+    const cleanupResumeParams = () => {
+      const next = new URL(window.location.href);
+      next.searchParams.delete('resume_vote_match');
+      next.searchParams.delete('resume_vote_cat');
+      next.searchParams.delete('resume_vote_src');
+      router.replace(`${next.pathname}${next.search}${next.hash}`, { scroll: false });
+    };
+    if (!resumeCatValid) {
+      cleanupResumeParams();
+      return;
+    }
+    void handleVote(resumeMatchId, resumeCatId).finally(() => {
+      cleanupResumeParams();
+    });
+  }, [arenas, displayedArenas, handleVote, hasCredentials, loading, router]);
 
   useEffect(() => {
     return () => {
@@ -5583,7 +6115,7 @@ export default function Page() {
             const res = await fetch(`/api/arena/updates?arena=${activeArena}&tab=voting&page=${info.pageIndex}&since=${since}`, { cache: 'no-store' });
             const data = await res.json().catch(() => null);
             if (data?.ok && Array.isArray(data.updates)) {
-              const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number; totalVotes?: number; percentA?: number; percentB?: number }>;
+              const updates = data.updates as Array<{ matchId: string; votesA: number; votesB: number; totalVotes?: number }>;
               if (updates.length > 0) {
                 const updateMap = new Map(updates.map((u) => [u.matchId, u]));
                 setVoteSnapshotByMatchId((prev) => {
@@ -5595,23 +6127,46 @@ export default function Page() {
                     const incomingSnapshot = normalizeVoteSnapshot({
                       votes_a: Number(update.votesA || 0),
                       votes_b: Number(update.votesB || 0),
-                      percent_a: Number(update.percentA || 0),
-                      percent_b: Number(update.percentB || 0),
+                      total_votes: Number(update.totalVotes || 0),
                     });
-                    const mergedSnapshot = preferNonRegressingSnapshot(next[updateMatchId], incomingSnapshot);
+                    const mergedSnapshot = mergeVoteSnapshot(next[updateMatchId], incomingSnapshot, updateMatchId);
                     if (!mergedSnapshot) return;
                     const prevSnapshot = next[updateMatchId];
                     if (
                       prevSnapshot &&
                       prevSnapshot.votes_a === mergedSnapshot.votes_a &&
                       prevSnapshot.votes_b === mergedSnapshot.votes_b &&
-                      prevSnapshot.percent_a === mergedSnapshot.percent_a &&
-                      prevSnapshot.percent_b === mergedSnapshot.percent_b &&
                       prevSnapshot.total_votes === mergedSnapshot.total_votes
                     ) {
                       return;
                     }
                     next[updateMatchId] = mergedSnapshot;
+                    changed = true;
+                  });
+                  return changed ? next : prev;
+                });
+                setLocalTotals((prev) => {
+                  let changed = false;
+                  const next = { ...prev };
+                  updates.forEach((update) => {
+                    const updateMatchId = String(update.matchId || '');
+                    if (!updateMatchId) return;
+                    const merged = mergeVoteTotals(next[updateMatchId], {
+                      votes_a: Math.max(0, Number(update.votesA || 0)),
+                      votes_b: Math.max(0, Number(update.votesB || 0)),
+                      total_votes: Math.max(0, Number(update.totalVotes ?? (Number(update.votesA || 0) + Number(update.votesB || 0)))),
+                    });
+                    if (!merged) return;
+                    const prevRow = next[updateMatchId];
+                    if (
+                      prevRow &&
+                      prevRow.votes_a === merged.votes_a &&
+                      prevRow.votes_b === merged.votes_b &&
+                      prevRow.total_votes === merged.total_votes
+                    ) {
+                      return;
+                    }
+                    next[updateMatchId] = merged;
                     changed = true;
                   });
                   return changed ? next : prev;
@@ -5678,6 +6233,56 @@ export default function Page() {
     predictBusyMatch,
     votingMatch,
   ]);
+
+  // Detect completed matches and trigger result reveal
+  useEffect(() => {
+    if (matchResultReveal.visible) return; // Already showing a reveal
+
+    const allMatches = arenas.flatMap((arena) => (arena.rounds || []).flatMap((round) => round.matches || []));
+    for (const match of allMatches) {
+      const matchId = match.match_id;
+      if (!matchId) continue;
+
+      // Check if user voted on this match
+      const userVotedCatId = votedMatches[matchId] || match.user_voted_cat_id;
+      if (!userVotedCatId) continue;
+
+      // Check if match is complete and has a winner
+      const isComplete = String(match.status || '').toLowerCase() === 'complete' || String(match.status || '').toLowerCase() === 'completed';
+      const winnerId = match.winner_id;
+      if (!isComplete || !winnerId) continue;
+
+      // Check if we already showed the result for this match
+      if (shownResultForMatchRef.current.has(matchId)) continue;
+
+      // Determine outcome
+      const isWin = winnerId === userVotedCatId;
+      const outcome: 'WIN' | 'LOSS' = isWin ? 'WIN' : 'LOSS';
+
+      // Calculate rewards (sigils for win)
+      const sigilsEarned = isWin ? 5 : 0;
+
+      // Streak info - pass current count and whether it changed
+      const currentStreak = voteStreak;
+      const streakChange = 0; // Streak changes handled by backend, displayed via currentStreak
+
+      // Check if user had a prediction/boost on this match
+      const matchData = allMatches.find((m) => m.match_id === matchId);
+      const hasPrediction = !!matchData?.user_prediction?.predicted_cat_id;
+      const hasBoost = false; // Boosts not yet implemented in arena voting
+
+      // Mark as shown and trigger reveal
+      shownResultForMatchRef.current.add(matchId);
+      setMatchResultReveal({
+        visible: true,
+        matchId,
+        outcome,
+        sigilsEarned,
+        streakChange,
+        boosted: hasPrediction || hasBoost,
+      });
+    }
+  }, [arenas, votedMatches, matchResultReveal.visible]);
 
   function handleClutchSignal(label: string) {
     if (!clutchSharePromptEnabled) return;
@@ -5876,6 +6481,59 @@ export default function Page() {
     }
   }
 
+  const [boostBusyMatch, setBoostBusyMatch] = useState<string | null>(null);
+
+  async function handleBoost(matchId: string, catId: string, bet: number): Promise<boolean> {
+    if (boostBusyMatch) return false;
+    setBoostBusyMatch(matchId);
+    try {
+      const r = await fetch('/api/match/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: matchId, predicted_cat_id: catId, bet }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data?.ok) {
+        showToast(data?.error || 'Boost failed');
+        return false;
+      } else {
+        const newStreak = Number(data.current_streak ?? progress?.predictionStreak ?? 0);
+        setProgress((p) => p ? { ...p, sigils: Number(data.sigils_after ?? p.sigils), predictionStreak: newStreak } : p);
+        // Calculate streak bonus percentage using existing tactical logic
+        const streakBonusPct = newStreak >= 8 ? 20 : newStreak >= 5 ? 15 : newStreak >= 3 ? 10 : newStreak >= 2 ? 5 : 0;
+        triggerVoteConfirmToast(null, bet, streakBonusPct > 0 ? streakBonusPct : null, { matchId, mergeWithRecentVote: true });
+        const updated = await fetchArenas();
+        const poolMap: Record<'main' | 'rookie', ArenaMatch[]> = {
+          main: Array.isArray(updated.mainPool) ? updated.mainPool : [],
+          rookie: [],
+        };
+        const arenasWithPools = (updated.arenas || []).map((a) => {
+          const t = a.type === 'main' || a.type === 'rookie' ? a.type : null;
+          if (!t) return a;
+          const currentRound = Number(a.current_round || 1);
+          const poolMatches = poolMap[t];
+          if (!poolMatches.length) return a;
+          return { ...a, rounds: [{ round: currentRound, matches: poolMatches }] };
+        });
+        setArenas(arenasWithPools);
+        setVotedMatches((prev) => {
+          const next = mergeVotedMaps(prev, updated.votedMatches);
+          writeVotedMatchesToStorage(next, voteStateScope);
+          return next;
+        });
+        statusBurstUntilRef.current = Date.now() + 20_000;
+        refreshGettingStarted();
+        void refreshFlameState();
+        return true;
+      }
+    } catch {
+      showToast("Network error");
+      return false;
+    } finally {
+      setBoostBusyMatch(null);
+    }
+  }
+
   async function handleCreateCallout(matchId: string, catId: string) {
     if (!matchId || !catId || calloutBusyMatch) return;
     setCalloutBusyMatch(matchId);
@@ -5929,7 +6587,7 @@ export default function Page() {
   }
 
   function resolveMissionHref(href: string): string {
-    if (href === '/profile/me') return guestId ? `/profile/${guestId}` : '/profile';
+    if (href === '/profile/me') return guestId ? `/profile/${guestId}` : '/';
     return href;
   }
 
@@ -6020,6 +6678,19 @@ export default function Page() {
     return items.slice(0, 3);
   }, [displayedArenas, nextRefreshAtUtc]);
 
+  const prevVotedCountRef = useRef(0);
+
+  const markStarterQuest = useCallback((key: string) => {
+    setStarterQuestFlags((prev) => {
+      if (prev[key]) return prev;
+      const next = { ...prev, [key]: true };
+      try {
+        window.localStorage.setItem(HOMEPAGE_STARTER_QUESTS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(HOMEPAGE_STARTER_QUESTS_KEY);
@@ -6033,16 +6704,14 @@ export default function Page() {
     }
   }, []);
 
-  const markStarterQuest = useCallback((key: string) => {
-    setStarterQuestFlags((prev) => {
-      if (prev[key]) return prev;
-      const next = { ...prev, [key]: true };
-      try {
-        window.localStorage.setItem(HOMEPAGE_STARTER_QUESTS_KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  }, []);
+  // Auto-complete starter vote task on first vote
+  useEffect(() => {
+    const currentVotedCount = Object.keys(votedMatches || {}).length;
+    if (currentVotedCount > 0 && prevVotedCountRef.current === 0) {
+      markStarterQuest('vote_match');
+    }
+    prevVotedCountRef.current = currentVotedCount;
+  }, [votedMatches]);
 
   const completedMissionKeys = useMemo(() => {
     const set = new Set<string>();
@@ -6054,15 +6723,16 @@ export default function Page() {
 
   const starterHomepageQuests = useMemo(() => {
     const votedOnce = Object.keys(votedMatches || {}).length > 0;
+    const voteTaskDone = !!starterQuestFlags.vote_match || votedOnce;
     return [
       {
         key: 'vote_match',
         title: 'Vote in 1 tournament match',
         description: 'Pick a winner in the mini match or the full bracket.',
         reward: STARTER_SIGIL_REWARDS.vote_match,
-        done: votedOnce,
+        done: voteTaskDone,
         cta: null,
-        progress: votedOnce ? 1 : 0,
+        progress: voteTaskDone ? 1 : 0,
         target: 1,
       },
       {
@@ -6096,6 +6766,26 @@ export default function Page() {
         target: 1,
       },
       {
+        key: 'set_username',
+        title: 'Choose your arena name',
+        description: 'Claim your public identity before building your collection.',
+        reward: 20,
+        done: !!hasProfileUsername,
+        cta: hasProfileUsername ? null : 'Set Username',
+        progress: hasProfileUsername ? 1 : 0,
+        target: 1,
+      },
+      {
+        key: 'visit_shop',
+        title: 'Visit Shop',
+        description: 'Spend your sigils on boosts and cosmetics.',
+        reward: 10,
+        done: !!starterQuestFlags.visit_shop,
+        cta: starterQuestFlags.visit_shop ? null : 'Open Shop',
+        progress: starterQuestFlags.visit_shop ? 1 : 0,
+        target: 1,
+      },
+      {
         key: 'enter_whisker',
         title: 'Enter Whisker Arena',
         description: 'Jump into the ranked solo ladder when you want the deeper climb.',
@@ -6106,59 +6796,15 @@ export default function Page() {
         target: 1,
       },
     ];
-  }, [completedMissionKeys, starterQuestFlags, votedMatches]);
+  }, [completedMissionKeys, hasProfileUsername, starterQuestFlags, votedMatches]);
 
-  const homepageQuestTabs = useMemo<Record<QuestTabKey, {
-    label: string;
-    kicker: string;
-    title: string;
-    description: string;
-    quests: HomepageQuestItem[];
-    empty: string;
-  }>>(() => ({
-    starter: {
-      label: 'Starter',
-      kicker: 'Starter Quests',
-      title: 'Earn sigils while you learn.',
-      description: 'Learn the loop with a few quick wins, then branch into the rest of CatClash.',
-      quests: starterHomepageQuests,
-      empty: 'Starter quests will appear here once the onboarding loop is ready.',
-    },
-    daily: {
-      label: 'Daily',
-      kicker: 'Daily Quests',
-      title: 'Today’s repeatable route.',
-      description: 'These refresh with the daily pulse and keep your voting streak moving.',
-      quests: homeQuestBuckets.daily.map((quest) => ({
-        key: quest.id,
-        title: quest.label,
-        description: 'Tracked automatically as you vote, predict, and play.',
-        reward: Number(quest.reward || 0),
-        done: !!quest.done,
-        cta: null,
-        progress: Number(quest.progress || 0),
-        target: Number(quest.target || 0),
-      })),
-      empty: 'Daily quests will unlock here as soon as your dashboard data loads.',
-    },
-    weekly: {
-      label: 'Weekly',
-      kicker: 'Weekly Quests',
-      title: 'Longer arcs for bigger payouts.',
-      description: 'These track your bigger weekly grind without adding more homepage clutter.',
-      quests: homeQuestBuckets.weekly.map((quest) => ({
-        key: quest.id,
-        title: quest.label,
-        description: 'Tracked automatically as you build momentum across the week.',
-        reward: Number(quest.reward || 0),
-        done: !!quest.done,
-        cta: null,
-        progress: Number(quest.progress || 0),
-        target: Number(quest.target || 0),
-      })),
-      empty: 'Weekly quests will show up here once your current cycle data is available.',
-    },
-  }), [homeQuestBuckets.daily, homeQuestBuckets.weekly, starterHomepageQuests]);
+  const flameStarterTasks = useMemo(
+    () =>
+      starterHomepageQuests.filter((quest) =>
+        quest.key === 'vote_match' || quest.key === 'visit_shop' || quest.key === 'set_username'
+      ),
+    [starterHomepageQuests]
+  );
 
   function handleStarterQuestAction(key: string) {
     if (key === 'open_tournament') {
@@ -6174,6 +6820,23 @@ export default function Page() {
     if (key === 'open_duels') {
       markStarterQuest('open_duels');
       router.push('/duel');
+      return;
+    }
+    if (key === 'set_username') {
+      if (hasCredentials && !hasProfileUsername) {
+        if (guestId) {
+          router.push(`/profile/${encodeURIComponent(guestId)}`);
+        } else {
+          router.push('/');
+        }
+      } else if (!hasCredentials) {
+        router.push('/login?next=/');
+      }
+      return;
+    }
+    if (key === 'visit_shop') {
+      markStarterQuest('visit_shop');
+      router.push('/shop');
       return;
     }
     if (key === 'enter_whisker') {
@@ -6299,56 +6962,65 @@ export default function Page() {
           </div>
         </div>
       )}
+      {voteAuthGate && (
+        <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm px-4 py-6 flex items-end sm:items-center justify-center">
+          <div data-testid="vote-auth-gate" className="w-full max-w-sm rounded-2xl border border-cyan-300/25 bg-[linear-gradient(180deg,rgba(6,15,30,0.96),rgba(4,10,22,0.98))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+            <p className="text-sm font-bold text-white">Lock in your vote</p>
+            <p className="mt-1 text-xs text-white/70">Create an account to save votes, earn sigils, and build your flame.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Link
+                href={`/login?next=${encodeURIComponent(`/?resume_vote_match=${encodeURIComponent(voteAuthGate.matchId)}&resume_vote_cat=${encodeURIComponent(voteAuthGate.catId)}&resume_vote_src=${voteAuthGate.source}`)}`}
+                data-testid="vote-auth-gate-cta"
+                className="h-10 rounded-xl bg-cyan-400 text-black text-xs font-bold inline-flex items-center justify-center"
+              >
+                Create / Login
+              </Link>
+              <button
+                type="button"
+                onClick={() => setVoteAuthGate(null)}
+                data-testid="vote-auth-gate-dismiss"
+                className="h-10 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white/85"
+              >
+                Keep browsing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {testerMode ? (
         <Suspense fallback={null}>
           <DebugWidget arenaType={arenaTypeTab} onHydrate={handleDebugWidgetHydrate} />
         </Suspense>
       ) : null}
-      <section className="px-4 pb-3 pt-16 sm:px-5 sm:pb-4 sm:pt-20">
+      {/* Hero / Welcome */}
+      <section className="px-4 pb-3 pt-12 sm:px-5 sm:pb-4 sm:pt-16">
         <div className="mx-auto max-w-4xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-400/18 bg-fuchsia-500/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100/78">
             <Sparkles className="h-3.5 w-3.5 text-fuchsia-300" />
             Daily cat battles
           </div>
-          <h1 className="mt-4 text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
+          <h1 className="mt-3 text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
             Welcome to{' '}
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
               CatClash
             </span>
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/62 sm:text-base sm:leading-7">
-            Vote in daily tournaments, challenge rivals, and level up your cats one battle at a time.
-          </p>
         </div>
       </section>
-      <section className="px-3.5 pb-5 pt-4 sm:px-4 sm:pb-6 sm:pt-5">
-        <div className="mx-auto max-w-5xl">
-          <StarterQuestsModule
-            tabs={homepageQuestTabs}
-            activeTab={questTab}
-            expanded={questsExpanded}
-            onToggleExpanded={() => setQuestsExpanded((prev) => !prev)}
-            onTabChange={setQuestTab}
-            onQuestAction={handleStarterQuestAction}
-          />
-        </div>
-      </section>
-      <ArenaPulseStrip
-        items={arenaPulseItems}
-        onNavigate={(href) => {
-          if (href.includes('/duel')) markStarterQuest('open_duels');
-          router.push(href);
-        }}
-      />
 
-      <section id="home-arenas" className="px-3.5 pb-5 sm:px-4 sm:pb-6">
+      {/* Main Vote Module - Primary Action */}
+      <section id="home-arenas" className="px-3.5 pb-1 sm:px-4 sm:pb-1.5">
         <div className="mx-auto max-w-5xl">
           <MiniMatchPreview
             match={resolvedHomepageMiniMatch}
             voted={resolvedHomepageMiniMatch ? (resolvedHomepageMiniMatch.user_voted_cat_id || null) : null}
             voting={resolvedHomepageMiniMatch ? votingMatch === resolvedHomepageMiniMatch.match_id : false}
-            voteSnapshot={resolvedHomepageMiniMatch ? (voteSnapshotByMatchId[resolvedHomepageMiniMatch.match_id] || null) : null}
+            showVoteHint={showHomepageVoteHint}
+            dailyVoteCount={Math.min(5, Math.max(0, Number(flame?.todayProgress?.votesToday || 0)))}
+            voteSnapshot={resolvedHomepageMiniMatch && localTotals[resolvedHomepageMiniMatch.match_id] ? normalizeVoteSnapshot(localTotals[resolvedHomepageMiniMatch.match_id]) : null}
+            voteSource={resolvedHomepageMiniMatch && localTotals[resolvedHomepageMiniMatch.match_id] ? 'localTotals' : 'match'}
+            hasLocalTotals={!!(resolvedHomepageMiniMatch && localTotals[resolvedHomepageMiniMatch.match_id])}
             voteSyncing={resolvedHomepageMiniMatch ? !!voteSyncingByMatchId[resolvedHomepageMiniMatch.match_id] : false}
             voteAnimTick={resolvedHomepageMiniMatch ? (voteAnimTickByMatchId[resolvedHomepageMiniMatch.match_id] || 0) : 0}
             pulseCountdown={pulseCountdown}
@@ -6358,12 +7030,112 @@ export default function Page() {
               router.push('/tournament');
             }}
           />
+          <div className="mt-1.5">
+            <DailyProgression
+              streakCount={Math.max(0, Number(flame?.dayCount || progress?.currentStreak || 0))}
+              votesToday={Math.min(5, Math.max(0, Number(flame?.todayProgress?.votesToday || 0)))}
+              reactionTick={resolvedHomepageMiniMatch ? (voteAnimTickByMatchId[resolvedHomepageMiniMatch.match_id] || 0) : 0}
+            />
+          </div>
+          {process.env.NODE_ENV !== 'production' && debugMode ? (
+            <p className="mt-2 text-[10px] text-white/45" data-testid="homepage-starter-vote-debug">
+              source={homepageStarterVoteDiagnostics.selectedSource} match={homepageStarterVoteDiagnostics.selected?.match_id || 'none'} active={homepageStarterVoteDiagnostics.activePoolCount} votable={homepageStarterVoteDiagnostics.votableCount} unlocked={homepageStarterVoteDiagnostics.unlockedCount} exhausted={homepageStarterVoteDiagnostics.userExhaustedAllCandidates ? 'yes' : 'no'} empty={homepageStarterVoteDiagnostics.finalEmptyReason || 'none'}
+            </p>
+          ) : null}
         </div>
       </section>
+
+      <section className="px-3.5 pb-3 sm:px-4 sm:pb-4">
+        <div className="mx-auto max-w-5xl">
+          <div className="rounded-[1.55rem] border border-white/[0.05] bg-gradient-to-br from-slate-800/30 via-slate-900/50 to-slate-950/70 p-5 shadow-[0_10px_28px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-yellow-300/78">Daily reward</p>
+                <p className="mt-1 text-[18px] font-black text-white">Claim today&apos;s reward crate</p>
+                <p className="mt-1 text-[11px] text-yellow-100/65">
+                  {crateCanClaim ? 'Ready to open' : `Cooling down • ${crateCountdown}`}
+                </p>
+              </div>
+              <span className={`inline-flex items-center gap-1 rounded-full border ${crateCanClaim ? 'border-yellow-400/16 bg-yellow-500/10 text-yellow-200' : 'border-white/[0.05] bg-white/10 text-white/65'} px-2.5 py-1 text-[10px] font-semibold`}>
+                {crateCanClaim ? '✓ Ready' : 'Cooling'}
+              </span>
+            </div>
+            <Link
+              href="/crate"
+              className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-b from-yellow-400 via-yellow-500 to-yellow-600 px-4 text-[17px] font-black text-black shadow-[0_12px_28px_rgba(234,179,8,0.38)] active:scale-[0.97]"
+            >
+              🎁 Open Crate
+            </Link>
+          </div>
+          <div className="mt-3 space-y-2.5">
+            <p className="px-1 text-[9px] font-bold uppercase tracking-[0.22em] text-white/35">Other Crates</p>
+            <Link
+              href="/crate"
+              className="group relative block overflow-hidden rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-slate-800/20 via-slate-900/30 to-slate-950/50 p-3.5 backdrop-blur-sm transition-all hover:border-purple-400/20"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/5 bg-purple-500/10 text-lg">💜</div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Sigil Crate</p>
+                    <p className="text-[10px] text-white/45">{homeSigils >= 90 ? 'Premium rewards ready to unlock' : 'Unlocks at 90 sigils'}</p>
+                  </div>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${homeSigils >= 90 ? 'bg-purple-500/15 text-purple-200' : 'bg-white/5 text-white/45'}`}>
+                  {homeSigils >= 90 ? 'Unlock' : 'Soon'}
+                </span>
+              </div>
+            </Link>
+            <Link
+              href="/crate"
+              className="group relative block overflow-hidden rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-slate-800/20 via-slate-900/30 to-slate-950/50 p-3.5 backdrop-blur-sm transition-all hover:border-pink-400/20"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/5 bg-pink-500/10 text-lg">🎲</div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Chaos Crate</p>
+                    <p className="text-[10px] text-white/45">
+                      {homeSigils >= homeEpicCrateCost
+                        ? `${Math.max(0, homeEpicDailyCap - homeEpicOpensToday)} opens left today`
+                        : `Unlocks at ${homeEpicCrateCost} sigils`}
+                    </p>
+                  </div>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                  homeEpicOpensToday >= homeEpicDailyCap
+                    ? 'bg-white/5 text-white/45'
+                    : homeSigils >= homeEpicCrateCost
+                      ? 'bg-pink-500/15 text-pink-200'
+                      : 'bg-white/5 text-white/45'
+                }`}>
+                  {homeEpicOpensToday >= homeEpicDailyCap ? 'Cap' : homeSigils >= homeEpicCrateCost ? 'Unlock' : 'Soon'}
+                </span>
+              </div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <VoteConfirmToast
         visible={voteConfirmToast.visible}
         rarity={voteConfirmToast.rarity}
         pulseTick={voteConfirmToast.pulseTick}
+        boostAmount={voteConfirmToast.boostAmount}
+        streakBonus={voteConfirmToast.streakBonus}
+        extraLine={voteConfirmToast.extraLine}
+      />
+
+      <MatchResultReveal
+        visible={matchResultReveal.visible}
+        outcome={matchResultReveal.outcome}
+        sigilsEarned={matchResultReveal.sigilsEarned}
+        streakCount={voteStreak}
+        streakChange={matchResultReveal.streakChange}
+        boosted={matchResultReveal.boosted}
+        nextMilestone={{ nextDay: 5, daysRemaining: Math.max(0, 5 - voteStreak) }}
+        onClose={() => setMatchResultReveal((prev) => ({ ...prev, visible: false }))}
+        onContinue={() => setMatchResultReveal({ visible: false, matchId: null, outcome: 'WIN', sigilsEarned: 0, streakChange: 0, boosted: false })}
       />
 
       {challengeIntro && (
@@ -6408,8 +7180,8 @@ export default function Page() {
                 {spotlights.hall_of_fame?.cat && (
                   <Link href={`/cat/${spotlights.hall_of_fame.cat.id}`} className="block rounded-2xl border border-yellow-300/25 bg-yellow-500/10 p-4">
                     <p className="text-xs text-yellow-200/90 mb-2">Hall of Fame</p>
-                    <img src={canonicalThumbForCat({ id: spotlights.hall_of_fame.cat.id, image_url: spotlights.hall_of_fame.cat.image_url || null })} alt={spotlights.hall_of_fame.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
-                    <p className="font-bold text-sm">{spotlights.hall_of_fame.cat.name}</p>
+                    <img src={canonicalThumbForCat({ id: spotlights.hall_of_fame.cat.id, image_url: spotlights.hall_of_fame.cat.image_url || null })} alt={spotlights.hall_of_fame.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2.5" />
+                    <p className="font-black text-base text-white">{spotlights.hall_of_fame.cat.name}</p>
                     <p className="text-xs text-white/70">by {spotlights.hall_of_fame.cat.owner_username || 'Unknown'} · {spotlights.hall_of_fame.cat.rarity}</p>
                     {(spotlights.hall_of_fame.tagline || spotlights.hall_of_fame.theme || spotlights.hall_of_fame.expires_in_hours != null) && (
                       <p className="mt-1 text-xs text-white/50">
@@ -6421,8 +7193,8 @@ export default function Page() {
                 {spotlights.cat_of_week?.cat && (
                   <Link href={`/cat/${spotlights.cat_of_week.cat.id}`} className="block rounded-2xl border border-rose-300/25 bg-rose-500/10 p-4">
                     <p className="text-xs text-rose-200/90 mb-2">Cat of the Week</p>
-                    <img src={canonicalThumbForCat({ id: spotlights.cat_of_week.cat.id, image_url: spotlights.cat_of_week.cat.image_url || null })} alt={spotlights.cat_of_week.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2" />
-                    <p className="font-bold text-sm">{spotlights.cat_of_week.cat.name}</p>
+                    <img src={canonicalThumbForCat({ id: spotlights.cat_of_week.cat.id, image_url: spotlights.cat_of_week.cat.image_url || null })} alt={spotlights.cat_of_week.cat.name} loading="lazy" decoding="async" className="w-full h-28 rounded-lg object-cover mb-2.5" />
+                    <p className="font-black text-base text-white">{spotlights.cat_of_week.cat.name}</p>
                     <p className="text-xs text-white/70">by {spotlights.cat_of_week.cat.owner_username || 'Unknown'} · {spotlights.cat_of_week.cat.rarity}</p>
                     {(spotlights.cat_of_week.tagline || spotlights.cat_of_week.theme || spotlights.cat_of_week.expires_in_hours != null) && (
                       <p className="mt-1 text-xs text-white/50">
@@ -6436,81 +7208,6 @@ export default function Page() {
           </div>
         </section>
       )}
-
-      {isClaimedPlayer ? (
-        <section className="mb-10 px-4 sm:mb-12">
-          <div className="mx-auto max-w-5xl rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-            <button
-              type="button"
-              onClick={() => setShowDailyCoreSection((prev) => !prev)}
-              className="flex w-full items-center justify-between gap-3 text-left"
-              aria-expanded={showDailyCoreSection}
-            >
-              <div>
-                <h2 className="home-subsection-title text-[12px] font-bold tracking-wide text-white/85 uppercase">Daily Core</h2>
-                <p className="mt-1 text-sm text-white/55">Streaks, flame progress, and your daily crate sit here when you need them.</p>
-              </div>
-              <span className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-transform ${showDailyCoreSection ? 'rotate-180' : ''}`}>⌄</span>
-            </button>
-            {showDailyCoreSection ? (
-              <div className="mx-auto mt-4 grid max-w-5xl grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                <ArenaFlameCard
-                  flame={flame}
-                  loading={loading && !flame}
-                  error={meError}
-                  onRetry={loadAll}
-                  onNavigateAction={handleFlameAction}
-                  compact
-                  className="h-full"
-                />
-                <div className="daily-crate-card glass flex h-full min-h-[210px] flex-col rounded-2xl p-5">
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <h3 className="font-bold text-sm">Crate</h3>
-                    <span className="rounded-full border border-yellow-300/30 bg-yellow-500/12 px-2 py-1 text-[10px] font-semibold text-yellow-100">
-                      Daily reward
-                    </span>
-                  </div>
-
-                  <div className="flex-1 flex flex-col items-center justify-center text-center">
-                    <div className="crate-hero mb-1.5">
-                      <div className="crate-visual">
-                        <div className="crate-lid" />
-                        <div className="crate-box" />
-                        <div className="crate-glow" />
-                      </div>
-                    </div>
-                    <div className="mt-1.5 w-full max-w-[170px] flex flex-col gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => router.push('/crate')}
-                        className="crate-open-btn h-9 w-full px-3 rounded-lg bg-gradient-to-r from-yellow-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-orange-500/30 text-yellow-200 text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1 shadow-[0_10px_24px_rgba(234,179,8,0.12)]"
-                      >
-                        Open Daily Crate
-                      </button>
-                      <p className="text-[10px] text-white/50">Open your daily reward, check pity progress, and see what your next premium roll can hit.</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 pt-2 border-t border-white/10 text-center space-y-1">
-                    <p className="text-[10px] text-white/55">Daily resets in {crateCountdown}</p>
-                    <div className="flex items-center justify-center gap-1 text-[9px]">
-                      <span className="px-1.5 py-0.5 rounded-full bg-zinc-500/25 text-zinc-200">C</span>
-                      <span className="px-1.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200">R</span>
-                      <span className="px-1.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200">E</span>
-                      <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/25 text-yellow-100">L</span>
-                      <span className="px-1.5 py-0.5 rounded-full bg-rose-500/25 text-rose-100">M</span>
-                      <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/25 text-cyan-100">G</span>
-                    </div>
-                    <p className="text-[10px] text-white/60 min-h-[14px]">
-                      Every open builds pity toward Epic+
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
 
       {/* Footer */}
       <footer className="py-8 px-4 border-t border-white/5">

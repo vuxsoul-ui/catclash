@@ -23,10 +23,10 @@ function resolveImageUrl(
   imagePath: string | null
 ): string | null {
   const id = String(catId || '').trim();
-  if (id) return thumbUrlForCat(id);
   if (!imagePath) return null;
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath;
   if (isThumbUrl(imagePath)) return imagePath;
-  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return null;
+  if (id) return thumbUrlForCat(id);
   return supabase.storage.from('cat-images').getPublicUrl(imagePath).data?.publicUrl || null;
 }
 

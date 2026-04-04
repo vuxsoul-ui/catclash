@@ -25,6 +25,18 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [secret, setSecret] = useState('');
   const [inputSecret, setInputSecret] = useState('');
+  const [authChecking, setAuthChecking] = useState(false);
+  const [authDebug, setAuthDebug] = useState<{
+    tokenExists: boolean;
+    tokenPreview: string;
+    authorizationAttached: boolean;
+    lastUrl: string;
+  }>({
+    tokenExists: false,
+    tokenPreview: '',
+    authorizationAttached: false,
+    lastUrl: '',
+  });
   const [cats, setCats] = useState<PendingCat[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -58,19 +70,71 @@ export default function AdminPage() {
     advancedToRound: number | null;
     notes: string[];
   }>(null);
+  const [refreshResult, setRefreshResult] = useState<null | {
+    seededCount: number;
+    tickSeededCount: number;
+    operatorSeededCount: number;
+    actionCount: number;
+  }>(null);
   const [resetResult, setResetResult] = useState<null | {
     oldTournamentId: string | null;
     newTournamentId: string;
     seeded: { main: number; rookie: number };
   }>(null);
   const lastLoadRequestId = useRef(0);
+  const secretRef = useRef('');
 
   useEffect(() => {
-    const saved = localStorage.getItem('admin_secret');
-    if (saved) {
-      setSecret(saved);
-      setAuthed(true);
+    secretRef.current = String(secret || '').trim();
+  }, [secret]);
+
+  async function validateSecret(candidate: string): Promise<boolean> {
+    const value = String(candidate || '').trim();
+    if (!value) return false;
+    try {
+      const res = await fetch(`/api/admin/cats?t=${Date.now()}&status=pending`, {
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${value}`,
+          'x-admin-secret': value,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && process.env.NODE_ENV !== 'production') {
+        setAuthDebug({
+          tokenExists: value.length > 0,
+          tokenPreview: value ? value.slice(0, 6) : '',
+          authorizationAttached: true,
+          lastUrl: `/api/admin/cats?status=pending debug=${JSON.stringify(data?.debug_auth || data?.error || null)}`,
+        });
+      }
+      return !!res.ok && !!data?.ok;
+    } catch {
+      return false;
     }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const saved = localStorage.getItem('admin_secret');
+    if (!saved) return;
+    setAuthChecking(true);
+    void validateSecret(saved).then((ok) => {
+      if (cancelled) return;
+      if (ok) {
+        const clean = saved.trim();
+        secretRef.current = clean;
+        setSecret(clean);
+        setAuthed(true);
+      } else {
+        localStorage.removeItem('admin_secret');
+        setAuthed(false);
+      }
+      setAuthChecking(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -82,9 +146,17 @@ export default function AdminPage() {
     setSelectedIds([]);
   }, [statusFilter, cats.length]);
 
-  function login() {
-    if (!inputSecret.trim()) return;
+  async function login() {
+    if (!inputSecret.trim() || authChecking) return;
     const s = inputSecret.trim();
+    setAuthChecking(true);
+    const ok = await validateSecret(s);
+    setAuthChecking(false);
+    if (!ok) {
+      showToast('Invalid secret');
+      return;
+    }
+    secretRef.current = s;
     setSecret(s);
     localStorage.setItem('admin_secret', s);
     setAuthed(true);
@@ -95,12 +167,22 @@ export default function AdminPage() {
   }
 
   async function adminFetch(url: string, opts: RequestInit = {}) {
+    const bearer = String(secretRef.current || secret || '').trim();
+    if (process.env.NODE_ENV !== 'production') {
+      setAuthDebug({
+        tokenExists: bearer.length > 0,
+        tokenPreview: bearer ? bearer.slice(0, 6) : '',
+        authorizationAttached: true,
+        lastUrl: url,
+      });
+    }
     return fetch(url, {
       ...opts,
       cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${secret}`,
+        Authorization: `Bearer ${bearer}`,
+        'x-admin-secret': bearer,
         ...(opts.headers || {}),
       },
     });
@@ -305,6 +387,37 @@ export default function AdminPage() {
     setActionLoading(null);
   }
 
+  async function refreshArenaMatches() {
+    if (actionLoading === 'refresh') return;
+    setActionLoading('refresh');
+    setRefreshResult(null);
+    try {
+      const res = await adminFetch('/api/admin/operator/refresh-matches', {
+        method: 'POST',
+        body: JSON.stringify({
+          tournamentType: 'both',
+          seedCount: 50,
+          prioritizeNew: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        showToast(data?.error || 'Refresh failed');
+      } else {
+        setRefreshResult({
+          seededCount: Number(data?.seededCount || 0),
+          tickSeededCount: Number(data?.tickSeededCount || 0),
+          operatorSeededCount: Number(data?.operatorSeededCount || 0),
+          actionCount: Number(data?.actionCount || 0),
+        });
+        showToast(`Refreshed arena: ${Number(data?.seededCount || 0)} matches seeded`);
+      }
+    } catch {
+      showToast('Refresh failed');
+    }
+    setActionLoading(null);
+  }
+
   async function hardResetTournament() {
     if (actionLoading === 'reset') return;
     const confirmText = window.prompt('Type RESET to confirm hard reset');
@@ -425,9 +538,19 @@ export default function AdminPage() {
             placeholder="Enter admin secret"
             className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/20 focus:border-yellow-500/50 focus:outline-none mb-3"
           />
-          <button onClick={login} className="w-full py-3 rounded-xl bg-yellow-500 text-black font-bold">
-            Login
+          <button
+            onClick={login}
+            disabled={authChecking}
+            className="w-full py-3 rounded-xl bg-yellow-500 text-black font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
+          >
+            {authChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {authChecking ? 'Checking…' : 'Login'}
           </button>
+          {process.env.NODE_ENV !== 'production' ? (
+            <p className="mt-2 text-[11px] text-white/45">
+              ADMIN DEBUG · tokenExists={authDebug.tokenExists ? 'yes' : 'no'} · token={authDebug.tokenPreview || 'none'} · authHeader={authDebug.authorizationAttached ? 'yes' : 'no'} · url={authDebug.lastUrl || 'n/a'}
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -444,18 +567,28 @@ export default function AdminPage() {
           <button onClick={() => { setAuthed(false); localStorage.removeItem('admin_secret'); }}
             className="text-xs text-white/30 hover:text-white">Logout</button>
         </div>
+        {process.env.NODE_ENV !== 'production' ? (
+          <p className="mb-3 text-[11px] text-white/45">
+            ADMIN DEBUG · tokenExists={authDebug.tokenExists ? 'yes' : 'no'} · token={authDebug.tokenPreview || 'none'} · authHeader={authDebug.authorizationAttached ? 'yes' : 'no'} · url={authDebug.lastUrl || 'n/a'}
+          </p>
+        ) : null}
 
         {/* Admin Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
           <button onClick={advanceTournament} disabled={actionLoading === 'advance'}
             className="py-3 rounded-xl bg-green-500/20 hover:bg-green-500/30 text-green-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
             {actionLoading === 'advance' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Advance Tournament
+            Advance
+          </button>
+          <button onClick={refreshArenaMatches} disabled={actionLoading === 'refresh'}
+            className="py-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+            {actionLoading === 'refresh' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Refresh Arena
           </button>
           <button onClick={hardResetTournament} disabled={actionLoading === 'reset'}
             className="py-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
             {actionLoading === 'reset' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-            Hard Reset (New Tournament)
+            Hard Reset
           </button>
         </div>
         {advanceSummary ? (
@@ -468,6 +601,14 @@ export default function AdminPage() {
             {advanceSummary.notes.length > 0 ? (
               <p className="mt-1 text-white/65">{advanceSummary.notes.join(' · ')}</p>
             ) : null}
+          </div>
+        ) : null}
+        {refreshResult ? (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 mb-4 text-xs text-white/80">
+            <p className="font-semibold">Refresh summary</p>
+            <p className="mt-1">Total seeded: {refreshResult.seededCount} matches</p>
+            <p>From tick top-up: {refreshResult.tickSeededCount} | From operator: {refreshResult.operatorSeededCount}</p>
+            <p>Actions taken: {refreshResult.actionCount}</p>
           </div>
         ) : null}
         {resetResult ? (
@@ -671,7 +812,7 @@ export default function AdminPage() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold truncate">{cat.name}</p>
+                    <p className="block min-w-0 truncate font-black text-white">{cat.name}</p>
                     <p className="text-xs text-white/40">{cat.rarity} · profile:{String(cat.status || 'approved')} · image:{String(cat.image_review_status || 'pending_review')} · {new Date(cat.created_at).toLocaleDateString()}</p>
                     {cat.description && <p className="text-xs text-white/30 mt-1 line-clamp-2">{cat.description}</p>}
                     {cat.image_review_reason && <p className="text-xs text-red-300 mt-1 line-clamp-2">Reason: {cat.image_review_reason}</p>}

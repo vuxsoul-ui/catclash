@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const preferredPort = process.env.E2E_PORT || process.env.PORT || '3000'
-const baseURL = (process.env.BASE_URL || `http://127.0.0.1:${preferredPort}`).replace(/\/+$/, '')
+const baseURL = (process.env.BASE_URL || `http://localhost:${preferredPort}`).replace(/\/+$/, '')
 const parsedBaseURL = new URL(baseURL)
 const isLocalBaseURL = parsedBaseURL.hostname === '127.0.0.1' || parsedBaseURL.hostname === 'localhost'
 const localServerPort = parsedBaseURL.port || preferredPort

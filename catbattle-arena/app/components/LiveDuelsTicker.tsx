@@ -26,8 +26,11 @@ export default function LiveDuelsTicker({
   onOpenDuels,
   className = '',
 }: LiveDuelsTickerProps) {
-  const [tickMs, setTickMs] = useState(() => Date.now());
+  const [mounted, setMounted] = useState(false);
+  const [tickMs, setTickMs] = useState(0);
   useEffect(() => {
+    setMounted(true);
+    setTickMs(Date.now());
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       setTickMs(Date.now());
@@ -40,9 +43,9 @@ export default function LiveDuelsTicker({
   const duel = active ? duels[0] : null;
   const duelHref = duel ? `/duel?tab=live&duel=${encodeURIComponent(duel.id)}` : '/duel';
   const headline = duel ? `${duel.challenger_username || 'A rival'} is defending the Crown!` : null;
-  const passiveTitle = pulse.state === 'live' ? '🔥 Pulse Live' : pulse.state === 'resolving' ? '⏳ Calculating Results...' : `✨ Next Pulse in ${formatPulseCountdown(pulse.msRemaining)}`;
+  const passiveTitle = pulse.state === 'live' ? '🔥 Pulse Live' : pulse.state === 'resolving' ? '⏳ Calculating...' : '✨ Vote Open';
   const passiveSubline = pulse.state === 'live'
-    ? `Ends in ${formatPulseCountdown(pulse.msRemaining)}`
+    ? `Ends in ${mounted ? formatPulseCountdown(pulse.msRemaining) : '—'}`
     : pulse.state === 'resolving'
       ? 'Next pulse opens soon'
       : duels.length > 0

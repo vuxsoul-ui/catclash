@@ -427,55 +427,73 @@ export default function SubmitPage() {
   return (
     <div className="min-h-screen bg-black text-white pb-28 sm:pb-6">
       <div className="mx-auto max-w-lg px-3 py-6 sm:px-4 sm:py-8">
-        <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm text-white/40 hover:text-white sm:mb-8">
-          <ArrowLeft className="w-4 h-4" /> Back
+        <Link href="/" className="group mb-6 inline-flex items-center gap-2 text-sm font-medium text-white/45 hover:text-white/80 sm:mb-8 transition-colors">
+          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" /> Back
         </Link>
 
-        <h1 className="text-2xl font-bold mb-2">Build Your Cat Entry</h1>
-        <div className="mb-6 flex items-start justify-between gap-3">
-          <p className="text-sm leading-relaxed text-white/60">Submit your own cat, roll stats, and jump straight into Arena play.</p>
-          <SigilBalanceChip balance={sigils} size="sm" className="shrink-0" />
+        <div className="mb-6">
+          <h1 className="text-2xl font-black tracking-tight text-white">Build Your Cat Entry</h1>
+          <p className="mt-1.5 text-sm leading-relaxed text-white/55">Submit your own cat, roll stats, and jump straight into Arena play.</p>
         </div>
+
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <SigilBalanceChip balance={sigils} size="sm" className="shrink-0" />
+          <span className="text-xs text-white/40">Your currency for rerolls & boosts</span>
+        </div>
+
         {hasUsername === null && (
           <LoadingState
             compact
             icon="✨"
             message="Checking trainer access..."
-            className="mb-4 border-cyan-300/25 bg-cyan-500/10 px-4 py-5 shadow-[0_14px_34px_rgba(8,145,178,0.12)]"
+            className="mb-5 rounded-xl border border-cyan-300/20 bg-cyan-500/8 px-4 py-4 shadow-[0_14px_34px_rgba(8,145,178,0.12)]"
           />
         )}
         {hasUsername === false && (
-          <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 sm:p-4">
-            <p className="text-sm text-amber-100">
-              Choose a username to unlock submissions.
-            </p>
-            <Link
-              href="/login?next=%2Fsubmit"
-              className={buttonStyles({ variant: 'primary', size: 'md', className: 'mt-2 justify-center px-4 text-xs' })}
-            >
-              Claim Username
-            </Link>
+          <div className="mb-5 overflow-hidden rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-500/12 via-amber-500/8 to-amber-600/10 p-4 shadow-[0_12px_40px_rgba(245,158,11,0.15)]">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-300/30 bg-amber-400/20">
+                <span className="text-lg">🔐</span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-amber-100">Claim Your Trainer Identity</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-amber-200/70">Set your username to unlock cat submissions and enter the arena.</p>
+                <Link
+                  href="/login?next=%2Fsubmit"
+                  className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-4 text-sm font-bold tracking-wide text-black shadow-lg shadow-amber-500/25 transition-all hover:shadow-xl hover:shadow-amber-400/30 active:scale-[0.98]"
+                >
+                  Claim Username
+                </Link>
+              </div>
+            </div>
           </div>
         )}
 
-        <details className="group mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:mb-8">
-          <summary className="list-none cursor-pointer select-none flex items-center justify-between">
-            <p className="text-sm font-bold text-white">Tutorial</p>
-            <span className="text-xs text-white/45 group-open:hidden">Open</span>
-            <span className="text-xs text-white/45 hidden group-open:inline">Close</span>
+        <details className="group mb-6 overflow-hidden rounded-2xl border border-white/5 bg-white/[0.025] sm:mb-8">
+          <summary className="list-none cursor-pointer select-none flex items-center justify-between px-4 py-3.5 transition-colors hover:bg-white/[0.03]">
+            <div className="flex items-center gap-2.5">
+              <span className="text-lg">📜</span>
+              <p className="text-sm font-bold text-white/90">How It Works</p>
+            </div>
+            <span className="text-xs text-white/40 group-open:hidden">Open</span>
+            <span className="text-xs text-white/40 hidden group-open:inline">Close</span>
           </summary>
-          <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-white/60">
-            <p><span className="text-cyan-300 font-bold">How it works:</span> Vote and predict in active arenas to earn XP and sigils.</p>
-            <p><span className="text-emerald-300 font-bold">Submission:</span> upload your own cat to enter live arenas.</p>
-            <p><span className="text-orange-300 font-bold">Skills and stats:</span> each cat gets an ability plus Attack/Defense/Speed/Charisma/Chaos profile.</p>
-            <p><span className="text-yellow-300 font-bold">Photo review:</span> uploads need admin review before they appear publicly.</p>
+          <div className="space-y-2 border-t border-white/5 px-4 py-3.5 text-sm leading-relaxed text-white/55">
+            <p><span className="text-cyan-300 font-semibold">Vote & Predict:</span> Earn XP and sigils in active arenas.</p>
+            <p><span className="text-emerald-300 font-semibold">Submit:</span> Upload your cat to enter live battles.</p>
+            <p><span className="text-orange-300 font-semibold">Roll Stats:</span> Each cat gets a unique ability + 5 stat profile.</p>
+            <p><span className="text-yellow-300 font-semibold">Photo Review:</span> Admin approval required before public display.</p>
           </div>
         </details>
 
-        {error && <div className="mb-4 p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-200 text-sm">{error}</div>}
+        {error && (
+          <div className="mb-5 overflow-hidden rounded-xl border border-red-400/30 bg-red-500/10 p-3.5 text-sm text-red-100 shadow-[0_8px_24px_rgba(239,68,68,0.12)]">
+            {error}
+          </div>
+        )}
 
         {phase === 'choose' && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <button
               onClick={() => {
                 if (hasUsername !== true) {
@@ -486,34 +504,45 @@ export default function SubmitPage() {
                 setPhase('form');
               }}
               disabled={hasUsername !== true}
-              className="w-full text-left rounded-xl border border-blue-400/30 bg-blue-500/10 p-4 disabled:opacity-55"
+              className="group w-full overflow-hidden rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/15 via-cyan-500/10 to-cyan-600/10 p-5 text-left shadow-[0_12px_40px_rgba(6,182,212,0.12)] transition-all hover:border-cyan-300/40 hover:shadow-[0_16px_48px_rgba(6,182,212,0.18)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <p className="text-base font-bold text-blue-200">Submit Your Own Cat (Personal Start)</p>
-              <p className="mt-1 text-sm leading-relaxed text-white/60">
-                {usernameResolved
-                  ? 'Upload your own cat photo, roll stats/ability, and build identity.'
-                  : 'Syncing your trainer access before unlocking cat forging.'}
-              </p>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-400/20 group-hover:scale-105 transition-transform">
+                  <Sparkles className="h-5 w-5 text-cyan-200" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-bold text-cyan-100">Forge Your Cat</p>
+                  <p className="mt-1 text-sm leading-relaxed text-white/60">
+                    {usernameResolved
+                      ? 'Upload your cat, roll unique stats & abilities, and enter the arena.'
+                      : 'Complete your trainer profile to unlock cat forging.'}
+                  </p>
+                </div>
+              </div>
             </button>
 
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="mb-2 text-sm font-bold text-white">Optional Email</p>
-              <p className="mb-2 text-sm leading-relaxed text-white/60">Get notified when your cat photo is approved.</p>
+            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.025] p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-300" />
+                <p className="text-sm font-bold text-white/90">Stay Updated</p>
+              </div>
+              <p className="mb-3 text-sm leading-relaxed text-white/55">Get notified when your cat photo passes review.</p>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="email"
                   value={notifyEmail}
                   onChange={(e) => setNotifyEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="input-focus flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  className="input-focus flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-cyan-400/40 focus:outline-none focus:ring-1 focus:ring-cyan-400/20"
                 />
-                <label className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/80">
+                <label className="group flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs text-white/75 transition-all hover:border-white/20 hover:bg-white/[0.08]">
                   <input
                     type="checkbox"
                     checked={notifyEnabled}
                     onChange={(e) => setNotifyEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-white/20 bg-white/10 text-cyan-400 focus:ring-cyan-400/30"
                   />
-                  Notify me
+                  <span className="font-medium group-hover:text-white/90">Notify me</span>
                 </label>
               </div>
             </div>
@@ -521,48 +550,50 @@ export default function SubmitPage() {
         )}
 
         {phase === 'form' && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-white/40 uppercase tracking-wider">Submit Flow</p>
-              <button onClick={() => setPhase('choose')} className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20">Back</button>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/35">Submit Flow</p>
+              <button onClick={() => setPhase('choose')} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">Back</button>
             </div>
 
             <div>
-              <label className="mb-1 block text-xs uppercase tracking-wider text-white/40">Cat Name</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">Cat Name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={30}
                 placeholder="e.g. Sir Whiskers III"
-                className="input-focus w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30"
+                className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white placeholder:text-white/25 transition-all focus:border-cyan-400/40 focus:outline-none focus:ring-1 focus:ring-cyan-400/20"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs uppercase tracking-wider text-white/40">Portrait</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">Portrait</label>
               <input type="file" ref={fileRef} accept="image/*" onChange={handleFile} className="hidden" />
               {preview ? (
-                <div className="relative rounded-xl overflow-hidden cursor-pointer" onClick={() => fileRef.current?.click()}>
+                <div className="group relative overflow-hidden rounded-xl cursor-pointer" onClick={() => fileRef.current?.click()}>
                   <div className="aspect-square">
                     <img src={preview} alt="Preview" className="w-full h-full object-cover object-center" />
                   </div>
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                    <span className="text-sm font-bold">Change Photo</span>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
+                    <span className="text-sm font-bold text-white drop-shadow-lg">Change Photo</span>
                   </div>
                 </div>
               ) : (
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="focus-ring flex w-full aspect-[4/3] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/10 transition-all duration-150 hover:border-white/20 active:translate-y-[1px]"
+                  className="flex w-full aspect-[4/3] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/10 bg-white/[0.02] transition-all duration-200 hover:border-cyan-400/30 hover:bg-cyan-500/[0.04] active:translate-y-[1px]"
                 >
-                  <Upload className="w-8 h-8 text-white/20" />
-                  <span className="text-sm text-white/50">Tap to upload</span>
-                  <span className="text-xs text-white/30">JPG, PNG, max 5MB</span>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 group-hover:bg-cyan-400/10 transition-colors">
+                    <Upload className="w-6 h-6 text-white/30 group-hover:text-cyan-300 transition-colors" />
+                  </div>
+                  <span className="text-sm font-medium text-white/60 group-hover:text-white/80">Tap to upload</span>
+                  <span className="text-xs text-white/35">JPG, PNG, max 5MB</span>
                 </button>
               )}
               {preview && file && (
-                <div className="mt-2 flex justify-end">
+                <div className="mt-2.5 flex justify-end">
                   <button
                     type="button"
                     onClick={() => {
@@ -573,7 +604,7 @@ export default function SubmitPage() {
                       setCropY(50);
                       setCropModalOpen(true);
                     }}
-                    className="focus-ring h-8 rounded-lg border border-white/15 bg-white/10 px-3 text-xs font-semibold transition-all duration-150 hover:bg-white/15 active:translate-y-[1px]"
+                    className="h-9 rounded-lg border border-white/15 bg-white/[0.06] px-3 text-xs font-semibold text-white/80 transition-all hover:bg-white/10 hover:border-white/25 active:translate-y-[1px]"
                   >
                     Re-crop Photo
                   </button>
@@ -582,24 +613,27 @@ export default function SubmitPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs uppercase tracking-wider text-white/40">Description <span className="text-white/30">(optional)</span></label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/50">Description <span className="text-white/35">(optional)</span></label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 maxLength={200}
                 placeholder="A fearsome floof with a taste for chaos..."
                 rows={2}
-                className="input-focus w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30"
+                className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/25 transition-all focus:border-cyan-400/40 focus:outline-none focus:ring-1 focus:ring-cyan-400/20"
               />
-              <span className="mt-0.5 block text-right text-[10px] text-white/30">{description.length}/200</span>
+              <span className="mt-1 block text-right text-[10px] text-white/30">{description.length}/200</span>
             </div>
 
             <button
               onClick={startRoll}
               disabled={!name.trim() || !file || savingNotify}
-              className={buttonStyles({ variant: 'primary', size: 'xl', className: 'w-full gap-2 bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300' })}
+              className="group relative h-12 w-full overflow-hidden rounded-xl bg-gradient-to-r from-cyan-400 via-emerald-400 to-cyan-400 text-sm font-bold tracking-wide text-black shadow-lg shadow-cyan-500/25 transition-all hover:shadow-xl hover:shadow-cyan-400/35 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
             >
-              <Sparkles className="w-4 h-4" /> Roll Stats
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-300 via-emerald-300 to-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="relative inline-flex items-center justify-center gap-2">
+                <Sparkles className="w-4 h-4" /> Roll Stats
+              </span>
             </button>
           </div>
         )}
@@ -608,13 +642,13 @@ export default function SubmitPage() {
           <div className="text-center py-12">
             <div className="mb-6">
               {rollingPreview && (
-                <div className="w-32 h-32 mx-auto rounded-xl overflow-hidden mb-4 animate-pulse">
+                <div className="group mx-auto w-32 h-32 rounded-xl overflow-hidden mb-4 animate-pulse shadow-[0_0_40px_rgba(34,211,238,0.2)]">
                   <img src={rollingPreview} alt="" className="w-full h-full object-cover object-center" />
                 </div>
               )}
-              <h2 className="mb-2 text-2xl font-bold">{rollingName}</h2>
+              <h2 className="mb-2 text-2xl font-black tracking-tight text-white">{rollingName}</h2>
             </div>
-            <div className="text-3xl font-black animate-pulse">
+            <div className="text-3xl font-black animate-pulse drop-shadow-[0_0_25px_rgba(255,255,255,0.15)]">
               <span className={RARITY_COLORS[rollingText]?.split(' ')[0] || 'text-white'}>{rollingText}</span>
             </div>
             <p className="mt-4 text-sm text-white/50">Rolling rarity...</p>
@@ -622,49 +656,51 @@ export default function SubmitPage() {
         )}
 
         {phase === 'reveal' && (
-          <div className="space-y-4">
-            <div className={`rounded-2xl overflow-hidden border ${rarityStyle.split(' ')[1]} bg-black/40`}>
+          <div className="space-y-5">
+            <div className={`group overflow-hidden rounded-2xl border ${rarityStyle.split(' ')[1]} bg-gradient-to-br from-black/60 via-black/40 to-black/50 shadow-[0_20px_60px_rgba(0,0,0,0.4)]`}>
               {preview && (
                 <div className="relative h-56">
                   <img src={preview} alt={name} className="w-full h-full object-cover object-center" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
                   <div className="absolute top-3 left-3">
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${rarityStyle}`}>
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border shadow-lg ${rarityStyle} ${rarity === 'God-Tier' ? 'shadow-[0_0_20px_rgba(236,72,153,0.3)]' : 'shadow-[0_0_16px_rgba(0,0,0,0.3)]'}`}>
                       {rarity === 'God-Tier' ? '✦ GOD TIER' : rarity}
                     </span>
                   </div>
-                  <div className="absolute bottom-3 left-3">
-                    <h2 className="text-2xl font-black">{name}</h2>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <Zap className="w-3 h-3 text-yellow-400" />
-                      <span className="text-sm text-white/60">{power}</span>
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <h2 className="text-2xl font-black text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)]">{name}</h2>
+                    <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur-sm">
+                      <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                      <span className="text-xs font-medium text-white/80">{power}</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="space-y-3 p-5 sm:p-6">
+              <div className="space-y-3.5 p-5 sm:p-6">
                 {description && (
-                  <p className="border-b border-white/5 pb-2 text-sm italic leading-relaxed text-white/50">&ldquo;{description}&rdquo;</p>
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3.5 py-2.5">
+                    <p className="text-sm italic leading-relaxed text-white/55">&ldquo;{description}&rdquo;</p>
+                  </div>
                 )}
                 {Object.entries(stats).map(([key, val]) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <div className={`flex items-center gap-1 w-14 ${STAT_COLORS[key]}`}>
+                  <div key={key} className="flex items-center gap-2.5">
+                    <div className={`flex items-center gap-1.5 w-16 ${STAT_COLORS[key]}`}>
                       {STAT_ICONS[key]}
-                      <span className="text-[10px] font-bold uppercase">{key.slice(0, 3)}</span>
+                      <span className="text-[10px] font-black uppercase tracking-wide">{key.slice(0, 3)}</span>
                     </div>
-                    <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${STAT_BAR_COLORS[key]}`} style={{ width: `${val}%`, opacity: 0.7, transition: 'width 1s ease-out' }} />
+                    <div className="flex-1 h-2.5 bg-white/[0.05] rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${STAT_BAR_COLORS[key]} shadow-[0_0_10px_currentColor]`} style={{ width: `${val}%`, opacity: 0.75, transition: 'width 1s ease-out' }} />
                     </div>
-                    <span className="w-7 text-right text-xs font-mono text-white/60">{val}</span>
+                    <span className="w-8 text-right text-xs font-mono font-bold text-white/70">{val}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {rerollCount > 0 && (
-              <div className="text-center text-sm text-yellow-400/60">
-                {rerollCount} re-roll{rerollCount > 1 ? 's' : ''} used · {rerollCount * ECONOMY.REROLL_COST_SIGILS} sigils will be charged on submit
+              <div className="text-center text-sm text-amber-300/70">
+                {rerollCount} re-roll{rerollCount > 1 ? 's' : ''} used · <span className="font-semibold text-amber-200">{rerollCount * ECONOMY.REROLL_COST_SIGILS} sigils</span> will be charged on submit
               </div>
             )}
 
@@ -679,20 +715,23 @@ export default function SubmitPage() {
                     setPower('');
                     setError(null);
                   }}
-                  className={buttonStyles({ variant: 'secondary', size: 'md', className: 'flex-1' })}
+                  className="group relative h-11 flex-1 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-sm font-bold text-white/85 transition-all hover:border-white/20 hover:bg-white/[0.06] hover:text-white active:scale-[0.98]"
                 >
                   Re-Roll ({ECONOMY.REROLL_COST_SIGILS} ✦)
                 </button>
               ) : (
-                <div className="flex flex-1 items-center justify-center rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 text-center text-sm text-amber-200/80">
-                  Need {sigilsNeededForReroll} more Sigils to re-roll
+                <div className="flex flex-1 items-center justify-center rounded-xl border border-amber-400/20 bg-amber-500/8 px-3 text-center text-sm text-amber-200/75">
+                  Need {sigilsNeededForReroll} more ✦ to re-roll
                 </div>
               )}
               <button
                 onClick={submitCat}
-                className={buttonStyles({ variant: 'primary', size: 'xl', className: 'flex-1 gap-2' })}
+                className="group relative h-11 flex-1 overflow-hidden rounded-xl bg-gradient-to-r from-cyan-400 via-emerald-400 to-cyan-400 text-sm font-bold tracking-wide text-black shadow-lg shadow-cyan-500/25 transition-all hover:shadow-xl hover:shadow-cyan-400/35 active:scale-[0.98]"
               >
-                <Sparkles className="w-4 h-4" /> Submit{rerollCount > 0 ? ` (-${rerollCount * ECONOMY.REROLL_COST_SIGILS} ✦)` : ''}
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-300 via-emerald-300 to-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <span className="relative inline-flex items-center justify-center gap-2">
+                  <Sparkles className="w-4 h-4" /> Submit{rerollCount > 0 ? ` (-${rerollCount * ECONOMY.REROLL_COST_SIGILS} ✦)` : ''}
+                </span>
               </button>
             </div>
           </div>
@@ -725,17 +764,27 @@ export default function SubmitPage() {
         )}
 
         {(phase === 'form' || phase === 'choose') && (
-          <p className="mt-6 text-center text-xs text-white/30">Drop rates: 50% Common · 25% Rare · 15% Epic · 7% Legendary · 2.5% Mythic · 0.5% God-Tier</p>
+          <div className="mt-8 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
+            <p className="text-center text-[10px] font-medium uppercase tracking-wider text-white/35">Drop Rates</p>
+            <p className="mt-1 text-center text-xs text-white/45">50% Common · 25% Rare · 15% Epic · 7% Legendary · 2.5% Mythic · 0.5% God-Tier</p>
+          </div>
         )}
       </div>
 
       {cropModalOpen && cropSourceUrl && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0d0d0d] p-5 sm:p-6">
-            <h3 className="mb-2 text-base font-bold">Crop your cat photo</h3>
-            <p className="mb-3 text-sm text-white/55">Move and zoom before submitting.</p>
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#0f0f13] via-[#0a0a0f] to-[#0d0d0f] p-5 sm:p-6 shadow-[0_40px_120px_rgba(0,0,0,0.6)]">
+            <div className="mb-4 flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10">
+                <Sparkles className="h-4 w-4 text-cyan-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Crop Your Cat</h3>
+                <p className="text-xs text-white/45">Position and zoom to frame perfectly</p>
+              </div>
+            </div>
 
-            <div className="relative w-full aspect-square rounded-xl overflow-hidden border border-white/10 bg-black mb-3">
+            <div className="relative w-full aspect-square overflow-hidden rounded-xl border border-white/10 bg-black shadow-[inset_0_0_40px_rgba(0,0,0,0.6)] mb-4">
               <img
                 src={cropSourceUrl}
                 alt="Crop preview"
@@ -746,12 +795,12 @@ export default function SubmitPage() {
                   objectPosition: `${cropX}% ${cropY}%`,
                 }}
               />
-              <div className="absolute inset-0 border border-white/25 pointer-events-none" />
+              <div className="absolute inset-0 rounded-xl border-2 border-white/20 pointer-events-none shadow-[inset_0_0_30px_rgba(0,0,0,0.4)]" />
             </div>
 
-            <div className="space-y-2 mb-4">
-              <label className="block text-xs text-white/50">
-                Zoom
+            <div className="space-y-3 mb-5">
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Zoom</span>
                 <input
                   type="range"
                   min={1}
@@ -759,11 +808,11 @@ export default function SubmitPage() {
                   step={0.01}
                   value={cropZoom}
                   onChange={(e) => setCropZoom(Number(e.target.value))}
-                  className="w-full mt-1"
+                  className="w-full mt-1 h-1.5 rounded-full bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(34,211,238,0.5)]"
                 />
               </label>
-              <label className="block text-xs text-white/50">
-                Horizontal
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Horizontal</span>
                 <input
                   type="range"
                   min={0}
@@ -771,11 +820,11 @@ export default function SubmitPage() {
                   step={0.1}
                   value={cropX}
                   onChange={(e) => setCropX(Number(e.target.value))}
-                  className="w-full mt-1"
+                  className="w-full mt-1 h-1.5 rounded-full bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(34,211,238,0.5)]"
                 />
               </label>
-              <label className="block text-xs text-white/50">
-                Vertical
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Vertical</span>
                 <input
                   type="range"
                   min={0}
@@ -783,12 +832,12 @@ export default function SubmitPage() {
                   step={0.1}
                   value={cropY}
                   onChange={(e) => setCropY(Number(e.target.value))}
-                  className="w-full mt-1"
+                  className="w-full mt-1 h-1.5 rounded-full bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(34,211,238,0.5)]"
                 />
               </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -796,7 +845,7 @@ export default function SubmitPage() {
                   setCropPendingFile(null);
                   setCropSourceUrl(null);
                 }}
-                className="h-10 rounded-xl bg-white/10 border border-white/15 text-sm font-semibold"
+                className="h-11 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-semibold text-white/80 transition-all hover:bg-white/10 hover:border-white/20"
               >
                 Cancel
               </button>
@@ -804,10 +853,11 @@ export default function SubmitPage() {
                 type="button"
                 disabled={cropApplying}
                 onClick={applyCrop}
-                className="h-10 rounded-xl bg-cyan-300 text-black text-sm font-bold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                className="group relative h-11 overflow-hidden rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-sm font-bold text-black shadow-lg shadow-cyan-500/20 transition-all hover:shadow-xl hover:shadow-cyan-400/30 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
               >
-                {cropApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                Apply Crop
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-300 to-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                {cropApplying ? <Loader2 className="relative w-4 h-4 animate-spin" /> : <Check className="relative w-4 h-4" />}
+                <span className="relative">Apply Crop</span>
               </button>
             </div>
           </div>

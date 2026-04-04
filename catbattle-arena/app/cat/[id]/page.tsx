@@ -4,15 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
+  Heart,
   Loader2,
   Swords,
   Shield,
-  Zap,
   Wind,
   Sparkles,
   Skull,
-  Heart,
-  Star,
   Trophy,
   Share2,
 } from 'lucide-react';
@@ -37,8 +35,7 @@ interface CatProfile {
   battles_fought: number;
   win_rate: number | null;
   stance?: string | null;
-  fan_count?: number;
-  rivalries?: Array<{ cat_id: string; cat_name: string; battles: number }>;
+  description?: string | null;
   owner_title?: string | null;
   owner_id: string | null;
   owner_username?: string | null;
@@ -198,8 +195,6 @@ export default function CatProfilePage() {
   const [cat, setCat] = useState<CatProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewerId, setViewerId] = useState<string | null>(null);
-  const [settingStance, setSettingStance] = useState<string | null>(null);
   const [mintingCard, setMintingCard] = useState(false);
   const [challengeBanner, setChallengeBanner] = useState<{ active: boolean; ref: string }>({ active: false, ref: '' });
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
@@ -237,15 +232,6 @@ export default function CatProfilePage() {
   }, [catId]);
 
   useEffect(() => {
-    fetch('/api/me', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        setViewerId(d?.guest_id || null);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     if (!ref) return;
     setChallengeBanner({ active: true, ref });
     try {
@@ -264,29 +250,6 @@ export default function CatProfilePage() {
       // ignore
     }
   }, [ref, catId, challengeTargetCatId, guildFromRef, pitchParam]);
-
-  async function setStance(stance: 'aggro' | 'guard' | 'chaos') {
-    if (!cat || settingStance) return;
-    setSettingStance(stance);
-    try {
-      const res = await fetch(`/api/cats/${cat.id}/stance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stance }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) {
-        setError(data?.error || 'Failed to set stance');
-      } else {
-        setCat((prev) => (prev ? { ...prev, stance } : prev));
-      }
-    } catch {
-      setError('Failed to set stance');
-    } finally {
-      setSettingStance(null);
-    }
-  }
-
   const availableSkills = cat?.available_skills || [];
   const pendingSkill = useMemo(
     () => availableSkills.find((skill) => skill.id === pendingSkillId) || null,
@@ -386,10 +349,6 @@ export default function CatProfilePage() {
   }
 
   const r = getRarity(cat.rarity);
-  const displayCount = (value: number) => (value > 0 ? value.toLocaleString() : '—');
-  const hasBattles = Number(cat.battles_fought || 0) > 0;
-  const winRateDisplay = hasBattles && typeof cat.win_rate === 'number' ? `${cat.win_rate}%` : '—';
-  const fans = Number(cat.fan_count || 0);
   const skillLocked = !!cat.skill_locked;
   const equippedSkill = cat.equipped_skill || null;
   const statGrade = getStatGrade(cat.stats);
@@ -497,25 +456,37 @@ export default function CatProfilePage() {
             </div>
           </div>
 
-          <div className="p-5 space-y-5">
-            <div className="grid grid-cols-4 divide-x divide-white/8 rounded-[1.4rem] border border-white/10 bg-white/[0.035]">
-              <StatTile icon={<Swords className="w-4 h-4" />} label="Battles" value={displayCount(cat.battles_fought)} />
-              <StatTile icon={<Trophy className="w-4 h-4" />} label="Wins" value={displayCount(cat.wins)} />
-              <StatTile icon={<Shield className="w-4 h-4" />} label="Losses" value={displayCount(cat.losses)} />
-              <StatTile icon={<Heart className="w-4 h-4" />} label="Win Rate" value={winRateDisplay} />
+          <div className="p-4 space-y-4">
+            {/* Cat Description */}
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+              <p className="text-sm text-white/60 leading-relaxed">
+                {cat.description || "No description yet"}
+              </p>
+              <div className="flex justify-between text-xs text-white/40 pt-2.5 mt-2.5 border-t border-white/5">
+                <div>
+                  <span className="text-white/50">Owner:</span>{' '}
+                  <Link href={`/profile/${cat.owner_id}`} className="text-cyan-400 hover:text-cyan-300">
+                    {cat.owner_username || cat.owner_id?.slice(0, 8) || 'Unknown'}
+                  </Link>
+                </div>
+                <div className="text-right">
+                  <span className="text-white/50">Created:</span>{' '}
+                  <span>{new Date(cat.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
-              <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+              <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-[0.24em] text-white/30">Combat Stats</h3>
-                  <p className="mt-1 text-sm text-white/55">Built for the Arena, scored at a glance.</p>
+                  <p className="mt-0.5 text-xs text-white/50">Built for the Arena, scored at a glance.</p>
                 </div>
-                <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-sm font-black text-white">
+                <div className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-xs font-black text-white">
                   Grade {statGrade}
                 </div>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <StatRow stat="attack" value={cat.stats.attack} />
                 <StatRow stat="defense" value={cat.stats.defense} />
                 <StatRow stat="speed" value={cat.stats.speed} />
@@ -524,33 +495,33 @@ export default function CatProfilePage() {
               </div>
             </div>
 
-            <div className="rounded-[1.4rem] border border-amber-300/20 bg-[linear-gradient(180deg,rgba(250,204,21,0.12),rgba(250,204,21,0.03))] p-4">
+            <div className="rounded-xl border border-amber-300/20 bg-[linear-gradient(180deg,rgba(250,204,21,0.12),rgba(250,204,21,0.03))] p-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-[0.24em] text-amber-100/75">Experience</h3>
-                  <p className="mt-2 text-3xl font-black text-white">
-                    {cat.xp.toLocaleString()} <span className="text-lg font-semibold text-white/45">XP</span>
+                  <p className="mt-1.5 text-2xl font-black text-white">
+                    {cat.xp.toLocaleString()} <span className="text-base font-semibold text-white/45">XP</span>
                   </p>
-                  <p className="mt-1 text-sm text-amber-100/70">{Math.round(xpState.progress)}% to next level</p>
+                  <p className="mt-0.5 text-xs text-amber-100/70">{Math.round(xpState.progress)}% to next level</p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] uppercase tracking-[0.22em] text-white/45">To Next Level</p>
-                  <p className="mt-2 text-lg font-bold text-amber-100">{xpState.remaining.toLocaleString()}</p>
+                  <p className="mt-1.5 text-base font-bold text-amber-100">{xpState.remaining.toLocaleString()}</p>
                 </div>
               </div>
-              <div className="mt-4 h-3 rounded-full bg-black/25 overflow-hidden">
+              <div className="mt-3 h-2.5 rounded-full bg-black/25 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-400 transition-all duration-1000"
                   style={{ width: `${xpState.progress}%` }}
                 />
               </div>
-              <p className="mt-3 text-xs text-amber-100/65">Keep battling to unlock the next power spike.</p>
+              <p className="mt-2.5 text-xs text-amber-100/65">Keep battling to unlock the next power spike.</p>
             </div>
 
-            <div className="rounded-[1.35rem] bg-white/[0.03] border border-white/8 p-4">
+            <div className="rounded-xl bg-white/[0.03] border border-white/8 p-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-white/30 mb-1">Equipped Skill</div>
+                  <div className="text-[10px] uppercase tracking-[0.24em] text-white/30 mb-0.5">Equipped Skill</div>
                   {equippedSkill ? (
                     <>
                       <div className="flex flex-wrap items-center gap-2">
@@ -561,22 +532,22 @@ export default function CatProfilePage() {
                           </span>
                         ) : null}
                       </div>
-                      <p className="text-xs text-white/60 mt-1">{equippedSkill.trigger_label}</p>
-                      <p className="text-[11px] text-cyan-200 mt-1">{formatSkillDelta(equippedSkill.delta)} win chance</p>
+                      <p className="text-xs text-white/60 mt-0.5">{equippedSkill.trigger_label}</p>
+                      <p className="text-[11px] text-cyan-200 mt-0.5">{formatSkillDelta(equippedSkill.delta)} win chance</p>
                     </>
                   ) : (
                     <>
                       <p className="text-sm font-medium text-white/70">No skill equipped</p>
-                      <p className="text-xs text-white/45 mt-1">Choose a signature skill to sharpen this fighter card.</p>
+                      <p className="text-xs text-white/45 mt-0.5">Choose a signature skill to sharpen this fighter card.</p>
                     </>
                   )}
-                  {skillLocked ? <p className="text-[11px] text-amber-200 mt-2">Locked until Pulse resolves</p> : null}
+                  {skillLocked ? <p className="text-[11px] text-amber-200 mt-1.5">Locked until Pulse resolves</p> : null}
                 </div>
                 {cat.viewer_is_owner && !skillLocked ? (
                   <button
                     type="button"
                     onClick={openSkillPicker}
-                    className="shrink-0 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20"
+                    className="shrink-0 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20"
                   >
                     {equippedSkill ? 'Change' : 'Equip'}
                   </button>
@@ -584,46 +555,16 @@ export default function CatProfilePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[1.25rem] bg-white/[0.03] p-3.5 border border-white/8">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-white/30 mb-1">Stance</div>
-                <div className="text-sm font-bold uppercase">{cat.stance || 'none'}</div>
-              </div>
-              <div className="rounded-[1.25rem] bg-white/[0.03] p-3.5 border border-white/8">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-white/30 mb-1">Fans</div>
-                <div className="text-sm font-bold">{fans}</div>
-                {fans === 0 ? <div className="mt-1 text-[10px] text-white/35">Be the first to fan this cat</div> : null}
-              </div>
-            </div>
-
-            {viewerId && cat.owner_id === viewerId ? (
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-white/30 mb-2">Set Daily Stance</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['aggro', 'guard', 'chaos'] as const).map((stance) => (
-                    <button
-                      key={stance}
-                      onClick={() => setStance(stance)}
-                      disabled={!!settingStance}
-                      className={`py-2 rounded-xl text-xs uppercase ${cat.stance === stance ? 'bg-cyan-500/30 text-cyan-100' : 'bg-white/10 hover:bg-white/20'} disabled:opacity-40`}
-                    >
-                      {settingStance === stance ? '...' : stance}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             {cat.battle_history.length > 0 ? (
-              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
-                <h3 className="text-xs font-bold uppercase tracking-[0.24em] text-white/30 mb-3">Battle Record</h3>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+                <h3 className="text-xs font-bold uppercase tracking-[0.24em] text-white/30 mb-2.5">Battle Record</h3>
                 <div className="space-y-2">
                   {cat.battle_history.map((battle) => (
                     <div
                       key={battle.match_id}
-                      className={`flex items-center justify-between rounded-xl p-3 ${battle.won ? 'bg-green-500/[0.06] border border-green-500/12' : 'bg-red-500/[0.06] border border-red-500/12'}`}
+                      className={`flex items-center justify-between rounded-lg p-2.5 ${battle.won ? 'bg-green-500/[0.06] border border-green-500/12' : 'bg-red-500/[0.06] border border-red-500/12'}`}
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${battle.won ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
                           {battle.won ? 'W' : 'L'}
                         </span>
@@ -635,59 +576,15 @@ export default function CatProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.025] px-4 py-8 text-center">
-                <Swords className="w-7 h-7 mx-auto mb-3 text-white/20" />
-                <p className="text-base font-semibold text-white/72">No battles yet</p>
-                <p className="mt-1 text-sm text-white/42">Take this fighter into the Arena.</p>
-                <Link href="/arena" className="mt-4 inline-flex h-11 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/14 px-4 text-sm font-bold text-cyan-100">
+              <div className="rounded-xl border border-white/10 bg-white/[0.025] px-4 py-6 text-center">
+                <Swords className="w-6 h-6 mx-auto mb-2.5 text-white/20" />
+                <p className="text-sm font-semibold text-white/70">No battles yet</p>
+                <p className="mt-0.5 text-xs text-white/45">Take this fighter into the Arena.</p>
+                <Link href="/arena" className="mt-3 inline-flex h-10 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/14 px-4 text-sm font-bold text-cyan-100">
                   Enter Arena
                 </Link>
               </div>
             )}
-
-            <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/30 mb-1">Owner</div>
-                  <div className="text-sm font-medium text-white/78">
-                    {cat.owner_id ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/profile/${cat.owner_id}`} className="hover:text-white underline-offset-2 hover:underline">
-                          {cat.owner_username || cat.owner_id.slice(0, 8)}
-                        </Link>
-                        {cat.owner_title ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 break-words whitespace-normal">
-                            {cat.owner_title}
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : 'Unknown'}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/30 mb-1">Created</div>
-                  <div className="text-sm font-medium text-white/78">
-                    {new Date(cat.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-[0.24em] text-white/30 mb-3">Rivalries</h3>
-              {cat.rivalries && cat.rivalries.length > 0 ? (
-                <div className="space-y-1.5">
-                  {cat.rivalries.map((rival) => (
-                    <Link key={rival.cat_id} href={`/cat/${rival.cat_id}`} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06]">
-                      <span className="text-sm">{rival.cat_name}</span>
-                      <span className="text-xs text-white/40">{rival.battles} battles</span>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-white/30">No rivalries yet — keep battling to build them.</p>
-              )}
-            </div>
           </div>
         </div>
 

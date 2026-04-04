@@ -78,6 +78,14 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
+function matchPriorityScore(status: string): number {
+  const s = String(status || '').toLowerCase();
+  if (s === 'active') return 3;
+  if (s === 'in_progress') return 2;
+  if (s === 'pending') return 1;
+  return 0;
+}
+
 function normalizedPairImageKey(value: string | null | undefined): string | null {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return null;
@@ -649,12 +657,95 @@ export async function ensureVotableMatches(params: {
   if (mErr) return { ok: false, error: mErr.message, inserted: 0, before: 0, after: 0, tournament_id: tournament.id };
 
   const existing = existingRows || [];
-  const before = existing.filter((m: any) => VOTABLE_MATCH_STATUSES.includes(String(m?.status || '').toLowerCase() as any)).length;
+  let droppedDuplicatePairCount = 0;
+  let droppedDuplicateCatCount = 0;
+
+  // Detect and clean up duplicate pair matches (keep newest by created_at)
+  const pairToMatch = new Map<string, { id: string; created_at: string }>();
+  const duplicateIds: string[] = [];
+  for (const m of existing as Array<any>) {
+    const a = String(m?.cat_a_id || '');
+    const b = String(m?.cat_b_id || '');
+    if (!a || !b || !m?.id) continue;
+    const sig = a < b ? `${a}:${b}` : `${b}:${a}`;
+    const existing_match = pairToMatch.get(sig);
+    if (existing_match) {
+      // Keep the one with later created_at
+      const existingTime = Date.parse(String(existing_match.created_at || '')) || 0;
+      const newTime = Date.parse(String(m.created_at || '')) || 0;
+      if (newTime > existingTime) {
+        duplicateIds.push(existing_match.id);
+        pairToMatch.set(sig, { id: String(m.id), created_at: String(m.created_at || '') });
+      } else {
+        duplicateIds.push(String(m.id));
+      }
+    } else {
+      pairToMatch.set(sig, { id: String(m.id), created_at: String(m.created_at || '') });
+    }
+  }
+
+  // Delete duplicate matches if any found
+  if (duplicateIds.length > 0) {
+    console.warn(`[ensureVotableMatches] Cleaning up ${duplicateIds.length} duplicate matches`);
+    await supabase.from('tournament_matches').delete().in('id', duplicateIds);
+    droppedDuplicatePairCount = duplicateIds.length;
+    // Refresh existing rows after cleanup
+    const { data: refreshedRows } = await supabase
+      .from('tournament_matches')
+      .select('id, cat_a_id, cat_b_id, status')
+      .eq('tournament_id', tournament.id)
+      .order('created_at', { ascending: false })
+      .limit(500);
+    existingRows.splice(0, existingRows.length, ...(refreshedRows || []));
+  }
+
+  // Enforce per-cat uniqueness in votable pool (active/in_progress/pending).
+  const votableRows = (existingRows || []).filter((m: any) =>
+    ['active', 'in_progress', 'pending'].includes(String(m?.status || '').toLowerCase())
+  );
+  const sortedVotableRows = [...votableRows].sort((a: any, b: any) => {
+    const pa = matchPriorityScore(String(a?.status || ''));
+    const pb = matchPriorityScore(String(b?.status || ''));
+    if (pb !== pa) return pb - pa;
+    const ta = Date.parse(String(a?.created_at || '')) || 0;
+    const tb = Date.parse(String(b?.created_at || '')) || 0;
+    return tb - ta;
+  });
+  const usedCatIds = new Set<string>();
+  const duplicateCatMatchIds: string[] = [];
+  for (const m of sortedVotableRows as Array<any>) {
+    const catA = String(m?.cat_a_id || '');
+    const catB = String(m?.cat_b_id || '');
+    if (!catA || !catB || !m?.id) continue;
+    if (usedCatIds.has(catA) || usedCatIds.has(catB)) {
+      duplicateCatMatchIds.push(String(m.id));
+      continue;
+    }
+    usedCatIds.add(catA);
+    usedCatIds.add(catB);
+  }
+  if (duplicateCatMatchIds.length > 0) {
+    await supabase
+      .from('tournament_matches')
+      .update({ status: 'archived' })
+      .in('id', duplicateCatMatchIds);
+    droppedDuplicateCatCount = duplicateCatMatchIds.length;
+    const { data: refreshedRows } = await supabase
+      .from('tournament_matches')
+      .select('id, cat_a_id, cat_b_id, status, created_at')
+      .eq('tournament_id', tournament.id)
+      .order('created_at', { ascending: false })
+      .limit(500);
+    existingRows.splice(0, existingRows.length, ...(refreshedRows || []));
+  }
+
+  const before = existingRows.filter((m: any) => VOTABLE_MATCH_STATUSES.includes(String(m?.status || '').toLowerCase() as any)).length;
   const needed = Math.max(0, minVotable - before);
   if (needed <= 0) return { ok: true, inserted: 0, before, after: before, tournament_id: tournament.id };
 
+  // Build existing pairs set from cleaned data
   const existingPairs = new Set<string>();
-  for (const m of existing as Array<any>) {
+  for (const m of existingRows as Array<any>) {
     const a = String(m?.cat_a_id || '');
     const b = String(m?.cat_b_id || '');
     if (!a || !b) continue;
@@ -670,7 +761,7 @@ export async function ensureVotableMatches(params: {
     .neq('user_id', NPC_USER_ID)
     .or('image_review_status.is.null,image_review_status.eq.approved')
     .order('created_at', { ascending: false })
-    .limit(400);
+    .limit(500);
   if (cErr) return { ok: false, error: cErr.message, inserted: 0, before, after: before, tournament_id: tournament.id };
 
   const pool = (cats || [])
@@ -682,18 +773,37 @@ export async function ensureVotableMatches(params: {
     }))
     .filter((c) => !/\/starter\//i.test(c.image_path))
     .filter((c) => !!c.id);
-  const shuffled = shuffle(pool);
-  const byNewest = [...pool].sort((a, b) => (Date.parse(String(b.created_at || '')) || 0) - (Date.parse(String(a.created_at || '')) || 0));
-  const candidates = [...byNewest.slice(0, 220), ...shuffled.slice(0, 180)];
+
+  // Build set of cats already in active matches
+  const activeCatIds = new Set<string>();
+  for (const m of existingRows) {
+    if (m?.cat_a_id) activeCatIds.add(String(m.cat_a_id));
+    if (m?.cat_b_id) activeCatIds.add(String(m.cat_b_id));
+  }
+
+  // Prioritize cats that haven't played yet, then by newest
+  const neverPlayed = pool.filter((c) => !activeCatIds.has(c.id));
+  const alreadyPlayed = pool.filter((c) => activeCatIds.has(c.id));
+
+  const sortedNeverPlayed = [...neverPlayed].sort((a, b) =>
+    (Date.parse(String(b.created_at || '')) || 0) - (Date.parse(String(a.created_at || '')) || 0)
+  );
+  const sortedAlreadyPlayed = shuffle(alreadyPlayed);
+
+  // Take from neverPlayed first, then fill with alreadyPlayed
+  const candidates = [...sortedNeverPlayed.slice(0, 300), ...sortedAlreadyPlayed.slice(0, 200)];
 
   const inserts: Array<Record<string, unknown>> = [];
   const usedThisRun = new Set<string>();
+  const blockedCatIds = new Set<string>(activeCatIds);
   for (let i = 0; i < candidates.length && inserts.length < needed; i += 1) {
     const a = candidates[i];
     if (!a?.id) continue;
+    if (blockedCatIds.has(a.id)) continue;
     for (let j = i + 1; j < candidates.length && inserts.length < needed; j += 1) {
       const b = candidates[j];
       if (!b?.id || b.id === a.id) continue;
+      if (blockedCatIds.has(b.id)) continue;
       if (a.user_id && b.user_id && a.user_id === b.user_id) continue;
       const sig = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
       if (existingPairs.has(sig) || usedThisRun.has(sig)) continue;
@@ -707,6 +817,8 @@ export async function ensureVotableMatches(params: {
         votes_b: 0,
       });
       usedThisRun.add(sig);
+      blockedCatIds.add(a.id);
+      blockedCatIds.add(b.id);
       break;
     }
   }
@@ -721,6 +833,18 @@ export async function ensureVotableMatches(params: {
     .select('id', { count: 'exact', head: true })
     .eq('tournament_id', tournament.id)
     .in('status', [...VOTABLE_MATCH_STATUSES] as any);
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[DEV][tournament-votable-cleanup]', {
+      tournamentId: String(tournament.id || ''),
+      droppedDuplicatePairs: droppedDuplicatePairCount,
+      droppedDuplicateCats: droppedDuplicateCatCount,
+      replacementCount: inserts.length,
+      needed,
+      before,
+      after: Number(afterCount || 0),
+    });
+  }
 
   return {
     ok: true,
@@ -1011,7 +1135,7 @@ export async function runTournamentTick(options?: { includeOldActive?: boolean; 
       supabase,
       date: today,
       type: cfg.type,
-      minVotable: 16,
+      minVotable: 36,
       size: cfg.size,
       minNpcShare: cfg.minNpcShare,
     });

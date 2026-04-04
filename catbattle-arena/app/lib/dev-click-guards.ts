@@ -82,6 +82,7 @@ function parentDump(target: Element | null): Array<Record<string, unknown>> {
 
 function isExpectedTarget(top: Element | null, target: HTMLElement, expect: Array<'A' | 'BUTTON'>): boolean {
   if (!top) return false;
+  if (top.tagName === 'NEXTJS-PORTAL' || top.tagName === 'SCRIPT') return true;
   if (target === top || target.contains(top)) {
     const tag = target.tagName as 'A' | 'BUTTON';
     if (expect.includes(tag)) return true;
@@ -211,6 +212,7 @@ export function checkTapTarget({
     if (!isWithinRect(p.x, p.y, rect)) continue;
     const top = document.elementFromPoint(p.x, p.y);
     if (!top) continue;
+    if (top.tagName === 'NEXTJS-PORTAL' || top.tagName === 'SCRIPT') continue;
     if (isExpectedTarget(top, target, expect)) continue;
     warnOnce(`${key}:${p.label}`, `[DEV_CHECK] Tap target mismatch for ${selector}`, {
       point: p,

@@ -36,6 +36,16 @@ Then open:
 
 Confirm the build stamp (`build`, `sha`, `at`) matches `/api/build`.
 
+## 4) Required env vars for password reset email
+
+Set these in your deployment environment:
+
+- `PASSWORD_RESET_PEPPER` (long random secret)
+- `RESEND_API_KEY`
+- `EMAIL_FROM` (verified sender, e.g. `noreply@catclash.org`)
+- `APP_URL` (used for reset link origin)
+- optional backward-compat: `NOTIFY_FROM_EMAIL`, `NEXT_PUBLIC_SITE_URL`
+
 ## 3) Optional local-vs-prod build check
 
 After local build:

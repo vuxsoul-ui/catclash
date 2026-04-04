@@ -159,7 +159,7 @@ export default function ForgePage() {
                   className={`text-left rounded-xl border p-2 transition ${active ? 'border-amber-300/50 bg-amber-500/10' : 'border-white/10 bg-white/[0.03]'}`}
                 >
                   <img src={cat.image_url || '/cat-placeholder.svg'} alt={cat.name} className="w-full h-24 object-cover rounded-lg mb-2" />
-                  <p className="text-sm font-semibold truncate">{cat.name}</p>
+                  <p className="block min-w-0 truncate text-sm font-black text-white">{cat.name}</p>
                   <p className={`text-xs ${rarityClass(cat.rarity)}`}>{cat.rarity}</p>
                   <p className="text-[11px] text-white/60">Lv {cat.cat_level}</p>
                 </button>

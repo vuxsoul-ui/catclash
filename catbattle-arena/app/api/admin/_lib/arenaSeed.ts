@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
 const OWNER_MATCH_CAP_PER_RUN = 2;
-const MAX_SEED_COUNT = 50;
-const CANDIDATE_LIMIT = 200;
-const ACTIVE_MATCH_SCAN_LIMIT = 200;
+const MAX_SEED_COUNT = 80;
+const CANDIDATE_LIMIT = 400;
+const ACTIVE_MATCH_SCAN_LIMIT = 500;
 const VOTABLE_STATUSES = ['active', 'in_progress', 'pending'] as const;
 const NPC_USER_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -91,44 +91,45 @@ function pickSeedPairs(params: {
   const { candidates, target, existingPairSigs, activeCatIds, ownerMatchCount } = params;
   const picked: Array<{ cat_a_id: string; cat_b_id: string }> = [];
   const chosenPairSigs = new Set<string>();
-  const catUseCount = new Map<string, number>();
+  const blockedCatIds = new Set<string>(activeCatIds);
 
-  const partitioned = [
-    ...candidates.filter((c) => !activeCatIds.has(c.id)),
-    ...candidates.filter((c) => activeCatIds.has(c.id)),
-  ];
+  // Per-cat active uniqueness: only consider cats not currently in votable matches.
+  const neverPlayed = candidates.filter((c) => !blockedCatIds.has(c.id));
 
-  const attempt = (maxCatUse: number) => {
-    for (let i = 0; i < partitioned.length; i += 1) {
-      if (picked.length >= target) return;
-      const a = partitioned[i];
-      if ((catUseCount.get(a.id) || 0) >= maxCatUse) continue;
-      for (let j = i + 1; j < partitioned.length; j += 1) {
-        if (picked.length >= target) return;
-        const b = partitioned[j];
-        if (!a.id || !b.id || a.id === b.id) continue;
-        if ((catUseCount.get(b.id) || 0) >= maxCatUse) continue;
-        if (a.user_id && b.user_id && a.user_id === b.user_id) continue;
-        if (a.image_key && b.image_key && a.image_key === b.image_key) continue;
+  // Sort neverPlayed by newest first.
+  const sortedNeverPlayed = [...neverPlayed].sort((a, b) => {
+    const ta = Date.parse(String(a.created_at || '')) || 0;
+    const tb = Date.parse(String(b.created_at || '')) || 0;
+    return tb - ta;
+  });
 
-        const pairSig = toPairSig(a.id, b.id);
-        if (existingPairSigs.has(pairSig) || chosenPairSigs.has(pairSig)) continue;
-        if (a.user_id && (ownerMatchCount.get(a.user_id) || 0) >= OWNER_MATCH_CAP_PER_RUN) continue;
-        if (b.user_id && (ownerMatchCount.get(b.user_id) || 0) >= OWNER_MATCH_CAP_PER_RUN) continue;
+  const partitioned = [...sortedNeverPlayed];
+  for (let i = 0; i < partitioned.length; i += 1) {
+    if (picked.length >= target) break;
+    const a = partitioned[i];
+    if (!a?.id || blockedCatIds.has(a.id)) continue;
+    for (let j = i + 1; j < partitioned.length; j += 1) {
+      if (picked.length >= target) break;
+      const b = partitioned[j];
+      if (!a.id || !b?.id || a.id === b.id) continue;
+      if (blockedCatIds.has(b.id)) continue;
+      if (a.user_id && b.user_id && a.user_id === b.user_id) continue;
+      if (a.image_key && b.image_key && a.image_key === b.image_key) continue;
 
-        picked.push({ cat_a_id: a.id, cat_b_id: b.id });
-        chosenPairSigs.add(pairSig);
-        catUseCount.set(a.id, (catUseCount.get(a.id) || 0) + 1);
-        catUseCount.set(b.id, (catUseCount.get(b.id) || 0) + 1);
-        if (a.user_id) ownerMatchCount.set(a.user_id, (ownerMatchCount.get(a.user_id) || 0) + 1);
-        if (b.user_id) ownerMatchCount.set(b.user_id, (ownerMatchCount.get(b.user_id) || 0) + 1);
-        break;
-      }
+      const pairSig = toPairSig(a.id, b.id);
+      if (existingPairSigs.has(pairSig) || chosenPairSigs.has(pairSig)) continue;
+      if (a.user_id && (ownerMatchCount.get(a.user_id) || 0) >= OWNER_MATCH_CAP_PER_RUN) continue;
+      if (b.user_id && (ownerMatchCount.get(b.user_id) || 0) >= OWNER_MATCH_CAP_PER_RUN) continue;
+
+      picked.push({ cat_a_id: a.id, cat_b_id: b.id });
+      chosenPairSigs.add(pairSig);
+      blockedCatIds.add(a.id);
+      blockedCatIds.add(b.id);
+      if (a.user_id) ownerMatchCount.set(a.user_id, (ownerMatchCount.get(a.user_id) || 0) + 1);
+      if (b.user_id) ownerMatchCount.set(b.user_id, (ownerMatchCount.get(b.user_id) || 0) + 1);
+      break;
     }
-  };
-
-  attempt(1);
-  if (picked.length < target) attempt(2);
+  }
   return picked;
 }
 
@@ -225,6 +226,17 @@ async function seedForArena(params: {
   });
 
   if (pairs.length === 0) return { inserted: 0, catsUsed: new Set<string>(), tournamentId: String(activeTournament.id) };
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[DEV][admin-arena-seed-uniqueness]', {
+      tournamentId: String(activeTournament.id || ''),
+      requested: target,
+      selected: pairs.length,
+      droppedDuplicatePairs: Math.max(0, target - pairs.length),
+      droppedDuplicateCats: Math.max(0, target - pairs.length),
+      replacementCount: pairs.length,
+    });
+  }
 
   const rows = pairs.map((p) => ({
     tournament_id: activeTournament.id,

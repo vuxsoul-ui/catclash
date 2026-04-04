@@ -1,117 +1,115 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
+
+const DEFAULT_PROXY_URL = 'http://localhost:8787/v1/messages';
+
+function parseErrorStatus(status: number): number {
+  const normalized = Number(status || 500);
+  return Math.min(Math.max(normalized, 400), 599);
+}
+
+async function toFormDataFromRequest(request: Request): Promise<FormData> {
+  const contentType = String(request.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('multipart/form-data')) {
+    return request.formData();
+  }
+
+  const body = await request.json().catch(() => null);
+  const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : '';
+  if (!prompt) {
+    throw new Error('Prompt is required');
+  }
+  const form = new FormData();
+  form.set('prompt', prompt);
+  if (typeof body?.context === 'string') form.set('context', body.context);
+  if (typeof body?.task === 'string') form.set('task', body.task);
+  if (typeof body?.constraints === 'string') form.set('constraints', body.constraints);
+  if (typeof body?.output === 'string') form.set('output', body.output);
+  return form;
+}
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+  const proxyUrl = String(process.env.CLAUDE_PROXY_URL || DEFAULT_PROXY_URL).trim();
+  const proxyToken = String(process.env.CLAUDE_PROXY_TOKEN || '').trim();
+
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json(
-        { ok: false, error: "Missing ANTHROPIC_API_KEY" },
-        { status: 500 }
-      );
-    }
+    const form = await toFormDataFromRequest(request);
 
-    const body = await request.json().catch(() => null);
-    const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
-
-    if (!prompt) {
-      return NextResponse.json(
-        { ok: false, error: "Prompt is required" },
-        { status: 400 }
-      );
-    }
-
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      baseURL: process.env.ANTHROPIC_BASE_URL,
+    console.info('[/api/claude] proxy request start', {
+      proxyUrl,
+      hasProxyToken: Boolean(proxyToken),
+      nodeEnv: process.env.NODE_ENV,
     });
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 500,
-      system:
-        "You are helping design and audit a mobile-first game UI called CatClash. Be concise, practical, and avoid fluff. Focus on UX, hierarchy, and game feel. Output in short structured bullets.",
-      messages: [{ role: "user", content: prompt }],
+    const upstream = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: proxyToken ? { Authorization: `Bearer ${proxyToken}` } : undefined,
+      body: form,
     });
 
-    const text = message.content
-      .filter((chunk) => chunk.type === "text")
-      .map((chunk) => chunk.text)
-      .join("\n")
-      .trim();
+    const durationMs = Date.now() - startedAt;
+    const upstreamContentType = String(upstream.headers.get('content-type') || '').toLowerCase();
 
-    return NextResponse.json({ ok: true, text });
-  } catch (error: any) {
-    const isDev = process.env.NODE_ENV !== "production";
-    const configuredBaseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-    const requestURL = `${configuredBaseURL.replace(/\/+$/, "")}/v1/messages`;
-    const upstreamStatus =
-      Number(error?.status) ||
-      Number(error?.response?.status) ||
-      Number(error?.statusCode) ||
-      500;
-    const status = Math.min(Math.max(upstreamStatus, 400), 599);
-    const message =
-      typeof error?.message === "string" && error.message
-        ? error.message
-        : "Claude request failed";
-    const rawHeaders =
-      error?.headers ||
-      error?.response?.headers ||
-      null;
-    const headers: Record<string, string> = {};
-    if (rawHeaders && typeof rawHeaders.forEach === "function") {
-      rawHeaders.forEach((value: string, key: string) => {
-        const lower = String(key || "").toLowerCase();
-        if (lower === "authorization" || lower === "x-api-key" || lower === "api-key") return;
-        headers[key] = String(value);
+    if (!upstream.ok) {
+      const maybeJson = await upstream.json().catch(() => null);
+      const maybeText = maybeJson ? null : await upstream.text().catch(() => '');
+      const message =
+        (maybeJson && typeof maybeJson?.error === 'string' && maybeJson.error) ||
+        (typeof maybeText === 'string' && maybeText.trim()) ||
+        'Claude proxy request failed';
+
+      console.error('[/api/claude] proxy upstream failure', {
+        proxyUrl,
+        status: upstream.status,
+        durationMs,
+        error: message,
       });
-    } else if (rawHeaders && typeof rawHeaders === "object") {
-      for (const [key, value] of Object.entries(rawHeaders)) {
-        const lower = String(key || "").toLowerCase();
-        if (lower === "authorization" || lower === "x-api-key" || lower === "api-key") continue;
-        headers[key] = String(value);
-      }
-    }
-    const upstreamBody =
-      error?.error ??
-      error?.response?.data ??
-      error?.response?.body ??
-      error?.body ??
-      null;
 
-    console.error("[/api/claude] upstream failure", {
-      requestURL,
-      env: {
-        hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
-        hasBaseURL: Boolean(process.env.ANTHROPIC_BASE_URL),
-        nodeEnv: process.env.NODE_ENV,
-      },
-      status,
-      message,
-      upstreamBody,
-      headers,
-    });
-
-    if (isDev) {
       return NextResponse.json(
         {
           ok: false,
           error: message,
-          status,
-          upstream: upstreamBody ?? null,
-          debug: {
-            requestURL,
-            hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
-            hasBaseURL: Boolean(process.env.ANTHROPIC_BASE_URL),
-            nodeEnv: process.env.NODE_ENV,
-          },
+          status: upstream.status,
+          upstream: maybeJson || maybeText || null,
         },
-        { status }
+        { status: parseErrorStatus(upstream.status) }
       );
     }
 
-    return NextResponse.json({ ok: false, error: message }, { status });
+    console.info('[/api/claude] proxy request complete', {
+      proxyUrl,
+      status: upstream.status,
+      durationMs,
+      contentType: upstreamContentType,
+    });
+
+    if (upstream.body && (upstreamContentType.includes('application/x-ndjson') || upstreamContentType.includes('text/event-stream'))) {
+      const responseHeaders = new Headers();
+      responseHeaders.set('Cache-Control', 'no-store');
+      responseHeaders.set('Content-Type', upstreamContentType.includes('text/event-stream') ? 'text/event-stream; charset=utf-8' : 'application/x-ndjson; charset=utf-8');
+      return new Response(upstream.body, {
+        status: 200,
+        headers: responseHeaders,
+      });
+    }
+
+    const json = await upstream.json().catch(() => null);
+    if (json && typeof json === 'object') {
+      return NextResponse.json(json, { status: 200 });
+    }
+
+    const text = await upstream.text().catch(() => '');
+    return NextResponse.json({ ok: true, text: String(text || '') }, { status: 200 });
+  } catch (error: any) {
+    const durationMs = Date.now() - startedAt;
+    const message = typeof error?.message === 'string' && error.message ? error.message : 'Claude request failed';
+    console.error('[/api/claude] proxy failure', {
+      proxyUrl,
+      durationMs,
+      error: message,
+    });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

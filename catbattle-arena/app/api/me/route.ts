@@ -32,7 +32,14 @@ function isSchemaMismatch(error: unknown): boolean {
 
 function isFailSoftBackendError(error: unknown): boolean {
   const msg = String((error as any)?.message || error || '').toLowerCase();
-  return isSchemaMismatch(error) || msg.includes('invalid api key');
+  return (
+    isSchemaMismatch(error) ||
+    msg.includes('invalid api key') ||
+    msg.includes('fetch failed') ||
+    msg.includes('connect timeout error') ||
+    msg.includes('und_err_connect_timeout') ||
+    msg.includes('supabase_fetch_timeout')
+  );
 }
 
 function assertNoSupabaseError(error: SchemaishError): asserts error is null | undefined {
@@ -89,7 +96,7 @@ export async function GET() {
       return NextResponse.json({ error: 'No session' }, { status: 401 });
     }
     
-    const supabase = createServerSupabaseClient();
+    const supabase = createServerSupabaseClient(2500);
 
     const testerMode = isFeatureTesterId(guestId);
     

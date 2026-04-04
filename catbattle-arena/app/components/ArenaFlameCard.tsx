@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Flame } from 'lucide-react';
+import { Check, Flame } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 type FlameState = 'active' | 'fading' | 'expired';
@@ -31,6 +31,13 @@ type ArenaFlameCardProps = {
   onNavigateAction?: (action: 'vote' | 'predict' | 'submit') => void;
   className?: string;
   compact?: boolean;
+  starterTasks?: Array<{
+    key: string;
+    title: string;
+    done: boolean;
+    cta?: string | null;
+  }>;
+  onStarterTaskAction?: (key: string) => void;
 };
 
 function formatHms(totalSeconds: number): string {
@@ -49,6 +56,8 @@ export default function ArenaFlameCard({
   onNavigateAction,
   className = '',
   compact = false,
+  starterTasks = [],
+  onStarterTaskAction,
 }: ArenaFlameCardProps) {
   const router = useRouter();
   const [localSeconds, setLocalSeconds] = useState<number | null>(flame?.secondsRemaining ?? null);
@@ -137,12 +146,14 @@ export default function ArenaFlameCard({
   const goSubmit = () => navigateAction('submit');
   const nextNeededAction: 'vote' | 'predict' | 'submit' =
     votesToday < 5 ? 'vote' : predictionsToday < 1 ? 'predict' : catsToday < 1 ? 'submit' : 'vote';
+  const starterTasksRemaining = starterTasks.filter((task) => !task.done);
+  const showStarterTasks = starterTasksRemaining.length > 0 && dayNumber <= 3;
 
   let statusText = 'Your flame needs fuel.';
-  let helperText = 'Complete any one today to keep it alive:';
+  let helperText = 'Complete any one today:';
   let primaryCta = 'Fuel the Flame';
   let primaryAction = () => navigateAction(nextNeededAction);
-  let secondaryText: string | null = 'Any one counts: 5 votes, 1 prediction, or 1 submit.';
+  let secondaryText: string | null = '5 votes, 1 prediction, or 1 submit.';
   let countdownText: string | null = null;
   let showChips = true;
   let showSecondaryButton = false;
@@ -150,20 +161,20 @@ export default function ArenaFlameCard({
   if (viewState === 'fading') {
     statusText = 'Your flame is fading.';
     countdownText = `Save it in ${formatHms(localSeconds || 0)}`;
-    helperText = 'Any one saves it: 5 votes, 1 prediction, or 1 submit.';
+    helperText = 'Complete any one today:';
     primaryCta = 'Reignite Flame';
     primaryAction = () => navigateAction(nextNeededAction);
     secondaryText = null;
     showChips = false;
   } else if (viewState === 'expired') {
     statusText = 'Flame went out.';
-    helperText = 'Reignite today to start a new run.';
+    helperText = 'Reignite today.';
     primaryCta = 'Ignite Flame';
     primaryAction = () => navigateAction(nextNeededAction);
     secondaryText = null;
     showChips = false;
   } else if (flame.qualifiesToday) {
-    statusText = 'Flame fueled. Keep the heat up.';
+    statusText = 'Flame fueled.';
     helperText = `Next reward in ${Math.max(0, Number(flame.nextMilestone?.daysRemaining || 0))} days.`;
     primaryCta = 'Keep Playing';
     primaryAction = goVote;
@@ -173,66 +184,135 @@ export default function ArenaFlameCard({
   }
 
   return (
-    <div className={`arena-flame-card rounded-2xl border ${compact ? 'p-3 min-h-[210px]' : 'p-4 min-h-[232px]'} shadow-[0_12px_34px_rgba(0,0,0,0.28)] ${toneClass} ${className}`}>
-      <p className="text-sm font-bold text-white/95 inline-flex items-center gap-1.5">
-        <Flame className={`w-5 h-5 ${viewState === 'fading' ? 'text-red-300 animate-pulse' : viewState === 'active' ? 'text-orange-300 flame-flicker' : 'text-zinc-400'}`} />
-        Arena Flame
-      </p>
-      <p className={`${compact ? 'text-2xl' : 'text-3xl'} font-extrabold text-white mt-1`}>Day {dayNumber}</p>
-      {!compact && <p className="text-xs text-white/80 mt-1">{statusText}</p>}
-      {countdownText ? (
-        <p className="text-xs text-red-200 mt-1 font-semibold">{countdownText}</p>
-      ) : (
-        <p className="text-[11px] text-white/60 mt-1">{compact ? `Next milestone: Day ${nextMilestone}` : helperText}</p>
-      )}
+    <div className={`relative group rounded-3xl overflow-hidden ${className}`}>
+      {/* Background glow layer (hover effect) - heavily reduced */}
+      <div className="absolute -inset-1 bg-gradient-to-br from-orange-500/15 via-red-500/8 to-amber-600/12 rounded-3xl blur-sm sm:blur-md opacity-0 group-hover:opacity-100 transition-all duration-500" />
 
-      <div className="mt-3">
-        <div className="h-1.5 rounded-full bg-black/35 overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-orange-300 via-amber-300 to-emerald-300 transition-all duration-300" style={{ width: `${milestoneProgress * 100}%` }} />
+      {/* Content layer - dark neutral base */}
+      <div className={`relative z-10 bg-[#0d1116] border border-orange-500/15 rounded-3xl p-4 shadow-xl sm:shadow-2xl sm:shadow-black/20 ${compact ? 'min-h-[240px]' : 'min-h-[280px]'}`}>
+        {/* Header with icon + title */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-bold text-white/90 inline-flex items-center gap-1.5">
+            <div className="relative">
+              <div className={`absolute inset-0 bg-orange-500/12 rounded-full blur-sm ${viewState === 'active' ? 'animate-pulse' : ''}`} style={{animationDuration: '2s'}} />
+              <Flame className={`relative w-5 h-5 ${viewState === 'fading' ? 'text-red-300/80 animate-pulse' : viewState === 'active' ? 'text-orange-300/80 flame-flicker' : 'text-zinc-400'}`} />
+            </div>
+            Arena Flame
+          </div>
+          <div className="px-2.5 py-1 rounded-full bg-orange-500/10 border border-orange-400/25 text-xs font-bold text-orange-200/70">
+            Day {dayNumber}
+          </div>
         </div>
-        <p className="text-[10px] text-white/60 mt-1">Next milestone: Day {nextMilestone}</p>
+
+        {/* Big day counter - restrained gradient */}
+        <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-200 via-amber-200 to-red-300 mt-1">Day {dayNumber}</p>
+
+        {/* Vote count summary */}
+        <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-white/5 border border-white/8 px-2 py-1">
+          <span className="text-[10px] font-semibold text-white/70">Votes today</span>
+          <span className={`text-[10px] font-black ${votesToday >= 5 ? 'text-emerald-300' : 'text-orange-200'}`}>{votesToday}/5</span>
+        </div>
+
+        {/* Status text */}
+        {!compact && <p className="text-xs text-orange-200/60 mt-1">{statusText}</p>}
+        {countdownText ? (
+          <p className="text-xs text-red-200/70 mt-1 font-semibold">{countdownText}</p>
+        ) : (
+          <p className="text-[11px] text-white/50 mt-1">{compact ? `Next milestone: Day ${nextMilestone}` : helperText}</p>
+        )}
+
+        {/* Milestone progress */}
+        <div className="mt-3 space-y-1.5">
+          <div className="flex justify-between items-center text-xs text-gray-400">
+            <span>Next Milestone</span>
+            <span className="text-orange-200/60 font-bold">Day {nextMilestone}</span>
+          </div>
+          <div className="h-2 bg-white/8 rounded-full overflow-hidden border border-white/5">
+            <div className="h-full bg-gradient-to-r from-orange-400 via-amber-400 to-emerald-300 rounded-full transition-all duration-300" style={{ width: `${milestoneProgress * 100}%` }} />
+          </div>
+        </div>
+
+        {/* Task chips */}
+        {showChips && (
+          <div className={`grid mt-3 ${compact ? 'grid-cols-1 gap-1.5' : 'grid-cols-3 gap-2'}`}>
+            <button
+              onClick={goVote}
+              className="arena-flame-task-row min-w-0 rounded-lg bg-white/4 border border-orange-500/12 hover:bg-white/8 font-semibold text-white/85 transition-all h-8 text-[11px] px-2 text-left flex items-center gap-2"
+            >
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center ${votesToday >= 5 ? 'bg-orange-500/70' : 'bg-white/15'}`}>
+                {votesToday >= 5 ? <Check className="w-2.5 h-2.5 text-white" /> : <span className="w-1.5 h-1.5 rounded-full bg-white/50" />}
+              </div>
+              <span className="truncate flex-1">Vote ({votesToday}/5)</span>
+            </button>
+            <button
+              onClick={goPredict}
+              className="arena-flame-task-row min-w-0 rounded-lg bg-white/4 border border-orange-500/12 hover:bg-white/8 font-semibold text-white/85 transition-all h-8 text-[11px] px-2 text-left flex items-center gap-2"
+            >
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center ${predictionsToday >= 1 ? 'bg-orange-500/70' : 'bg-white/15'}`}>
+                {predictionsToday >= 1 ? <Check className="w-2.5 h-2.5 text-white" /> : <span className="w-1.5 h-1.5 rounded-full bg-white/50" />}
+              </div>
+              <span className="truncate flex-1">Predict ({predictionsToday}/1)</span>
+            </button>
+            <button
+              onClick={goSubmit}
+              className="arena-flame-task-row min-w-0 rounded-lg bg-white/4 border border-orange-500/12 hover:bg-white/8 font-semibold text-white/85 transition-all h-8 text-[11px] px-2 text-left flex items-center gap-2"
+            >
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center ${catsToday >= 1 ? 'bg-orange-500/70' : 'bg-white/15'}`}>
+                {catsToday >= 1 ? <Check className="w-2.5 h-2.5 text-white" /> : <span className="w-1.5 h-1.5 rounded-full bg-white/50" />}
+              </div>
+              <span className="truncate flex-1">{compact ? `Submit (${catsToday}/1)` : `Submit (${catsToday}/1)`}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Starter Tasks */}
+        {showStarterTasks ? (
+          <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] p-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">Starter Tasks</p>
+            <div className="mt-1.5 space-y-1.5">
+              {starterTasksRemaining.slice(0, 3).map((task) => (
+                <div key={task.key} className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-white/75 truncate">{task.title}</span>
+                  {task.cta && onStarterTaskAction ? (
+                    <button
+                      type="button"
+                      onClick={() => onStarterTaskAction(task.key)}
+                      data-testid={`starter-quest-cta-${task.key}`}
+                      className="h-7 shrink-0 rounded-full border border-white/12 bg-white/8 px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/12 transition-colors"
+                    >
+                      {task.cta}
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-white/40">Tracked</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Primary CTA button - crisp, minimal glow */}
+        <div className="mt-3">
+          <button
+            onClick={primaryAction}
+            className={`w-full rounded-xl bg-orange-500/80 text-black font-extrabold active:scale-95 transition-all duration-150 hover:bg-orange-500/90 shadow-[0_4px_12px_rgba(0,0,0,0.15)] ${compact ? 'h-10 text-sm' : 'h-11 text-base'}`}
+          >
+            🔥 {primaryCta}
+          </button>
+        </div>
+
+        {/* Secondary button */}
+        {showSecondaryButton && (
+          <button
+            onClick={() => router.push('/gallery?tab=my-cats')}
+            className="mt-2 h-10 w-full rounded-xl bg-white/10 border border-white/20 text-white text-sm font-semibold hover:bg-white/15 transition-colors"
+          >
+            View My Cats
+          </button>
+        )}
+
+        {!compact && secondaryText && <p className="text-[11px] text-white/55 mt-2">{secondaryText}</p>}
       </div>
-
-      {showChips && (
-        <div className={`grid mt-3 ${compact ? 'grid-cols-1 gap-1.5' : 'grid-cols-3 gap-2'}`}>
-          <button
-            onClick={goVote}
-            className={`arena-flame-task-row min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
-          >
-            <span className={`block ${compact ? '' : 'truncate'}`}>Vote ({votesToday}/5)</span>
-          </button>
-          <button
-            onClick={goPredict}
-            className={`arena-flame-task-row min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
-          >
-            <span className={`block ${compact ? '' : 'truncate'}`}>Predict ({predictionsToday}/1)</span>
-          </button>
-          <button
-            onClick={goSubmit}
-            className={`arena-flame-task-row min-w-0 rounded-lg bg-white/10 border border-white/15 font-semibold text-white/90 ${compact ? 'h-8 text-[11px] px-2 text-left' : 'h-9 text-[11px]'}`}
-          >
-            <span className={`block ${compact ? '' : 'truncate'}`}>{compact ? `Submit (${catsToday}/1)` : `Submit (${catsToday}/1)`}</span>
-          </button>
-        </div>
-      )}
-
-      <button
-        onClick={primaryAction}
-        className={`arena-flame-cta mt-3 ${compact ? 'h-10' : 'h-11'} w-full rounded-xl bg-white text-black text-sm font-extrabold active:scale-[0.99] transition-transform`}
-      >
-        {primaryCta}
-      </button>
-
-      {showSecondaryButton && (
-        <button
-          onClick={() => router.push('/gallery?tab=my-cats')}
-          className="mt-2 h-10 w-full rounded-xl bg-white/10 border border-white/20 text-white text-sm font-semibold"
-        >
-          View My Cats
-        </button>
-      )}
-
-      {!compact && secondaryText && <p className="text-[11px] text-white/55 mt-2">{secondaryText}</p>}
     </div>
   );
 }

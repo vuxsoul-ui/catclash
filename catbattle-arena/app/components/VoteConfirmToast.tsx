@@ -24,20 +24,28 @@ export default function VoteConfirmToast({
   visible,
   rarity,
   pulseTick = 0,
+  boostAmount,
+  streakBonus,
+  extraLine,
 }: {
   visible: boolean;
   rarity?: string | null;
   pulseTick?: number;
+  boostAmount?: number | null;
+  streakBonus?: number | null;
+  extraLine?: string | null;
 }) {
   const tone = rarityTone(rarity);
   const toneClass = toneClasses(tone);
+  const hasBoost = boostAmount && boostAmount > 0;
+  const hasStreak = streakBonus && streakBonus > 0;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+74px)] z-[1300] flex justify-center px-4">
       <AnimatePresence mode="wait">
         {visible ? (
           <motion.div
-            key="vote-confirm-toast"
+            key={`vote-confirm-toast-${pulseTick}`}
             initial={{ opacity: 0, y: 20, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -53,15 +61,38 @@ export default function VoteConfirmToast({
             <motion.div
               animate={pulseTick ? { scale: [1, 1.02, 1] } : { scale: 1 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="relative flex items-center gap-2.5"
+              className="relative"
             >
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/8">
-                <ShieldCheck className="h-4 w-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[11px] font-extrabold tracking-[0.16em] text-white">VOTE SECURED</span>
-                <span className="block text-xs font-semibold text-white/82">+1 Arena Flame</span>
-              </span>
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/8">
+                  <ShieldCheck className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[11px] font-extrabold tracking-[0.16em] text-white">
+                    {hasBoost ? 'VOTE + BOOST LOCKED' : 'VOTE LOCKED'}
+                  </span>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-white/90">
+                      +1 Flame
+                    </span>
+                    {hasBoost && (
+                      <span className="inline-flex items-center rounded bg-amber-500/20 border border-amber-400/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100">
+                        +{boostAmount} boost
+                      </span>
+                    )}
+                    {hasStreak && (
+                      <span className="inline-flex items-center rounded bg-orange-500/20 border border-orange-400/30 px-1.5 py-0.5 text-[10px] font-semibold text-orange-100">
+                        +{streakBonus}% streak
+                      </span>
+                    )}
+                  </div>
+                  {extraLine ? (
+                    <span className="mt-1 block text-[10px] font-semibold text-emerald-100/90">
+                      {extraLine}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
             </motion.div>
           </motion.div>
         ) : null}

@@ -29,12 +29,30 @@ export function getServerSupabaseConfig() {
   return { supabaseUrl, serviceKey };
 }
 
-export function createServerSupabaseClient() {
+function timedFetch(timeoutMs: number): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`supabase_fetch_timeout_${timeoutMs}`)), timeoutMs);
+    try {
+      return await fetch(input, {
+        ...init,
+        signal: init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+export function createServerSupabaseClient(timeoutMs = 3500) {
   const { supabaseUrl, serviceKey } = getServerSupabaseConfig();
   return createClient(supabaseUrl, serviceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
+    },
+    global: {
+      fetch: timedFetch(timeoutMs),
     },
   });
 }

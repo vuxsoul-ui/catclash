@@ -450,12 +450,12 @@ export default function DuelVSCard({
           border-radius: 16px;
           overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.15);
-          height: 104px;
+          height: 108px;
         }
         .duel-vs-compact :global(.duel-hero) {
           margin: 6px 7px 0;
           border-radius: 12px;
-          height: 82px;
+          height: 86px;
         }
         .duel-vs-shell :global(.duel-hero-image) {
           width: 100%;
@@ -469,15 +469,15 @@ export default function DuelVSCard({
         }
         .duel-vs-shell :global(.duel-hero-text) {
           position: absolute;
-          left: 9px;
+          left: 11px;
           right: 9px;
-          bottom: 8px;
+          bottom: 6px;
           z-index: 1;
         }
         .duel-vs-compact :global(.duel-hero-text) {
-          left: 7px;
+          left: 9px;
           right: 7px;
-          bottom: 6px;
+          bottom: 5px;
         }
         .duel-vs-shell :global(.duel-badge-overlay) {
           position: absolute;
@@ -496,31 +496,35 @@ export default function DuelVSCard({
           overflow: hidden;
         }
         .duel-vs-shell :global(.duel-name) {
-          font-size: 15px;
-          line-height: 1;
+          font-size: 17px;
+          line-height: 1.1;
           font-weight: 900;
           color: #fff;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 12px rgba(0,0,0,0.4);
           white-space: nowrap;
           text-overflow: ellipsis;
           overflow: hidden;
+          letter-spacing: 0.01em;
+          padding-left: 1px;
         }
-        .duel-vs-compact :global(.duel-name) { font-size: 13px; }
+        .duel-vs-compact :global(.duel-name) { font-size: 15px; }
         .duel-vs-shell :global(.duel-owner) {
-          margin-top: 2px;
+          margin-top: 3px;
           font-size: 10px;
-          color: rgba(255,255,255,0.75);
+          color: rgba(255,255,255,0.65);
           white-space: nowrap;
           text-overflow: ellipsis;
           overflow: hidden;
         }
-        .duel-vs-compact :global(.duel-owner) { font-size: 9px; margin-top: 1px; }
+        .duel-vs-compact :global(.duel-owner) { font-size: 9px; margin-top: 2px; }
         .duel-vs-shell :global(.duel-role) {
-          font-size: 9px;
+          font-size: 8px;
           text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: rgba(255,255,255,0.5);
+          letter-spacing: 0.1em;
+          color: rgba(255,255,255,0.4);
+          margin-top: 1px;
         }
-        .duel-vs-compact :global(.duel-role) { font-size: 8px; }
+        .duel-vs-compact :global(.duel-role) { font-size: 7px; }
         .duel-vs-shell :global(.duel-title) {
           margin-top: 2px;
           font-size: 10px;

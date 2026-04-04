@@ -10,6 +10,32 @@ const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace
 
 export async function GET(request: NextRequest) {
   if (!isAdmin(request)) {
+    if (process.env.NODE_ENV !== 'production') {
+      const authHeader = request.headers.get('authorization');
+      const bearerMatch = String(authHeader || '').match(/^Bearer\s+(.+)$/i);
+      const received = String(bearerMatch?.[1] || '').trim();
+      const allowed = [
+        String(process.env.ADMIN_TOKEN || '').trim(),
+        String(process.env.ADMIN_SECRET || '').trim(),
+        String(process.env.CRON_SECRET || '').trim(),
+      ].filter(Boolean);
+      const matchedByPrefix = allowed.some((secret) => secret === received);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Unauthorized',
+          debug_auth: {
+            hasAuthorizationHeader: !!authHeader,
+            bearerParsed: !!received,
+            receivedTokenPreview: received ? received.slice(0, 6) : null,
+            allowedTokenPreviews: allowed.map((secret) => secret.slice(0, 6)),
+            allowedCount: allowed.length,
+            matchedByEquality: matchedByPrefix,
+          },
+        },
+        { status: 401 }
+      );
+    }
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 

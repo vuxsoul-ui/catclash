@@ -91,7 +91,7 @@ export async function GET(
           .select('battle_id, voted_for, created_at')
           .eq('voter_user_id', userId)
           .order('created_at', { ascending: false })
-          .limit(20),
+          .limit(50),
         supabase.from('user_prediction_stats').select('current_streak, best_streak, bonus_rolls').eq('user_id', userId).maybeSingle(),
         supabase.from('social_referrals').select('recruit_user_id, claimable_sigils, total_sigils_earned, status').eq('referrer_user_id', userId),
         supabase
@@ -132,8 +132,8 @@ export async function GET(
         ? supabase.from('cats').select('id, name').in('id', votedCatIds)
         : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
       battleIds.length
-        ? supabase.from('tournament_matches').select('id, cat_a_id, cat_b_id').in('id', battleIds)
-        : Promise.resolve({ data: [] as Array<{ id: string; cat_a_id: string; cat_b_id: string }> }),
+        ? supabase.from('tournament_matches').select('id, cat_a_id, cat_b_id, winner_id, status, resolved_at').in('id', battleIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; cat_a_id: string; cat_b_id: string; winner_id: string | null; status: string | null; resolved_at: string | null }> }),
     ]);
 
     const allOpponentIds = Array.from(
@@ -259,12 +259,17 @@ export async function GET(
     const voteHistory = (votes || []).map((v) => {
       const match = matchMap[v.battle_id];
       const oppId = match ? (match.cat_a_id === v.voted_for ? match.cat_b_id : match.cat_a_id) : null;
+      const winnerId = String((match as { winner_id?: string | null } | undefined)?.winner_id || '').trim() || null;
+      const isResolved = String((match as { status?: string | null } | undefined)?.status || '').toLowerCase() === 'complete' || !!(match as { resolved_at?: string | null } | undefined)?.resolved_at || !!winnerId;
+      const isCorrect = !!winnerId && winnerId === v.voted_for;
       return {
         battle_id: v.battle_id,
         voted_for_id: v.voted_for,
         voted_for_name: votedCatMap[v.voted_for] || 'Unknown',
         against_name: (oppId && catNameMap[oppId]) || null,
         created_at: v.created_at,
+        resolved: isResolved,
+        won: isResolved ? isCorrect : null,
       };
     });
 
@@ -291,6 +296,8 @@ export async function GET(
         current_streak: predictionStats?.current_streak || 0,
         best_streak: predictionStats?.best_streak || 0,
         bonus_rolls: predictionStats?.bonus_rolls || 0,
+        resolved_count: resolvedPredictions.length,
+        won_count: wonPredictions,
       },
       starter_cat_eligible: false,
       adopted_cat_count: 0,

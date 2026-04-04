@@ -13,6 +13,7 @@
     "test:e2e:launch": "playwright test tests/launch-smoke.spec.ts",
     "test:e2e:ui": "playwright test tests/vote-new-user-flow.spec.ts",
     "test:e2e:api": "playwright test tests/vote-new-user-api-flow.spec.ts",
+    "test:e2e:workflows": "playwright test tests/workflows --project=chromium",
     "deploy:prod": "vercel deploy --prod --yes --scope ks-projects-50fd40d7",
     "verify:prod": "curl -sS https://catclash.org/api/build",
     "verify:diff": "node scripts/verify-build-diff.mjs",

@@ -91,7 +91,7 @@ export default function CollectionPage() {
             <div className="h-24 bg-slate-700 rounded-lg mb-3 flex items-center justify-center text-2xl">
               {cat.collected ? '🐱' : '?'}
             </div>
-            <h3 className="font-bold text-sm">{cat.collected ? cat.name : '???'}</h3>
+            <h3 className="font-black text-base text-white">{cat.collected ? cat.name : '???'}</h3>
             <p className="text-xs text-slate-400">{cat.rarity}</p>
             {cat.collected && (
               <p className="text-xs text-yellow-400">Lv.{cat.level}</p>

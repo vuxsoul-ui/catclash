@@ -3,9 +3,9 @@
 import type { MouseEvent } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag, Star, Flame } from 'lucide-react';
+import { Swords, Cat, User, Home, Trophy, Users, Plus, ShoppingBag, Star, Flame, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { resolveActorId, runIdentityResolutionChecks } from '../lib/identity';
+import { runIdentityResolutionChecks } from '../lib/identity';
 import { countLiveDuels } from '../lib/duel-live';
 import { checkTapTarget, installBottomNavInterceptionDiagnostics, warnOnce } from '../lib/dev-click-guards';
 import { scanDuplicateTestIds } from '../lib/dev-testid-guard';
@@ -15,11 +15,14 @@ export default function Nav() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [myProfileHref, setMyProfileHref] = useState('/login');
+  const [myProfileLabel, setMyProfileLabel] = useState('Login');
   const [liveDuelCount, setLiveDuelCount] = useState(0);
   const [rankSigils, setRankSigils] = useState(0);
   const [rankStreak, setRankStreak] = useState(0);
   const [isArenaNavCompact, setIsArenaNavCompact] = useState(false);
   const topNavRef = useRef<HTMLElement | null>(null);
+  const compactStateRef = useRef(false);
+  const scrollRafRef = useRef<number | null>(null);
   const onArenaPage = pathname === '/tournament' || pathname === '/arena';
 
   useEffect(() => {
@@ -27,6 +30,7 @@ export default function Nav() {
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     let alive = true;
     Promise.all([
       fetch('/api/me', { cache: 'no-store' }).then((r) => r.json().catch(() => ({}))),
@@ -34,11 +38,14 @@ export default function Nav() {
     ])
       .then(([me, duel]) => {
         if (!alive) return;
-        const actorId = resolveActorId(me);
-        if (actorId) {
-          setMyProfileHref(`/profile/${actorId}`);
+        const hasCredentials = !!me?.data?.has_credentials;
+        const profileId = String(me?.data?.profile?.id || me?.guest_id || '').trim();
+        if (hasCredentials) {
+          setMyProfileHref(profileId ? `/profile/${encodeURIComponent(profileId)}` : '/');
+          setMyProfileLabel('Profile');
         } else {
           setMyProfileHref('/login');
+          setMyProfileLabel('Login');
         }
         setRankSigils(Number(me?.data?.progress?.sigils || 0));
         setRankStreak(Number(me?.data?.prediction_streak || me?.data?.streak?.current_streak || 0));
@@ -50,10 +57,12 @@ export default function Nav() {
       })
       .catch(() => {
         if (!alive) return;
+        setMyProfileHref('/login');
+        setMyProfileLabel('Login');
         setLiveDuelCount(0);
       });
     return () => { alive = false; };
-  }, [pathname]);
+  }, [mounted, pathname]);
 
   useEffect(() => {
     runIdentityResolutionChecks();
@@ -73,14 +82,15 @@ export default function Nav() {
         warnOnce('overlay-pointer-safe', '[DEV_CHECK] Overlay layers must keep pointer-events: none');
       }
       if (isMobile && navVisible && mobileNav) {
-        const probeAnchor = mobileNav.querySelector('[data-testid="nav-home"], [data-testid="nav-gallery"], [data-testid="nav-tournament"], [data-testid="nav-shop"], [data-testid="nav-profile"]') as HTMLElement | null;
+        const probeAnchor = mobileNav.querySelector('[data-testid="nav-home"], [data-testid="nav-gallery"], [data-testid="nav-tournament"], [data-testid="nav-shop"], [data-testid="nav-profile-mobile"]') as HTMLElement | null;
         const probeRect = (probeAnchor || mobileNav).getBoundingClientRect();
         const probeX = Math.floor(probeRect.left + probeRect.width * 0.5);
         const probeY = Math.floor(probeRect.top + probeRect.height * 0.5);
         const touchTarget = document.elementFromPoint(probeX, probeY) as HTMLElement | null;
+        const isIgnorableProbeLayer = touchTarget?.tagName === 'NEXTJS-PORTAL' || touchTarget?.tagName === 'SCRIPT';
         const isAnchor = touchTarget?.tagName === 'A' || !!touchTarget?.closest('a');
         const isNavContainer = touchTarget === mobileNav;
-        if (!isAnchor && !isNavContainer) {
+        if (!isIgnorableProbeLayer && !isAnchor && !isNavContainer) {
           warnOnce('nav-bottom-probe', '[DEV_CHECK] Bottom nav probe should resolve to a nav anchor', {
             tag: touchTarget?.tagName || null,
             className: touchTarget?.className || null,
@@ -90,7 +100,7 @@ export default function Nav() {
 
       checkTapTarget({ key: 'nav-home-hit', selector: '[data-testid="nav-home"]', expect: ['A'] });
       checkTapTarget({ key: 'nav-gallery-hit', selector: '[data-testid="nav-gallery"]', expect: ['A'] });
-      checkTapTarget({ key: 'nav-profile-hit', selector: '[data-testid="nav-profile"]', expect: ['A'] });
+      checkTapTarget({ key: 'nav-profile-mobile-hit', selector: '[data-testid="nav-profile-mobile"]', expect: ['A'] });
     }, 80);
     return () => window.clearTimeout(timer);
   }, [pathname]);
@@ -109,14 +119,35 @@ export default function Nav() {
   useEffect(() => {
     if (!mounted || !onArenaPage) {
       setIsArenaNavCompact(false);
+      compactStateRef.current = false;
+      if (scrollRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
       return;
     }
+    const COMPACT_ENTER_Y = 72;
+    const COMPACT_EXIT_Y = 36;
     const onScroll = () => {
-      setIsArenaNavCompact(window.scrollY > 56);
+      if (scrollRafRef.current !== null) return;
+      scrollRafRef.current = window.requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        const y = Math.max(0, window.scrollY || 0);
+        const shouldCompact = compactStateRef.current ? y > COMPACT_EXIT_Y : y > COMPACT_ENTER_Y;
+        if (shouldCompact === compactStateRef.current) return;
+        compactStateRef.current = shouldCompact;
+        setIsArenaNavCompact(shouldCompact);
+      });
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (scrollRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
   }, [mounted, onArenaPage]);
 
   useEffect(() => {
@@ -127,10 +158,14 @@ export default function Nav() {
     nav.classList.toggle('top-nav-shell--compact', arenaEnabled && isArenaNavCompact);
   }, [mounted, onArenaPage, isArenaNavCompact]);
 
-  const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnly?: boolean; hideBelow360?: boolean; primary?: boolean }> = [
+  const resolvedProfileHref = mounted ? myProfileHref : '/login';
+  const resolvedProfileLabel = mounted ? myProfileLabel : 'Login';
+  const topNavBackdropClassName = 'top-nav-backdrop absolute inset-0 pointer-events-none sm:bg-black/40';
+  const topActionLinks: Array<{ href: string; label: string; icon: typeof Home; iconOnly?: boolean; hideBelow360?: boolean; primary?: boolean; testId?: string }> = [
     { href: '/submit', label: 'Submit', icon: Plus, primary: true },
-    { href: '/social', label: 'Social', icon: Users, hideBelow360: true },
-    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnly: true },
+    { href: '/duel', label: 'Duel', icon: Zap, hideBelow360: true },
+    { href: '/casino', label: 'Casino', icon: Star, hideBelow360: true },
+    { href: '/leaderboard', label: 'Leaderboard', icon: Trophy, iconOnly: true, testId: 'nav-leaderboard-desktop' },
   ];
 
   const mobilePrimaryLinks: Array<{ href: string; label: string; icon: typeof Home }> = [
@@ -138,12 +173,13 @@ export default function Nav() {
     { href: '/gallery', label: 'Gallery', icon: Cat },
     { href: '/tournament', label: 'Arena', icon: Swords },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
-    { href: myProfileHref, label: 'Profile', icon: User },
+    { href: resolvedProfileHref, label: resolvedProfileLabel, icon: User },
   ];
 
   const isActiveHref = (href: string) => {
     if (href === '/') return pathname === '/';
     if (href.startsWith('/profile')) return pathname.startsWith('/profile');
+    if (href === '/login') return pathname === '/login';
     return pathname === href;
   };
 
@@ -160,7 +196,7 @@ export default function Nav() {
   return (
     <>
       <nav ref={topNavRef} className="main-nav top-nav-shell sticky top-0 z-[1300] pt-[env(safe-area-inset-top)] pointer-events-auto isolate">
-        <div className="top-nav-backdrop absolute inset-0 pointer-events-none" />
+        <div className={topNavBackdropClassName} />
         <div className="top-nav-inner relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
           <div className="top-nav-primary-row">
             <Link href="/" onClick={withNavFallback('/')} className="top-nav-brand inline-flex min-w-0 items-center gap-2">
@@ -179,6 +215,7 @@ export default function Nav() {
                     key={link.href}
                     href={link.href}
                     onClick={withNavFallback(link.href)}
+                    data-testid={link.testId}
                     className={`nav-tab top-nav-action ${active ? 'active' : ''} ${link.primary ? 'top-nav-action--primary' : ''} ${link.iconOnly ? 'top-nav-action--icon' : ''} ${link.hideBelow360 ? 'top-nav-action--hide-compact' : ''}`}
                     aria-label={link.label}
                   >
@@ -239,7 +276,9 @@ export default function Nav() {
                     ? 'nav-tournament'
                   : link.href === '/shop'
                     ? 'nav-shop'
-                    : 'nav-profile';
+                  : link.href === '/profile' || link.href.startsWith('/profile/')
+                    ? 'nav-profile-mobile'
+                    : 'nav-profile-mobile';
             return (
               <Link
                 key={link.href}

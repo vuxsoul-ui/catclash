@@ -2,15 +2,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { requireGuestId } from "../_lib/guest";
 import { computeGuildStandings } from "../_lib/guilds";
 import { grantPendingCatXp } from "../_lib/cat-progression";
 import { evaluateAndMaybeQualifyFlame } from "../_lib/arenaFlame";
-import { checkRateLimitManyPersistent, getClientIpPrefix, hashValue } from "../_lib/rateLimit";
+import { checkRateLimitManyPersistent } from "../_lib/rateLimit";
 import { markReferralQualifiedFromVote } from "../_lib/referrals";
 import { trackAppEvent } from "../_lib/telemetry";
 import { applyFeatureTesterBoost, isFeatureTesterId } from "../_lib/tester";
 import { computeVoteStats } from "../_lib/vote-stats";
+import { resolveVoterIdentity } from "../_lib/voterIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,49 @@ function logVoteEvent(payload: Record<string, unknown>) {
 function isDuplicateVoteError(errorCode: unknown): boolean {
   const code = String(errorCode || "").toLowerCase();
   return code === "duplicate_vote_user" || code === "duplicate_vote_ip";
+}
+
+function normalizeMatchKey(catAId: string, catBId: string): string {
+  const a = String(catAId || "").trim();
+  const b = String(catBId || "").trim();
+  if (!a || !b) return "";
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+async function hasLineageDuplicateVote(params: {
+  supabase: any;
+  matchKey: string;
+  voterUserId: string;
+  ipHash: string | null;
+  isRegistered: boolean;
+}): Promise<boolean> {
+  const { supabase, matchKey, voterUserId, ipHash, isRegistered } = params;
+  if (!matchKey) return false;
+
+  async function checkIdentity(identityField: "voter_user_id" | "ip_hash", identityValue: string): Promise<boolean> {
+    if (!identityValue) return false;
+    const { data: priorVotes } = await supabase
+      .from("votes")
+      .select("battle_id")
+      .eq(identityField, identityValue)
+      .limit(500);
+    const priorMatchIds = Array.from(
+      new Set((priorVotes || []).map((row: any) => String(row?.battle_id || "").trim()).filter(Boolean))
+    );
+    if (!priorMatchIds.length) return false;
+    const { data: priorMatches } = await supabase
+      .from("tournament_matches")
+      .select("id, cat_a_id, cat_b_id")
+      .in("id", priorMatchIds);
+    return (priorMatches || []).some((row: any) => {
+      const key = normalizeMatchKey(String(row?.cat_a_id || ""), String(row?.cat_b_id || ""));
+      return key === matchKey;
+    });
+  }
+
+  if (await checkIdentity("voter_user_id", voterUserId)) return true;
+  if (!isRegistered && ipHash && await checkIdentity("ip_hash", ipHash)) return true;
+  return false;
 }
 
 async function fetchMatchVotes(supabase: any, matchId: string) {
@@ -99,8 +142,11 @@ export async function POST(req: NextRequest) {
     }
 
     let voterUserId = '';
+    let ipHash: string | null = null;
     try {
-      voterUserId = await requireGuestId();
+      const identity = await resolveVoterIdentity(req);
+      voterUserId = identity.voterUserId;
+      ipHash = identity.ipHash;
     } catch {
       logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, outcome: "unauthorized" });
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -169,7 +215,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const ipHash = hashValue(getClientIpPrefix(req));
     const voteIpHash = isRegistered ? null : ipHash;
     const limitResult = await checkRateLimitManyPersistent([
       { key: `rl:vote:user:${voterUserId}`, limit: 10, windowMs: 60_000 },
@@ -198,6 +243,37 @@ export async function POST(req: NextRequest) {
     if (votedFor !== preflightMatch.cat_a_id && votedFor !== preflightMatch.cat_b_id) {
       logVoteEvent({ request_id: requestId, match_id: matchId, voted_for: votedFor, user_id: voterUserId, outcome: "invalid_cat_preflight" });
       return NextResponse.json({ ok: false, error: "invalid_cat" }, { status: 400 });
+    }
+    const lineageMatchKey = normalizeMatchKey(
+      String(preflightMatch.cat_a_id || ""),
+      String(preflightMatch.cat_b_id || "")
+    );
+    const alreadyVotedByLineage = await hasLineageDuplicateVote({
+      supabase,
+      matchKey: lineageMatchKey,
+      voterUserId,
+      ipHash: voteIpHash,
+      isRegistered,
+    });
+    if (alreadyVotedByLineage) {
+      const afterVotes = await fetchMatchVotes(supabase, matchId);
+      logVoteEvent({
+        request_id: requestId,
+        match_id: matchId,
+        voted_for: votedFor,
+        user_id: voterUserId,
+        outcome: "duplicate",
+        detail: "match_key",
+      });
+      const pageVoteMeta = await attachArenaPageVoteState(supabase, voterUserId, matchId);
+      return NextResponse.json({
+        ok: true,
+        alreadyVoted: true,
+        matchId,
+        choice: votedFor,
+        ...(afterVotes || {}),
+        ...pageVoteMeta,
+      });
     }
     const { data: rpcData, error: rpcError } = await supabase.rpc("cast_vote", {
       p_match_id: matchId,

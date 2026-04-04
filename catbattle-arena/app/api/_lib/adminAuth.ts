@@ -31,11 +31,9 @@ function getAllowedSecrets(): string[] {
 }
 
 function isSecretConfigUsable(): { ok: true } | { ok: false; reason: string } {
-  const adminToken = String(process.env.ADMIN_TOKEN || '').trim();
-  // Fail closed to avoid accidental public admin access when token env is unset.
-  if (!adminToken) return { ok: false, reason: 'ADMIN_TOKEN is required' };
-
   const secrets = getAllowedSecrets();
+  // Fail closed unless at least one admin secret is configured.
+  if (secrets.length === 0) return { ok: false, reason: 'Missing admin secrets' };
   if (process.env.NODE_ENV === 'production') {
     const adminSecret = String(process.env.ADMIN_SECRET || '').trim();
     const cronSecret = String(process.env.CRON_SECRET || '').trim();
@@ -44,7 +42,6 @@ function isSecretConfigUsable(): { ok: true } | { ok: false; reason: string } {
     if (!cronSecret) return { ok: false, reason: 'CRON_SECRET is required in production' };
     if (weakSecret(cronSecret)) return { ok: false, reason: 'CRON_SECRET is weak in production' };
   }
-  if (secrets.length === 0) return { ok: false, reason: 'Missing admin secrets' };
   return { ok: true };
 }
 
@@ -53,8 +50,10 @@ export function isAdminAuthorized(req: NextRequest): boolean {
   if (!secretCheck.ok) return false;
 
   const bearer = parseBearer(req.headers.get('authorization'));
-  if (!bearer) return false;
-  return getAllowedSecrets().some((secret) => safeEq(secret, bearer));
+  const xSecret = String(req.headers.get('x-admin-secret') || '').trim();
+  const supplied = bearer || xSecret;
+  if (!supplied) return false;
+  return getAllowedSecrets().some((secret) => safeEq(secret, supplied));
 }
 
 export function requireAdmin(req: NextRequest): { ok: true } | NextResponse {

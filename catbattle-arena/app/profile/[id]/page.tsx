@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, LogOut } from 'lucide-react';
-import CosmeticFrame from '../../components/cosmetics/CosmeticFrame';
-import CosmeticTitle from '../../components/cosmetics/CosmeticTitle';
-import CosmeticThemeProvider from '../../components/cosmetics/CosmeticThemeProvider';
+import { ArrowLeft, Loader2, LogOut, X } from 'lucide-react';
 import { DataLoadError } from '../../components/DataLoadError';
-import { cosmeticBorderClassFromSlug, cosmeticTextClassFromSlug } from '../../_lib/cosmetics/effectsRegistry';
+import TrainerHero from '../../components/trainer/TrainerHero';
+import TrainerInlineStats from '../../components/trainer/TrainerInlineStats';
+import TrainerTabs, { type TrainerTab } from '../../components/trainer/TrainerTabs';
+import TrainerOverview from '../../components/trainer/TrainerOverview';
+import TrainerMyCats, { type TrainerCat } from '../../components/trainer/TrainerMyCats';
+import TrainerActivity, { type TrainerActivityItem } from '../../components/trainer/TrainerActivity';
 
 interface ProfileCat {
   id: string;
@@ -23,9 +25,6 @@ interface ProfileCat {
   created_at: string;
   stance?: string | null;
   fan_count?: number;
-  cheer_count?: number;
-  origin?: string | null;
-  prestige_weight?: number;
 }
 
 interface ProfileResponse {
@@ -40,43 +39,26 @@ interface ProfileResponse {
     voted_for_name: string;
     against_name: string | null;
     created_at: string;
+    resolved?: boolean;
+    won?: boolean | null;
   }>;
-  equipped_cosmetics: Array<{ slot: string; cosmetic: { slug: string; name: string; rarity: string; category: string } | null }>;
-  recruit_stats?: {
-    active_recruits: number;
-    direct_qualified: number;
-    claimable_sigils: number;
-    total_sigils_earned: number;
-  };
-  recent_receipts?: Array<{
-    slug: string;
-    name: string;
-    rarity: string;
-    power_rating: number;
-    image_url: string;
-    minted_at: string;
-  }>;
-  rivalries?: Array<{ cat_id: string; cat_name: string; battles: number }>;
-  most_supported_cat?: { id: string; name: string; fan_count: number } | null;
   signature_cat?: { id: string; name: string; image_url: string | null } | null;
-  prediction_stats?: { current_streak: number; best_streak: number; bonus_rolls: number };
+  prediction_stats?: { current_streak: number; best_streak: number; bonus_rolls: number; resolved_count?: number; won_count?: number };
 }
 
-interface OwnedCosmetic {
-  id: string;
-  slug: string;
-  name: string;
-  category: string;
-  rarity: string;
-  description: string | null;
-  owned: boolean;
-  equipped_slot: string | null;
-}
-
-function cosmeticTypeLabel(c: OwnedCosmetic): string {
-  if (c.slug.startsWith('vote-')) return 'vote effect';
-  if (c.slug.startsWith('badge-')) return 'voter badge';
-  return c.category.replace(/_/g, ' ');
+function toActivityItems(rows: ProfileResponse['vote_history']): TrainerActivityItem[] {
+  return (rows || []).map((row) => ({
+    id: `${row.battle_id}-${row.created_at}`,
+    icon: row.resolved ? (row.won ? '🎯' : '⚔️') : '⚔️',
+    text: row.resolved
+      ? row.won
+        ? (row.against_name ? `Correct pick: ${row.voted_for_name} beat ${row.against_name}` : `Correct pick: ${row.voted_for_name}`)
+        : (row.against_name ? `Missed pick: ${row.voted_for_name} vs ${row.against_name}` : `Missed pick: ${row.voted_for_name}`)
+      : row.against_name
+        ? `Voted for ${row.voted_for_name} vs ${row.against_name}`
+        : `Voted for ${row.voted_for_name}`,
+    timestamp: row.created_at,
+  }));
 }
 
 export default function ProfilePage() {
@@ -84,19 +66,17 @@ export default function ProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const profileId = params?.id as string;
-  const [activeSection, setActiveSection] = useState<'overview' | 'cats' | 'history'>('overview');
+
+  const [activeTab, setActiveTab] = useState<TrainerTab>('overview');
   const [data, setData] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [savingName, setSavingName] = useState(false);
-  const [nameMessage, setNameMessage] = useState<string | null>(null);
-  const [pinningCatId, setPinningCatId] = useState<string | null>(null);
-  const [ownedCosmetics, setOwnedCosmetics] = useState<OwnedCosmetic[]>([]);
-  const [equippingSlug, setEquippingSlug] = useState<string | null>(null);
-  const [showTip, setShowTip] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const [activeModal, setActiveModal] = useState<'share' | 'cat' | 'avatar' | null>(null);
+  const [selectedCat, setSelectedCat] = useState<TrainerCat | null>(null);
+  const [savingAvatarCatId, setSavingAvatarCatId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profileId) return;
@@ -108,7 +88,6 @@ export default function ProfilePage() {
           setError(d.error || 'Failed to load profile');
         } else {
           setData(d);
-          setNewUsername(d.profile?.username || '');
         }
       } catch {
         setError('Failed to load profile');
@@ -116,160 +95,42 @@ export default function ProfilePage() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [profileId]);
-  useEffect(() => {
-    const hidden = localStorage.getItem('tip_profile_cosmetics_v1') === '1';
-    setShowTip(!hidden);
-  }, []);
 
   useEffect(() => {
     const tab = String(searchParams?.get('tab') || '').trim().toLowerCase();
     if (tab === 'cats') {
-      setActiveSection('cats');
+      setActiveTab('cats');
       return;
     }
-    if (tab === 'history') {
-      setActiveSection('history');
+    if (tab === 'history' || tab === 'activity') {
+      setActiveTab('activity');
       return;
     }
-    setActiveSection('overview');
+    setActiveTab('overview');
   }, [searchParams]);
 
-  useEffect(() => {
-    if (!data?.is_owner) return;
-    async function loadOwned() {
-      try {
-        const res = await fetch('/api/shop/catalog', { cache: 'no-store' });
-        const d = await res.json();
-        if (res.ok && d.ok) {
-          setOwnedCosmetics((d.cosmetics || []).filter((c: OwnedCosmetic) => c.owned && c.category !== 'xp_boost'));
-        }
-      } catch {
-        // ignore
-      }
-    }
-    loadOwned();
-  }, [data?.is_owner]);
-
-
-  const totalWins = useMemo(() => (data?.submitted_cats || []).reduce((a, c) => a + (c.wins || 0), 0), [data]);
+  const usernameDisplay = data?.profile.username || (data?.profile.id ? `Player ${data.profile.id.slice(0, 8)}` : 'Trainer');
+  const submittedCats = data?.submitted_cats || [];
   const submittedCatCount = useMemo(
-    () => (data?.submitted_cats || []).filter((c) => String(c.origin || 'submitted') === 'submitted').length,
-    [data]
+    () => submittedCats.filter((cat) => String(cat.status || '').toLowerCase() !== 'rejected').length,
+    [submittedCats]
   );
-  const activeTitle = data?.equipped_cosmetics.find((e) => e.slot === 'title')?.cosmetic?.name || null;
-  const activeTitleSlug = data?.equipped_cosmetics.find((e) => e.slot === 'title')?.cosmetic?.slug || null;
-  const activeBorderSlug = data?.equipped_cosmetics.find((e) => e.slot === 'border')?.cosmetic?.slug || null;
-  const activeColorSlug = data?.equipped_cosmetics.find((e) => e.slot === 'color')?.cosmetic?.slug || null;
-  const profileAccentClass = cosmeticTextClassFromSlug(activeColorSlug);
-  const guildLabel = data?.profile.guild === 'sun'
-    ? 'Solar Claw'
-    : data?.profile.guild === 'moon'
-      ? 'Lunar Paw'
-      : 'No guild pledged';
-  const usernameDisplay = data?.profile.username || `Player ${data?.profile.id.slice(0, 8)}`;
-  const shortUserId = data?.profile.id ? `${data.profile.id.slice(0, 8)}…${data.profile.id.slice(-4)}` : '';
-  const predictionCurrent = data?.prediction_stats?.current_streak || 0;
-  const predictionBest = Math.max(predictionCurrent, data?.prediction_stats?.best_streak || 0);
-  const predictionProgress = predictionBest > 0 ? Math.min(100, Math.round((predictionCurrent / predictionBest) * 100)) : 0;
-  const activityItems = data?.vote_history || [];
-  const showCosmeticsSection = (data?.equipped_cosmetics.length || 0) > 0 || (data?.is_owner && ownedCosmetics.length > 0);
-  const recentReceipts = data?.recent_receipts || [];
-  const showOverview = activeSection === 'overview';
-  const showCats = activeSection === 'cats';
-  const showHistory = activeSection === 'history';
-  const statPills = [
-    { label: 'Level', value: String(data?.progress.level || 0), tone: 'profile-pill-value--violet' },
-    { label: 'XP', value: (data?.progress.xp || 0).toLocaleString(), tone: 'profile-pill-value--gold' },
-    { label: 'Sigils', value: (data?.progress.sigils || 0).toLocaleString(), tone: 'profile-pill-value--violet' },
-    { label: 'Cat Wins', value: totalWins.toLocaleString(), tone: totalWins > 0 ? 'profile-pill-value--violet' : 'profile-pill-value--dim' },
-    { label: 'Tactical', value: String(data?.profile.tactical_rating || 0), tone: 'profile-pill-value--dim' },
-    { label: 'Predict', value: String(predictionCurrent), tone: predictionCurrent > 0 ? 'profile-pill-value--teal' : 'profile-pill-value--dim' },
-  ];
+  const totalVotesCast = data?.vote_history?.length || 0;
+  const resolvedPredictions = Math.max(0, Number(data?.prediction_stats?.resolved_count || 0));
+  const wonPredictions = Math.max(0, Number(data?.prediction_stats?.won_count || 0));
+  const predictionAccuracy = resolvedPredictions > 0 ? Math.round((wonPredictions / resolvedPredictions) * 100) : 0;
+  const rank = Math.max(1, Number(data?.profile.tactical_rating || 1));
+  const trainerRarity = data?.signature_cat ? (submittedCats.find((cat) => cat.id === data.signature_cat?.id)?.rarity || 'Common') : 'Common';
+  const activityItems = useMemo(() => toActivityItems(data?.vote_history || []), [data?.vote_history]);
 
-  async function equipFromProfile(slug: string) {
-    if (!data?.is_owner || equippingSlug) return;
-    setEquippingSlug(slug);
-    setNameMessage(null);
-    try {
-      const res = await fetch('/api/shop/equip', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug }),
-      });
-      const result = await res.json();
-      if (!res.ok || !result.ok) {
-        setNameMessage(result.error || 'Failed to equip');
-      } else {
-        setOwnedCosmetics((prev) =>
-          prev.map((c) => ({
-            ...c,
-            equipped_slot: c.slug === slug ? result.slot : (c.equipped_slot === result.slot ? null : c.equipped_slot),
-          }))
-        );
-        setNameMessage('Cosmetic equipped');
-      }
-    } catch {
-      setNameMessage('Failed to equip');
-    } finally {
-      setEquippingSlug(null);
-    }
-  }
+  const shareUrl = useMemo(() => {
+    if (typeof window === 'undefined' || !data?.profile.id) return '';
+    return `${window.location.origin}/profile/${encodeURIComponent(data.profile.id)}`;
+  }, [data?.profile.id]);
 
-  async function saveUsername() {
-    if (!data?.is_owner || savingName) return;
-    setSavingName(true);
-    setNameMessage(null);
-    try {
-      const res = await fetch('/api/profile/username', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername }),
-      });
-      const result = await res.json();
-      if (!res.ok || !result.ok) {
-        setNameMessage(result.error || 'Failed to update username');
-      } else {
-        if (result.linked_existing_profile && result.user_id) {
-          window.location.href = `/profile/${result.user_id}`;
-          return;
-        }
-        setData((prev) => (prev ? { ...prev, profile: { ...prev.profile, username: result.username } } : prev));
-        setEditingName(false);
-        setNameMessage('Username updated');
-      }
-    } catch {
-      setNameMessage('Failed to update username');
-    } finally {
-      setSavingName(false);
-    }
-  }
-
-
-  async function pinSignature(catId: string) {
-    if (!data?.is_owner || pinningCatId) return;
-    setPinningCatId(catId);
-    try {
-      const res = await fetch('/api/profile/signature', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cat_id: catId }),
-      });
-      const result = await res.json();
-      if (!res.ok || !result.ok) {
-        setNameMessage(result.error || 'Failed to pin signature cat');
-      } else {
-        const picked = data.submitted_cats.find((c) => c.id === catId);
-        setData((prev) => prev ? { ...prev, signature_cat: picked ? { id: picked.id, name: picked.name, image_url: picked.image_url } : prev.signature_cat } : prev);
-        setNameMessage('Signature cat updated');
-      }
-    } catch {
-      setNameMessage('Failed to pin signature cat');
-    } finally {
-      setPinningCatId(null);
-    }
-  }
+  const buildCats = useMemo(() => submittedCats.slice(0, 3).map((cat) => cat.name), [submittedCats]);
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -277,10 +138,53 @@ export default function ProfilePage() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {
-      // ignore and continue redirect
+      // ignore and continue
     }
     router.push('/login');
     router.refresh();
+  }
+
+  async function copyShareUrl() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function reloadProfile() {
+    if (!profileId) return;
+    const res = await fetch(`/api/profile/${profileId}?t=${Date.now()}`, { cache: 'no-store' });
+    const d = await res.json().catch(() => null);
+    if (res.ok && d?.ok) setData(d);
+  }
+
+  async function submitAvatarChange(catId: string) {
+    if (!catId) return;
+    setSavingAvatarCatId(catId);
+    setFormError(null);
+    try {
+      const res = await fetch('/api/profile/signature', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cat_id: catId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.ok) {
+        setFormError(String(payload?.error || 'Could not update avatar.'));
+        return;
+      }
+      const cat = submittedCats.find((c) => c.id === catId);
+      if (cat) {
+        setData((prev) => (prev ? { ...prev, signature_cat: { id: cat.id, name: cat.name, image_url: cat.image_url } } : prev));
+      } else {
+        await reloadProfile();
+      }
+      setActiveModal(null);
+    } finally {
+      setSavingAvatarCatId(null);
+    }
   }
 
   if (loading) {
@@ -295,7 +199,7 @@ export default function ProfilePage() {
     return (
       <DataLoadError
         title="Trainer Profile Unavailable"
-        message={error ? 'We couldn’t load this trainer card right now. Try again in a moment.' : 'That trainer profile isn’t available right now.'}
+        message={error ? 'We couldn\'t load this trainer card right now. Try again in a moment.' : 'That trainer profile isn\'t available right now.'}
         onRetry={() => window.location.reload()}
         showRetryButton={!!error}
         backHref="/"
@@ -305,381 +209,144 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="page-content min-h-screen bg-[#06050e] text-white pb-[72px] sm:pb-[72px]">
-      <div className="mx-auto max-w-5xl px-3 py-6 sm:px-4 sm:py-8">
-        <div className="mb-6 flex items-center justify-between gap-3 sm:mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-white/40 hover:text-white text-sm">
+    <div className="page-content min-h-screen bg-[#06050e] text-white pb-[72px]">
+      <div className="mx-auto max-w-5xl px-3 py-5 sm:px-4 sm:py-6">
+        <div className="mb-4 flex items-center justify-between gap-3 sm:mb-5">
+          <Link href="/" className="inline-flex min-h-11 items-center gap-2 text-white/50 hover:text-white text-sm">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
-          {data.is_owner && (
+          {data.is_owner ? (
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 transition-all duration-150 hover:bg-white/10 active:translate-y-[1px] disabled:opacity-50 disabled:active:translate-y-0"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
             >
               <LogOut className="w-3.5 h-3.5" />
               {loggingOut ? 'Logging out...' : 'Logout'}
             </button>
-          )}
-        </div>
-
-        <CosmeticThemeProvider colorSlug={activeColorSlug}>
-        <CosmeticFrame borderSlug={activeBorderSlug} className="profile-hero-shell mb-6 overflow-hidden p-0 sm:mb-8">
-          <div className="profile-hero">
-            <div className="profile-hero-bg" />
-            <div className="profile-hero-content">
-              <div className="profile-hero-avatar-wrap">
-                {data.signature_cat?.image_url ? (
-                  <img src={data.signature_cat.image_url} alt={data.signature_cat.name} className="profile-hero-avatar object-cover" />
-                ) : (
-                  <div className="profile-hero-avatar profile-hero-avatar--placeholder">
-                    {(usernameDisplay || 'P').slice(0, 1).toUpperCase()}
-                  </div>
-                )}
-                <div className="profile-hero-avatar-orbit" />
-                <div className="profile-hero-level-badge">LVL {data.progress.level}</div>
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <h1 className={`profile-hero-name ${profileAccentClass}`}>{usernameDisplay}</h1>
-                {activeTitle && (
-                  <p className="mt-1 text-xs uppercase tracking-wider">
-                    <CosmeticTitle title={activeTitle} titleSlug={activeTitleSlug} />
-                  </p>
-                )}
-                <p className="profile-hero-uid">UID {shortUserId}</p>
-                <div className="profile-hero-badges">
-                  <span className="profile-hero-chip">{guildLabel}</span>
-                  <span className="profile-hero-chip">XP {data.progress.xp.toLocaleString()}</span>
-                </div>
-                {data.signature_cat && (
-                  <p className="mt-3 text-xs text-white/58">
-                    Signature Cat: <Link href={`/cat/${data.signature_cat.id}`} className="text-white hover:underline">{data.signature_cat.name}</Link>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="stat-pills">
-            {statPills.map((pill) => (
-              <div key={pill.label} className="stat-pill">
-                <span className={`stat-pill-value ${pill.tone}`}>{pill.value}</span>
-                <span className="stat-pill-label">{pill.label}</span>
-              </div>
-            ))}
-          </div>
-        </CosmeticFrame>
-        </CosmeticThemeProvider>
-
-        <div className="profile-sections">
-          <button
-            type="button"
-            className={`ps-tab ${showOverview ? 'active' : ''}`}
-            onClick={() => setActiveSection('overview')}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            className={`ps-tab ${showCats ? 'active' : ''}`}
-            onClick={() => setActiveSection('cats')}
-          >
-            My Cats
-          </button>
-          <button
-            type="button"
-            className={`ps-tab ${showHistory ? 'active' : ''}`}
-            onClick={() => setActiveSection('history')}
-          >
-            History
-          </button>
-        </div>
-
-        <div className="grid gap-6 sm:gap-8">
-          {showOverview ? (
-            <>
-          <section className="profile-section-card">
-            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Trainer Identity</h2></div>
-            <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-xl bg-white/[0.03] p-4">
-                <div className="flex items-center gap-3 text-white/75">
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200">✦</span>
-                  <div>
-                    <p className="text-sm font-semibold text-white">Public trainer identity</p>
-                    <p className="text-xs text-white/55">Public trainer pages and Battle Receipts turn this profile into a share target, not just a settings screen.</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={`/r/${encodeURIComponent(data.profile.username || data.profile.id)}`} className="rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-400/15">
-                    Open Recruit Card
-                  </Link>
-                  {recentReceipts[0] ? (
-                    <Link href={`/c/${encodeURIComponent(recentReceipts[0].slug)}/share`} className="rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-xs font-bold text-violet-100 hover:bg-violet-400/15">
-                      Latest Battle Receipt
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-white/[0.03] p-4">
-                <p className="text-xs text-white/50">Guild</p>
-                <p className="mt-1 font-semibold text-white">{guildLabel}</p>
-                {data.most_supported_cat ? (
-                  <p className="mt-3 text-xs text-white/55">
-                    Most Supported: <Link href={`/cat/${data.most_supported_cat.id}`} className="text-white hover:underline">{data.most_supported_cat.name}</Link> ({data.most_supported_cat.fan_count} fans)
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            {data.is_owner && (
-              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs text-white/55">Edit your public trainer identity</p>
-                  <Link href="/shop" className="rounded-lg bg-yellow-500/20 px-2.5 py-1 text-xs font-bold text-yellow-300 hover:bg-yellow-500/30">Open Shop</Link>
-                </div>
-                {editingName ? (
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                      placeholder="username"
-                      className="input-focus flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    />
-                    <button onClick={saveUsername} disabled={savingName} className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-black disabled:opacity-50">
-                      {savingName ? 'Saving...' : 'Save'}
-                    </button>
-                    <button onClick={() => { setEditingName(false); setNewUsername(data.profile.username || ''); }} className="rounded-lg bg-white/10 px-4 py-2 text-sm">
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => setEditingName(true)} className="rounded-lg bg-white/10 px-3 py-2 text-sm hover:bg-white/15">
-                    Edit Username
-                  </button>
-                )}
-                {nameMessage && <p className="mt-2 text-xs text-white/60">{nameMessage}</p>}
-              </div>
-            )}
-          </section>
-
-          <section className="profile-section-card">
-            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Recruit Loop</h2></div>
-            <div className="grid gap-2 text-sm">
-              <div className="profile-stat-row"><span>Active recruits</span><span>{data.recruit_stats?.active_recruits || 0}</span></div>
-              <div className="profile-stat-row"><span>Qualified</span><span>{data.recruit_stats?.direct_qualified || 0}</span></div>
-              <div className="profile-stat-row"><span>Claimable sigils</span><span>{(data.recruit_stats?.claimable_sigils || 0).toLocaleString()}</span></div>
-            </div>
-          </section>
-
-          {showCosmeticsSection ? (
-            <section className="profile-section-card">
-              <div className="profile-section-title-wrap"><h2 className="profile-section-title">Cosmetics</h2></div>
-              <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-                <div>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-white">Equipped Slots</p>
-                    {data.is_owner ? <Link href="/shop" className="rounded-lg bg-white/10 px-2.5 py-1 text-xs hover:bg-white/15">Shop</Link> : null}
-                  </div>
-                  <div className="grid gap-2">
-                    {(data.equipped_cosmetics.length === 0 ? [
-                      { slot: 'Title', cosmetic: null },
-                      { slot: 'Border', cosmetic: null },
-                      { slot: 'Effect', cosmetic: null },
-                      { slot: 'Badge', cosmetic: null },
-                    ] : data.equipped_cosmetics).slice(0, 4).map((e, idx) => (
-                      <div key={`${e.slot}-${idx}`} className="rounded-lg border border-white/8 bg-white/[0.03] p-3 flex items-center justify-between">
-                        <p className="text-xs uppercase tracking-[0.16em] text-white/45">{e.slot}</p>
-                        <p className="text-sm text-white/78">{e.cosmetic?.name || 'Empty'}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  {showTip && (
-                    <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-xs text-white/65">Tips: equip titles, borders, colors, and effects here after buying them in Shop.</p>
-                        <button onClick={() => { localStorage.setItem('tip_profile_cosmetics_v1', '1'); setShowTip(false); }} className="rounded bg-white/10 px-2 py-1 text-xs hover:bg-white/20">
-                          Got it
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {data.is_owner ? (
-                    <div className="grid gap-2 max-h-[280px] overflow-auto pr-1">
-                      {ownedCosmetics.length === 0 ? (
-                        <div className="profile-empty-state">
-                          <p className="text-lg opacity-30">✨</p>
-                          <p>No cosmetics owned yet.</p>
-                          <p className="profile-empty-sub">Visit the shop to start building your look.</p>
-                        </div>
-                      ) : ownedCosmetics.map((c) => (
-                        <div key={c.id} className="rounded-lg border border-white/8 bg-white/[0.03] p-3 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{c.name}</p>
-                            <p className="text-xs text-white/50">{cosmeticTypeLabel(c)} · {c.rarity}</p>
-                          </div>
-                          <button onClick={() => equipFromProfile(c.slug)} disabled={!!equippingSlug || !!c.equipped_slot} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs disabled:opacity-50 hover:bg-white/20">
-                            {c.equipped_slot ? 'Equipped' : (equippingSlug === c.slug ? '...' : 'Equip')}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="profile-empty-state">
-                      <p className="text-lg opacity-30">🎴</p>
-                      <p>No cosmetics visible here.</p>
-                      <p className="profile-empty-sub">Owned cosmetics only appear for the account owner.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          <section className="profile-section-card">
-            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Prediction Streak</h2></div>
-            <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs text-white/50">Current Streak</p>
-                  <p className="mt-1 text-4xl font-black text-white">{predictionCurrent}</p>
-                </div>
-                <div className="text-right text-xs text-white/50">
-                  <p>Best {predictionBest}</p>
-                  <p>Bonus Rolls {(data.prediction_stats?.bonus_rolls || 0).toLocaleString()}</p>
-                </div>
-              </div>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
-                <div className="h-full rounded-full bg-gradient-to-r from-cyan-400/70 to-violet-400/80" style={{ width: `${predictionProgress}%` }} />
-              </div>
-            </div>
-          </section>
-            </>
-          ) : null}
-
-          {(showOverview || showHistory) ? (
-          <section className="profile-section-card">
-            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Activity</h2></div>
-            {activityItems.length === 0 ? (
-              <div className="profile-empty-state">
-                <p className="text-lg opacity-30">🌌</p>
-                <p>No battles recorded yet. Enter the Arena to start.</p>
-                <p className="profile-empty-sub">Recent activity will appear here once voting starts.</p>
-              </div>
-            ) : (
-              <div className="grid gap-2">
-                {activityItems.map((v) => (
-                  <div key={`${v.battle_id}-${v.created_at}`} className="rounded-lg border border-white/8 bg-white/[0.03] p-3">
-                    <p className="text-sm">
-                      Voted for <span className="font-bold">{v.voted_for_name}</span>
-                      {v.against_name ? ` vs ${v.against_name}` : ''}
-                    </p>
-                    <p className="mt-1 text-xs text-white/50">{new Date(v.created_at).toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-          ) : null}
-
-          {(showOverview || showCats) ? (
-          <section className="profile-section-card">
-            <div className="profile-section-title-wrap"><h2 className="profile-section-title">My Cats</h2></div>
-            {data.is_owner ? (
-              <div className="mb-3 flex items-center justify-end">
-                <Link href="/submit" className="rounded-lg border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-xs font-bold text-violet-100 hover:bg-violet-400/15">
-                  Submit a Cat
-                </Link>
-              </div>
-            ) : null}
-            {data.submitted_cats.length === 0 ? (
-              <div className="profile-empty-state">
-                <p className="text-lg opacity-30">🐾</p>
-                <p>No cats submitted yet.</p>
-                <p className="profile-empty-sub">Submit a cat to start building your roster.</p>
-              </div>
-            ) : (
-              <div className="grid gap-3 lg:grid-cols-2">
-                {data.submitted_cats.map((cat) => (
-                  <Link key={cat.id} href={`/cat/${cat.id}`} className={`block rounded-xl bg-white/5 border p-3 hover:bg-white/10 transition-colors ${cosmeticBorderClassFromSlug(activeBorderSlug)}`}>
-                    <div className="flex gap-3">
-                      <img src={cat.image_url || '/cat-placeholder.svg'} alt={cat.name} className="w-14 h-14 rounded-lg object-cover" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-white">{cat.name}</p>
-                        <p className="text-xs text-white/50">{cat.rarity} · {cat.status} · Lvl {cat.level}</p>
-                        <p className="text-xs text-white/40">W {cat.wins} / L {cat.losses} · Fans {cat.fan_count || 0}</p>
-                        {cat.stance ? <p className="text-xs uppercase text-cyan-300">Stance: {cat.stance}</p> : null}
-                      </div>
-                      {data.is_owner && (
-                        <button
-                          onClick={(e) => { e.preventDefault(); pinSignature(cat.id); }}
-                          disabled={!!pinningCatId}
-                          className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
-                        >
-                          {pinningCatId === cat.id ? 'Pinning...' : 'Pin'}
-                        </button>
-                      )}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </section>
-          ) : null}
-
-          {showOverview ? (
-          <section className="profile-section-card">
-            <div className="profile-section-title-wrap"><h2 className="profile-section-title">Account</h2></div>
-            <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
-              <div className="grid gap-2 text-sm">
-                <div className="rounded-xl bg-white/[0.03] p-3">
-                  <p className="text-xs text-white/50 mb-1">User ID</p>
-                  <p className="break-all text-white/80">{data.profile.id}</p>
-                </div>
-                <div className="rounded-xl bg-white/[0.03] p-3">
-                  <p className="text-xs text-white/50 mb-1">Submitted Cats</p>
-                  <p className="text-white/80">{submittedCatCount}</p>
-                </div>
-              </div>
-              <div>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-white">Battle Receipts</p>
-                  {recentReceipts[0] ? (
-                    <Link href={`/c/${encodeURIComponent(recentReceipts[0].slug)}/share`} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs hover:bg-white/15">
-                      Open Latest
-                    </Link>
-                  ) : null}
-                </div>
-                {recentReceipts.length === 0 ? (
-                  <div className="profile-empty-state">
-                    <p className="text-lg opacity-30">🧾</p>
-                    <p>No battle receipts yet.</p>
-                    <p className="profile-empty-sub">Mint a share card from any cat profile to start your receipt feed.</p>
-                  </div>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {recentReceipts.map((receipt) => (
-                      <Link key={receipt.slug} href={`/c/${encodeURIComponent(receipt.slug)}/share`} className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05]">
-                        <img src={receipt.image_url} alt={receipt.name} className="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
-                        <div className="p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="truncate font-bold text-white">{receipt.name}</p>
-                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-xs uppercase tracking-[0.18em] text-white/55">{receipt.rarity}</span>
-                          </div>
-                          <p className="mt-2 text-xs text-white/55">Power {receipt.power_rating} · {new Date(receipt.minted_at).toLocaleDateString()}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
           ) : null}
         </div>
+
+        <TrainerHero
+          username={usernameDisplay}
+          avatarUrl={data.signature_cat?.image_url || submittedCats[0]?.image_url || null}
+          rarity={trainerRarity}
+          streak={data.streak?.current_streak || 0}
+          sigils={data.progress?.sigils || 0}
+          rank={rank}
+          canEditProfile={!!data.is_owner}
+          onChangeAvatar={() => {
+            setFormError(null);
+            setActiveModal('avatar');
+          }}
+          onSubmitCat={() => router.push('/submit')}
+          onViewMyCats={() => setActiveTab('cats')}
+        />
+
+        <TrainerInlineStats
+          catsCount={submittedCatCount}
+          votesCount={totalVotesCast}
+          accuracy={predictionAccuracy}
+          streak={data.streak?.current_streak || 0}
+        />
+
+        <TrainerTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {activeTab === 'overview' ? (
+          <TrainerOverview
+            hasBuild={submittedCats.length > 0}
+            buildName={submittedCats.length > 0 ? `${usernameDisplay}'s Build` : null}
+            buildCats={buildCats}
+            onCreateBuild={() => setActiveTab('cats')}
+            onShareProfile={() => setActiveModal('share')}
+          />
+        ) : null}
+
+        {activeTab === 'cats' ? (
+          <TrainerMyCats
+            cats={submittedCats}
+            onSubmitCat={() => router.push('/submit')}
+            onSelectCat={(cat) => {
+              setSelectedCat(cat);
+              setActiveModal('cat');
+            }}
+          />
+        ) : null}
+
+        {activeTab === 'activity' ? <TrainerActivity items={activityItems} /> : null}
       </div>
+
+      {activeModal === 'share' ? (
+        <div className="fixed inset-0 z-[220] bg-black/80 p-4 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
+          <div className="mx-auto mt-24 w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0b15] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Share Profile</h3>
+              <button type="button" onClick={() => setActiveModal(null)} className="text-white/60 hover:text-white"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-white/60">Public URL</p>
+            <p className="mt-1 truncate rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/90">{shareUrl}</p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <button type="button" onClick={copyShareUrl} className="h-10 rounded-lg bg-amber-400 text-sm font-semibold text-black hover:bg-amber-300">Copy Link</button>
+              <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center rounded-lg border border-white/20 text-sm text-white/85 hover:bg-white/10">Twitter</a>
+              <a href={`https://discord.com/channels/@me`} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center justify-center rounded-lg border border-white/20 text-sm text-white/85 hover:bg-white/10">Discord</a>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeModal === 'cat' && selectedCat ? (
+        <div className="fixed inset-0 z-[220] bg-black/80 p-4 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
+          <div className="mx-auto mt-16 w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b15] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">{selectedCat.name}</h3>
+              <button type="button" onClick={() => setActiveModal(null)} className="text-white/60 hover:text-white"><X className="h-4 w-4" /></button>
+            </div>
+            <img src={selectedCat.image_url || '/cat-placeholder.svg'} alt={selectedCat.name} className="h-56 w-full rounded-xl object-cover" />
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-white/80">Rarity: <span className="text-white">{selectedCat.rarity}</span></div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-white/80">Level: <span className="text-white">{selectedCat.level}</span></div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-white/80">Wins: <span className="text-white">{selectedCat.wins}</span></div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-white/80">Losses: <span className="text-white">{selectedCat.losses}</span></div>
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Link href={`/cat/${selectedCat.id}`} className="inline-flex h-10 items-center rounded-lg border border-white/20 px-3 text-sm text-white/85 hover:bg-white/10">Open Detail</Link>
+              {data.is_owner ? <Link href="/submit" className="inline-flex h-10 items-center rounded-lg bg-amber-400 px-3 text-sm font-semibold text-black hover:bg-amber-300">Edit / Submit</Link> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeModal === 'avatar' && data.is_owner ? (
+        <div className="fixed inset-0 z-[220] bg-black/80 p-4 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
+          <div className="mx-auto mt-16 w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0b15] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Change Avatar</h3>
+              <button type="button" onClick={() => setActiveModal(null)} className="text-white/60 hover:text-white"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {submittedCats.map((cat) => {
+                const busy = savingAvatarCatId === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    disabled={!!savingAvatarCatId}
+                    onClick={() => submitAvatarChange(cat.id)}
+                    className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] text-left"
+                  >
+                    <img src={cat.image_url || '/cat-placeholder.svg'} alt={cat.name} className="h-24 w-full object-cover" />
+                    <div className="px-2 py-1.5">
+                      <p className="truncate text-xs font-semibold text-white">{cat.name}</p>
+                      <p className="text-[10px] text-white/55">{busy ? 'Saving...' : 'Set as avatar'}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {formError ? <p className="mt-2 text-xs text-rose-300">{formError}</p> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

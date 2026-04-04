@@ -42,8 +42,8 @@ export function VoteSplitBar({
   animTick = 0,
   justVoted = false,
   selectedSide = null,
-  className = 'h-[10px]',
-  durationMs = 600,
+  className = 'h-[12px]',
+  durationMs = 500,
 }: {
   pctA: number;
   rarityA?: Rarity;
@@ -57,6 +57,7 @@ export function VoteSplitBar({
   const clamp = (v: number) => Math.max(0, Math.min(100, v));
   const [renderPctA, setRenderPctA] = useState(() => clamp(pctA));
   const [pulseSide, setPulseSide] = useState<'a' | 'b' | null>(null);
+  const [glowIntensity, setGlowIntensity] = useState(0);
 
   useEffect(() => {
     setRenderPctA(clamp(pctA));
@@ -66,12 +67,19 @@ export function VoteSplitBar({
     if (!animTick) return;
     if (!selectedSide) return;
     setPulseSide(selectedSide);
+    setGlowIntensity(1);
     const clearPulse = window.setTimeout(() => {
       setPulseSide(null);
-    }, 180);
+      setGlowIntensity(0);
+    }, 260);
+    const glowDecay = window.setTimeout(() => {
+      setGlowIntensity(0);
+    }, 620);
     return () => {
       window.clearTimeout(clearPulse);
+      window.clearTimeout(glowDecay);
       setPulseSide(null);
+      setGlowIntensity(0);
     };
   }, [animTick, selectedSide]);
 
@@ -80,48 +88,57 @@ export function VoteSplitBar({
   const toneA = getRarityTone(rarityA, 'a', sameRarity);
   const toneB = getRarityTone(rarityB, 'b', sameRarity);
   const winningSide: 'a' | 'b' | null = renderPctA === 50 ? null : renderPctA > 50 ? 'a' : 'b';
+  const baseHeight = justVoted ? 16 : 12;
+  const glowScale = 1 + glowIntensity * 0.15;
 
   return (
     <div
-      className={`relative overflow-hidden rounded-full border border-white/14 bg-[#0a1220]/90 ${className}`}
+      className={`relative overflow-hidden rounded-full border border-white/[0.06] bg-[#0a1220]/90 ${className}`}
       style={{
-        height: justVoted ? '14px' : '10px',
-        transition: 'height 180ms ease-out, box-shadow 180ms ease-out',
+        height: `${baseHeight}px`,
+        transition: 'height 220ms ease-out, box-shadow 220ms ease-out',
         boxShadow: justVoted
-          ? 'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3), 0 8px 18px rgba(0,0,0,0.28)'
-          : 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.24), 0 4px 12px rgba(0,0,0,0.24)',
+          ? `inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.28), 0 0 ${10 + glowIntensity * 10}px ${winningSide === 'b' ? toneB.glow : toneA.glow}`
+          : `inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.24), 0 2px 8px rgba(0,0,0,0.2)`,
       }}
     >
       <div
         className="absolute left-0 top-0 h-full"
         style={{
           width: `${renderPctA}%`,
-          transition: `width ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease-out, transform 140ms ease-out`,
+          transition: `width ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out, transform 220ms ease-out, box-shadow 260ms ease-out, filter 220ms ease-out`,
           background: toneA.fill,
-          boxShadow: pulseSide === 'a' || (justVoted && winningSide === 'a') ? `0 0 12px ${toneA.glow}` : `0 0 4px ${toneA.glow}`,
-          transform: pulseSide === 'a' ? 'scaleY(1.06)' : 'scaleY(1)',
+          boxShadow: pulseSide === 'a' || (justVoted && winningSide === 'a')
+            ? `0 0 ${9 + glowIntensity * 11}px ${toneA.glow}, inset 0 0 6px rgba(255,255,255,0.2)`
+            : `0 0 ${4 + glowIntensity * 4}px ${toneA.glow}`,
+          transform: pulseSide === 'a' ? `scaleY(${1.1 * glowScale})` : `scaleY(${1 + glowIntensity * 0.025})`,
           transformOrigin: 'center',
-          opacity: pulseSide === 'b' || (justVoted && winningSide === 'b') ? 0.72 : 0.95,
-          willChange: 'width, transform, opacity',
+          opacity: pulseSide === 'b' || (justVoted && winningSide === 'a') ? 0.72 : 0.95,
+          willChange: 'width, transform, opacity, box-shadow',
           zIndex: pulseSide === 'a' ? 2 : 1,
+          filter: justVoted && winningSide === 'a' ? 'brightness(1.15)' : 'none',
         }}
       />
       <div
         className="absolute right-0 top-0 h-full"
         style={{
           width: `${renderPctB}%`,
-          transition: `width ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease-out, transform 140ms ease-out`,
+          transition: `width ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out, transform 220ms ease-out, box-shadow 260ms ease-out, filter 220ms ease-out`,
           background: toneB.fill,
-          boxShadow: pulseSide === 'b' || (justVoted && winningSide === 'b') ? `0 0 12px ${toneB.glow}` : `0 0 4px ${toneB.glow}`,
-          transform: pulseSide === 'b' ? 'scaleY(1.06)' : 'scaleY(1)',
+          boxShadow: pulseSide === 'b' || (justVoted && winningSide === 'b')
+            ? `0 0 ${9 + glowIntensity * 11}px ${toneB.glow}, inset 0 0 6px rgba(255,255,255,0.2)`
+            : `0 0 ${4 + glowIntensity * 4}px ${toneB.glow}`,
+          transform: pulseSide === 'b' ? `scaleY(${1.1 * glowScale})` : `scaleY(${1 + glowIntensity * 0.025})`,
           transformOrigin: 'center',
-          opacity: pulseSide === 'a' || (justVoted && winningSide === 'a') ? 0.72 : 0.95,
-          willChange: 'width, transform, opacity',
+          opacity: pulseSide === 'a' || (justVoted && winningSide === 'b') ? 0.72 : 0.95,
+          willChange: 'width, transform, opacity, box-shadow',
           zIndex: pulseSide === 'b' ? 2 : 1,
+          filter: justVoted && winningSide === 'b' ? 'brightness(1.15)' : 'none',
         }}
       />
-      <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-white/22" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/18" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-white/18" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[1px] bg-white/8" />
     </div>
   );
 }
